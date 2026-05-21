@@ -45,7 +45,7 @@ except Exception:
 
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_SAVE_ROOT = r"\\helix.pasteur.fr\projects\Bathellierlab"
+DEFAULT_SAVE_ROOT = r"\\helix.pasteur.fr\projects\Bathellierlab\User_folders"
 DEFAULT_NI_SCRIPT = os.path.join(APP_DIR, "setup_valves_IRFork.m")
 DEFAULT_SOUND_FILE = (
     r"\\helix.pasteur.fr\projects\Bathellierlab\User_folders\Sebastian"
