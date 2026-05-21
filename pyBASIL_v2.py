@@ -24,11 +24,12 @@ except Exception:
 
 try:
     import nidaqmx
-    from nidaqmx.constants import AcquisitionType, LineGrouping
+    from nidaqmx.constants import AcquisitionType, LineGrouping, TerminalConfiguration
 except Exception:
     nidaqmx = None
     AcquisitionType = None
     LineGrouping = None
+    TerminalConfiguration = None
 
 try:
     import sounddevice as sd
@@ -182,12 +183,23 @@ class BasilAcquisitionApp(tk.Tk):
         self.window_s = tk.StringVar(value="10")
         self.callback_s = tk.StringVar(value="0.1")
         self.auto_scale = tk.BooleanVar(value=False)
+        self.ai_terminal_config = tk.StringVar(value="RSE")
+        self.subtract_baseline = tk.BooleanVar(value=False)
         self._entry(acq, 0, "Device", self.device, width=9)
         self._entry(acq, 2, "Channels", self.channels, width=16)
         self._entry(acq, 4, "Rate Hz", self.rate_hz, width=9)
         self._entry(acq, 6, "Window s", self.window_s, width=8)
         self._entry(acq, 8, "Callback s", self.callback_s, width=8)
-        ttk.Checkbutton(acq, text="Auto scale", variable=self.auto_scale).grid(row=0, column=10, padx=10)
+        ttk.Label(acq, text="AI terminal").grid(row=0, column=10, padx=(10, 4))
+        ttk.Combobox(
+            acq,
+            textvariable=self.ai_terminal_config,
+            values=("RSE", "NRSE", "DIFF", "DEFAULT"),
+            state="readonly",
+            width=8,
+        ).grid(row=0, column=11)
+        ttk.Checkbutton(acq, text="Auto scale", variable=self.auto_scale).grid(row=0, column=12, padx=10)
+        ttk.Checkbutton(acq, text="Subtract baseline", variable=self.subtract_baseline).grid(row=0, column=13, padx=10)
 
         trig = ttk.LabelFrame(root, text="Trigger And Sound")
         trig.grid(row=3, column=0, sticky="ew", pady=(0, 6))
@@ -253,7 +265,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.trial_duration_s = tk.StringVar(value="2")
         self.response_window_s = tk.StringVar(value="2")
         self.reward_delay_s = tk.StringVar(value="0")
-        self.hit_threshold_s = tk.StringVar(value="0.5")
+        self.hit_threshold_s = tk.StringVar(value="50")
         self.punish_interval = tk.StringVar(value="")
         self.reward_go = tk.StringVar(value="")
         self.punish_no_go_fa = tk.StringVar(value="")
@@ -278,7 +290,7 @@ class BasilAcquisitionApp(tk.Tk):
         self._entry(trial, 2, "Punish FA", self.punish_no_go_fa, width=7, row=4)
         self._entry(trial, 4, "Min licks", self.min_lick_count, width=7, row=4)
         self._entry(trial, 0, "Lick thresh", self.lick_threshold, width=7, row=5)
-        self._entry(trial, 2, "HIT s", self.hit_threshold_s, width=7, row=5)
+        self._entry(trial, 2, "HIT %", self.hit_threshold_s, width=7, row=5)
         self._entry(trial, 4, "Current trial", self.current_trial_var, width=7, row=5, state="readonly")
         self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=7, row=6)
         for var in (self.sound_delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s):
@@ -389,6 +401,7 @@ class BasilAcquisitionApp(tk.Tk):
             "RewardDelay_s": self.reward_delay_s,
             "Rewardduration_ms": self.pulse_ms,
             "HIT": self.hit_threshold_s,
+            "HITThreshold_percent": self.hit_threshold_s,
             "HITThreshold_s": self.hit_threshold_s,
             "HIT_s": self.hit_threshold_s,
             "PunishInterval": self.punish_interval,
@@ -459,8 +472,13 @@ class BasilAcquisitionApp(tk.Tk):
         channels = self.parse_channels()
 
         self.ai_task = nidaqmx.Task()
+        terminal_config = self.get_ai_terminal_configuration()
         for channel in channels:
-            self.ai_task.ai_channels.add_ai_voltage_chan(f"{device}/{channel}")
+            physical_channel = f"{device}/{channel}"
+            if terminal_config is None:
+                self.ai_task.ai_channels.add_ai_voltage_chan(physical_channel)
+            else:
+                self.ai_task.ai_channels.add_ai_voltage_chan(physical_channel, terminal_config=terminal_config)
         self.ai_task.timing.cfg_samp_clk_timing(rate, sample_mode=AcquisitionType.CONTINUOUS)
 
         self.reward_task = nidaqmx.Task()
@@ -469,6 +487,18 @@ class BasilAcquisitionApp(tk.Tk):
 
         self.log("NI tasks initialized.")
         return True
+
+    def get_ai_terminal_configuration(self):
+        if TerminalConfiguration is None:
+            return None
+        config = self.ai_terminal_config.get()
+        if config == "RSE":
+            return TerminalConfiguration.RSE
+        if config == "NRSE":
+            return TerminalConfiguration.NRSE
+        if config == "DIFF":
+            return TerminalConfiguration.DIFFERENTIAL
+        return None
 
     def close_tasks(self):
         for attr in ("ai_task", "reward_task", "sound_ao_task", "sound_do_task"):
@@ -626,7 +656,7 @@ class BasilAcquisitionApp(tk.Tk):
         while self.time_buffer and self.time_buffer[0] < min_time:
             self.time_buffer.pop(0)
             self.data_buffer.pop(0)
-        self.current_ir_baseline = statistics.median(self.data_buffer) if self.data_buffer else 0.0
+        self.current_ir_baseline = statistics.median(self.data_buffer) if self.subtract_baseline.get() and self.data_buffer else 0.0
         corrected_ir_values = [value - self.current_ir_baseline for value in raw_ir_values]
         self.check_trigger(times, corrected_ir_values)
         self.plot_queue.put(("plot", (list(self.time_buffer), list(self.data_buffer))))
@@ -745,7 +775,7 @@ class BasilAcquisitionApp(tk.Tk):
             f.write(f"RewardDelay_s={self.reward_delay_s.get()}\n")
             f.write(f"Rewardduration_ms={self.pulse_ms.get()}\n")
             f.write(f"HIT={self.hit_threshold_s.get()}\n")
-            f.write(f"HITThreshold_s={self.hit_threshold_s.get()}\n")
+            f.write(f"HITThreshold_percent={self.hit_threshold_s.get()}\n")
             f.write(f"PunishInterval={self.punish_interval.get()}\n")
             f.write(f"RewardGo={self.reward_go.get()}\n")
             f.write(f"PunishNoGoFA={self.punish_no_go_fa.get()}\n")
@@ -779,7 +809,8 @@ class BasilAcquisitionApp(tk.Tk):
             "sound_id": sound_id,
             "trigger_time_s": f"{trigger_time_s:.6f}",
             "task_type": self.task_type.get(),
-            "hit_threshold_s": self.parse_float(self.hit_threshold_s, 0.5),
+            "hit_threshold_percent": self.parse_float(self.hit_threshold_s, 50),
+            "hit_threshold_s": self.get_hit_threshold_s(),
             "threshold_v": threshold,
             "lever_hold_time_s": self.parse_float(self.lever_hold_time_s, 1),
             "iti_s": iti,
@@ -996,6 +1027,13 @@ class BasilAcquisitionApp(tk.Tk):
             total_s += max(0.0, sample_time_s - self.active_high_start_s)
         return total_s
 
+    def get_hit_threshold_s(self):
+        response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
+        raw_value = max(0.0, self.parse_float(self.hit_threshold_s, 50))
+        if raw_value <= 1.0:
+            return raw_value
+        return response_window_s * min(raw_value, 100.0) / 100.0
+
     def evaluate_active_trial(self, sample_time_s):
         row = self.get_active_trial_row()
         if row is None:
@@ -1003,7 +1041,7 @@ class BasilAcquisitionApp(tk.Tk):
         if self.is_lick_trigger():
             self.evaluate_active_lick_trial(row)
             return
-        hit_threshold_s = max(0.0, self.parse_float(self.hit_threshold_s, 0.5))
+        hit_threshold_s = self.get_hit_threshold_s()
         total_s = self.get_active_crossing_total(sample_time_s)
         row["crossing_duration_s"] = f"{total_s:.6f}"
         is_go = row["TrialType"].endswith("GO")
@@ -1055,7 +1093,7 @@ class BasilAcquisitionApp(tk.Tk):
             return
         if self.active_high_start_s is not None:
             self.add_active_high_interval(trial_end_s)
-        hit_threshold_s = max(0.0, self.parse_float(self.hit_threshold_s, 0.5))
+        hit_threshold_s = self.get_hit_threshold_s()
         total_s = self.active_crossing_total_s
         row["crossing_duration_s"] = f"{total_s:.6f}"
         is_go = row["TrialType"].endswith("GO")
@@ -1377,7 +1415,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.data_buffer = values
         self.full_time_buffer = list(times)
         self.full_data_buffer = list(values)
-        self.current_ir_baseline = statistics.median(values) if values else 0.0
+        self.current_ir_baseline = statistics.median(values) if self.subtract_baseline.get() and values else 0.0
         self.draw_plot(times, values)
         self.log(f"Opened {os.path.basename(path)}: {len(values)} samples at {rate:g} Hz.")
 
@@ -1800,7 +1838,7 @@ class BasilAcquisitionApp(tk.Tk):
         step = max(1, len(values) // max_points)
         times = times[::step]
         values = values[::step]
-        ir_baseline = self.current_ir_baseline
+        ir_baseline = self.current_ir_baseline if self.subtract_baseline.get() else 0.0
         values = [value - ir_baseline for value in values]
         min_t, max_t = times[0], times[-1] if times[-1] != times[0] else times[0] + 1
         min_v, max_v = min(values), max(values)

@@ -47,7 +47,7 @@ PARAMETERS = [
     Parameter("Rewardduration_ms", "Reward duration ms", "40", "Outcome", "float"),
     Parameter("RewardGoProb", "RewardGo Prob", "1", "Outcome", "float"),
     Parameter("PunishNoGoFA", "Timeout false alarms", "1", "Outcome", "float"),
-    Parameter("HITThreshold_s", "HIT threshold time s", "1", "Outcome", "int"),
+    Parameter("HITThreshold_percent", "HIT threshold %", "50", "Outcome", "float"),
     Parameter("Minlickcount", "Min lick count", "1", "Outcome", "int"),
     Parameter("Lickthreshold", "Signal threshold V", "1", "Outcome", "float"),
     Parameter("LeverTaskType", "Task type", "Lever", "Lever"),
@@ -198,7 +198,7 @@ class GoNoGoDatGenerator(tk.Tk):
             state = "readonly" if parameter.key == "TrialDuration_s" else "normal"
             widget = ttk.Entry(parent, textvariable=variable, width=25, state=state)
         widget.grid(row=row, column=1, sticky="ew", padx=(4, 6), pady=3)
-        if parameter.key == "HITThreshold_s":
+        if parameter.key == "HITThreshold_percent":
             self._hit_row_widgets = [label, widget]
         elif parameter.key == "Minlickcount":
             self._min_lick_row_widgets = [label, widget]
@@ -358,8 +358,8 @@ class GoNoGoDatGenerator(tk.Tk):
                 self.variables["LeverRewardGo"].set(value)
             elif key == "RewardGo":
                 self.variables["RewardGoProb"].set(value)
-            elif key == "HIT_s":
-                self.variables["HITThreshold_s"].set(value)
+            elif key in {"HIT_s", "HITThreshold_s"}:
+                self.variables["HITThreshold_percent"].set(self.convert_legacy_hit_threshold(value, values))
             elif key in self.variables:
                 self.variables[key].set(value)
             elif key == "GoProbability":
@@ -391,6 +391,16 @@ class GoNoGoDatGenerator(tk.Tk):
 
     def loaded_values_are_lever(self, values):
         return values.get("TaskType") == "Lever" or values.get("LeverTaskType") == "Lever" or "LeverThreshold" in values
+
+    def convert_legacy_hit_threshold(self, value, values):
+        try:
+            parsed = float(value)
+            response_window = float(values.get("ResponseWindow_s", self.variables["ResponseWindow_s"].get()))
+        except (TypeError, ValueError):
+            return value
+        if parsed <= 1 and response_window > 0:
+            return f"{min(100.0, max(0.0, parsed / response_window * 100.0)):.6g}"
+        return value
 
     def save_dat(self):
         path = self.current_path.get().strip()
@@ -425,7 +435,7 @@ class GoNoGoDatGenerator(tk.Tk):
         active_behavior = self.get_active_behavior()
         trigger_type = self.variables["TriggerTypeDropDown"].get()
         for parameter in self.get_active_parameters():
-            if parameter.key == "HITThreshold_s" and trigger_type != "IRFork":
+            if parameter.key == "HITThreshold_percent" and trigger_type != "IRFork":
                 continue
             if parameter.key in {"Minlickcount", "Lickthreshold"} and trigger_type != "Lick":
                 continue
@@ -483,9 +493,9 @@ class GoNoGoDatGenerator(tk.Tk):
         if punish_no_go_fa is None or not 0 <= punish_no_go_fa <= 25:
             errors.append("Timeout false alarms must be between 0 and 25 seconds.")
         if trigger_type == "IRFork":
-            hit_s = self._parse_int("HITThreshold_s", None)
-            if hit_s is None or not 1 <= hit_s <= 100:
-                errors.append("HIT threshold time s must be an integer from 1 to 100.")
+            hit_percent = self._parse_float("HITThreshold_percent", None)
+            if hit_percent is None or not 0 <= hit_percent <= 100:
+                errors.append("HIT threshold % must be between 0 and 100.")
         elif trigger_type == "Lick":
             min_lick_count = self._parse_int("Minlickcount", None)
             if min_lick_count is None or min_lick_count < 1:
@@ -795,7 +805,7 @@ def write_dat(path, values, parameters):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
         for parameter in parameters:
-            if parameter.key == "HITThreshold_s" and values.get("TriggerTypeDropDown") != "IRFork":
+            if parameter.key == "HITThreshold_percent" and values.get("TriggerTypeDropDown") != "IRFork":
                 continue
             if parameter.key in {"Minlickcount", "Lickthreshold"} and values.get("TriggerTypeDropDown") != "Lick":
                 continue
