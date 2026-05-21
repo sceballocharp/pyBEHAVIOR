@@ -54,7 +54,7 @@ DEFAULT_SOUND_FILE = (
 class BasilAcquisitionApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("BASIL Acquisition Python")
+        self.title("pyBASIL_v2")
         screen_height = self.winfo_screenheight()
         self.geometry(f"1120x{int(screen_height * 0.90)}+0+0")
 
@@ -114,7 +114,7 @@ class BasilAcquisitionApp(tk.Tk):
         self._build_ui()
         self.generate_sequence(log=False)
         self.after(50, self._drain_plot_queue)
-        self.log("BASIL Acquisition Python ready.")
+        self.log("pyBASIL_v2 ready.")
         if nidaqmx is None:
             self.log("nidaqmx not available: hardware acquisition/output will use simulation or be disabled.")
         if loadmat is None:
