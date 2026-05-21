@@ -45,6 +45,7 @@ except Exception:
 
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_SAVE_ROOT = r"\\helix.pasteur.fr\projects\Bathellierlab"
 DEFAULT_NI_SCRIPT = os.path.join(APP_DIR, "setup_valves_IRFork.m")
 DEFAULT_SOUND_FILE = (
     r"\\helix.pasteur.fr\projects\Bathellierlab\User_folders\Sebastian"
@@ -167,7 +168,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.mouse_id = tk.StringVar(value="1")
         self.project_name = tk.StringVar(value="ProjectName")
         self.output_format = tk.StringVar(value="NWB")
-        self.save_root = tk.StringVar(value=os.path.join(APP_DIR, "data"))
+        self.save_root = tk.StringVar(value=DEFAULT_SAVE_ROOT)
         self._entry(session, 0, "User", self.user_name, width=14)
         self._entry(session, 2, "Mouse", self.mouse_id, width=8)
         self._entry(session, 4, "Project", self.project_name, width=18)
@@ -716,14 +717,17 @@ class BasilAcquisitionApp(tk.Tk):
     def prepare_session_folder(self):
         date_folder = datetime.now().strftime("%Y%m%d")
         time_folder = datetime.now().strftime("%H%M%S") + "_Data"
+        user_folder = os.path.join(self.save_root.get(), self.user_name.get())
+        behavior_folder = os.path.join(user_folder, "behavior_data")
+        mouse_folder = os.path.join(behavior_folder, "M" + self.mouse_id.get())
         self.exp_folder = os.path.join(
-            self.save_root.get(),
-            self.user_name.get(),
-            "M" + self.mouse_id.get(),
+            mouse_folder,
             date_folder,
             time_folder,
         )
+        os.makedirs(behavior_folder, exist_ok=True)
         os.makedirs(self.exp_folder, exist_ok=True)
+        self.log(f"Session folder: {self.exp_folder}")
         self.write_parameters_dat()
         self.trial_log_path = os.path.join(self.exp_folder, "TrialLog.csv")
         self.parameters_log_path = os.path.join(self.exp_folder, "Parameters.csv")
