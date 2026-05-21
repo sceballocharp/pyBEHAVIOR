@@ -1,0 +1,5 @@
+numpy
+scipy
+nidaqmx
+sounddevice
+pynwb
