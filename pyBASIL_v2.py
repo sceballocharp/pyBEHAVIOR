@@ -228,8 +228,8 @@ class BasilAcquisitionApp(tk.Tk):
 
         body = ttk.Frame(root)
         body.grid(row=4, column=0, sticky="nsew")
-        body.columnconfigure(0, weight=2)
-        body.columnconfigure(1, weight=1)
+        body.columnconfigure(0, weight=3)
+        body.columnconfigure(1, weight=2)
         body.rowconfigure(0, weight=1)
         body.rowconfigure(1, weight=1)
 
@@ -247,10 +247,14 @@ class BasilAcquisitionApp(tk.Tk):
         self.sequence_next_var = tk.StringVar(value="1")
         self.last_trial_sound_var = tk.StringVar(value="")
         self.last_trial_type_var = tk.StringVar(value="")
+        self.random_seed = tk.StringVar(value="")
+        self.max_trials = tk.StringVar(value="0")
         self._entry(seq, 0, "Length", self.sequence_length, width=6)
         self._entry(seq, 2, "Values", self.sequence_values, width=10)
         self._entry(seq, 4, "Weights", self.sequence_weights, width=10)
-        ttk.Button(seq, text="ReGenerate Sequence", command=self.generate_sequence).grid(row=1, column=0, columnspan=6, sticky="ew", padx=6, pady=6)
+        self._entry(seq, 6, "Seed", self.random_seed, width=6)
+        self._entry(seq, 0, "Max trials", self.max_trials, width=6, row=1)
+        ttk.Button(seq, text="ReGenerate Sequence", command=self.generate_sequence).grid(row=1, column=2, columnspan=6, sticky="ew", padx=6, pady=6)
         self._entry(seq, 0, "Index", self.sequence_index_var, width=6, row=2, state="readonly")
         self._entry(seq, 2, "Next", self.sequence_next_var, width=6, row=2, state="readonly")
         self._entry(seq, 4, "Last sound", self.last_trial_sound_var, width=7, row=2, state="readonly")
@@ -259,7 +263,6 @@ class BasilAcquisitionApp(tk.Tk):
         trial = ttk.LabelFrame(body, text="Trial Structure")
         trial.grid(row=1, column=1, sticky="nsew")
         self.task_type = tk.StringVar(value="")
-        self.random_seed = tk.StringVar(value="")
         self.iti_s = tk.StringVar(value="1")
         self.iti_rand_min_s = tk.StringVar(value="")
         self.iti_rand_max_s = tk.StringVar(value="")
@@ -275,30 +278,28 @@ class BasilAcquisitionApp(tk.Tk):
         self.min_lick_count = tk.StringVar(value="")
         self.lick_threshold = tk.StringVar(value="")
         self.lever_hold_time_s = tk.StringVar(value="1")
-        self.max_trials = tk.StringVar(value="0")
         self.current_trial_var = tk.StringVar(value="0")
-        self._entry(trial, 0, "Task type", self.task_type, width=7, row=0)
-        self._entry(trial, 2, "Seed", self.random_seed, width=7, row=0)
-        self._entry(trial, 4, "Max trials", self.max_trials, width=7, row=0)
-        self._entry(trial, 0, "ITI s", self.iti_s, width=7, row=1)
-        self._entry(trial, 2, "ITI min", self.iti_rand_min_s, width=7, row=1)
-        self._entry(trial, 4, "ITI max", self.iti_rand_max_s, width=7, row=1)
-        self._entry(trial, 0, "Trial s", self.trial_duration_s, width=7, row=2, state="readonly")
-        self._entry(trial, 2, "Sound delay s", self.sound_delay_s, width=7, row=2)
-        self._entry(trial, 4, "Sound dur s", self.sound_duration_s, width=7, row=2)
-        self._entry(trial, 0, "Response s", self.response_window_s, width=7, row=3)
-        self._entry(trial, 2, "Reward delay s", self.reward_delay_s, width=7, row=3)
-        self._entry(trial, 4, "Punish int", self.punish_interval, width=7, row=3)
-        self._entry(trial, 0, "RewardGo", self.reward_go, width=7, row=4)
-        self._entry(trial, 2, "Punish FA", self.punish_no_go_fa, width=7, row=4)
-        self._entry(trial, 4, "Min licks", self.min_lick_count, width=7, row=4)
-        self.lick_threshold_widgets = self._entry(trial, 0, "Lick thresh", self.lick_threshold, width=7, row=5)
-        self.hit_threshold_widgets = self._entry(trial, 2, "HIT %", self.hit_threshold_s, width=7, row=5)
-        self._entry(trial, 4, "Current trial", self.current_trial_var, width=7, row=5, state="readonly")
-        self.lever_hold_widgets = self._entry(trial, 6, "Lever hold s", self.lever_hold_time_s, width=7, row=5)
+        for col in (1, 3, 5, 7):
+            trial.columnconfigure(col, weight=1)
+        self._entry(trial, 0, "Task type", self.task_type, width=6, row=0)
+        self._entry(trial, 2, "Current trial", self.current_trial_var, width=6, row=0, state="readonly")
+        self._entry(trial, 4, "RewardGo", self.reward_go, width=6, row=0)
+        self._entry(trial, 0, "ITI s", self.iti_s, width=6, row=1)
+        self._entry(trial, 2, "ITI min", self.iti_rand_min_s, width=6, row=1)
+        self._entry(trial, 4, "ITI max", self.iti_rand_max_s, width=6, row=1)
+        self._entry(trial, 0, "Trial s", self.trial_duration_s, width=6, row=2, state="readonly")
+        self._entry(trial, 2, "Response s", self.response_window_s, width=6, row=2)
+        self._entry(trial, 4, "Reward delay s", self.reward_delay_s, width=6, row=2)
+        self.sound_delay_widgets = self._entry(trial, 6, "Sound delay s", self.sound_delay_s, width=6, row=2)
+        self._entry(trial, 4, "Punish FA", self.punish_no_go_fa, width=6, row=3)
+        self.min_lick_count_widgets = self._entry(trial, 6, "Min licks", self.min_lick_count, width=6, row=3)
+        self.lick_threshold_widgets = self._entry(trial, 2, "Lick thresh", self.lick_threshold, width=6, row=3)
+        self.hit_threshold_widgets = self._entry(trial, 2, "HIT %", self.hit_threshold_s, width=6, row=3)
+        self.lever_hold_widgets = self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=6, row=3)
         for var in (self.sound_delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s):
             var.trace_add("write", lambda *_: self.update_trial_duration())
         self.task_type.trace_add("write", lambda *_: self.update_task_parameter_visibility())
+        self.trigger_type.trace_add("write", lambda *_: self.update_task_parameter_visibility())
         self.update_trial_duration()
         self.update_task_parameter_visibility()
 
@@ -327,9 +328,12 @@ class BasilAcquisitionApp(tk.Tk):
         if not hasattr(self, "lever_hold_widgets"):
             return
         is_lever = self.is_lever_task()
-        self.set_widget_pair_visible(self.lick_threshold_widgets, not is_lever, row=5, col=0)
-        self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever, row=5, col=2)
-        self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=5, col=0 if is_lever else 6)
+        is_lick = self.is_lick_trigger()
+        self.set_widget_pair_visible(self.sound_delay_widgets, not is_lever, row=2, col=6)
+        self.set_widget_pair_visible(self.min_lick_count_widgets, not is_lever, row=3, col=6)
+        self.set_widget_pair_visible(self.lick_threshold_widgets, not is_lever and is_lick, row=3, col=2)
+        self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever and not is_lick, row=3, col=2)
+        self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=3, col=0)
 
     def set_widget_pair_visible(self, widgets, visible, row, col):
         label_widget, entry_widget = widgets
@@ -445,6 +449,9 @@ class BasilAcquisitionApp(tk.Tk):
                 applied += 1
         if "Sound_filename" in params:
             self.sound_loaded = False
+        if self.is_lever_task() and not self.lever_hold_time_s.get().strip():
+            self.lever_hold_time_s.set("1")
+        self.update_task_parameter_visibility()
 
         sequence_changed = False
         if "GoSoundId" in params or "NoGoSoundId" in params:
