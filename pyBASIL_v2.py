@@ -292,13 +292,15 @@ class BasilAcquisitionApp(tk.Tk):
         self._entry(trial, 0, "RewardGo", self.reward_go, width=7, row=4)
         self._entry(trial, 2, "Punish FA", self.punish_no_go_fa, width=7, row=4)
         self._entry(trial, 4, "Min licks", self.min_lick_count, width=7, row=4)
-        self._entry(trial, 0, "Lick thresh", self.lick_threshold, width=7, row=5)
-        self._entry(trial, 2, "HIT %", self.hit_threshold_s, width=7, row=5)
+        self.lick_threshold_widgets = self._entry(trial, 0, "Lick thresh", self.lick_threshold, width=7, row=5)
+        self.hit_threshold_widgets = self._entry(trial, 2, "HIT %", self.hit_threshold_s, width=7, row=5)
         self._entry(trial, 4, "Current trial", self.current_trial_var, width=7, row=5, state="readonly")
-        self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=7, row=6)
+        self.lever_hold_widgets = self._entry(trial, 6, "Lever hold s", self.lever_hold_time_s, width=7, row=5)
         for var in (self.sound_delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s):
             var.trace_add("write", lambda *_: self.update_trial_duration())
+        self.task_type.trace_add("write", lambda *_: self.update_task_parameter_visibility())
         self.update_trial_duration()
+        self.update_task_parameter_visibility()
 
         log_frame = ttk.LabelFrame(root, text="Output")
         log_frame.grid(row=5, column=0, sticky="nsew", pady=(8, 0))
@@ -315,8 +317,28 @@ class BasilAcquisitionApp(tk.Tk):
         ttk.Button(line, text="Browse", command=command).grid(row=0, column=2)
 
     def _entry(self, parent, col, label, var, width=10, row=0, state="normal"):
-        ttk.Label(parent, text=label).grid(row=row, column=col, padx=(6, 4), pady=4, sticky="w")
-        ttk.Entry(parent, textvariable=var, width=width, state=state).grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
+        label_widget = ttk.Label(parent, text=label)
+        entry_widget = ttk.Entry(parent, textvariable=var, width=width, state=state)
+        label_widget.grid(row=row, column=col, padx=(6, 4), pady=4, sticky="w")
+        entry_widget.grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
+        return label_widget, entry_widget
+
+    def update_task_parameter_visibility(self):
+        if not hasattr(self, "lever_hold_widgets"):
+            return
+        is_lever = self.is_lever_task()
+        self.set_widget_pair_visible(self.lick_threshold_widgets, not is_lever, row=5, col=0)
+        self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever, row=5, col=2)
+        self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=5, col=0 if is_lever else 6)
+
+    def set_widget_pair_visible(self, widgets, visible, row, col):
+        label_widget, entry_widget = widgets
+        if visible:
+            label_widget.grid(row=row, column=col, padx=(6, 4), pady=4, sticky="w")
+            entry_widget.grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
+        else:
+            label_widget.grid_remove()
+            entry_widget.grid_remove()
 
     def update_trial_duration(self):
         total = (
