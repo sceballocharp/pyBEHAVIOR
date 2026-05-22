@@ -1,0 +1,16 @@
+UserName=Azul
+MouseId=1
+ProjectName=ProjectName
+NICard_filename=C:/Users/Behaviour_4/Documents/Github/pyBASIL/setup_valves_IRFork.m
+Sound_filename=C:/Users/Behaviour_4/Documents/Github/pyBASIL/AllSounds_Corrected.mat
+frec=1000
+bin=0.1
+TriggerTypeDropDown=IRFork
+OuputformatDropDown=NWB
+TaskType=Lever
+LeverThreshold=1
+GoSoundId=1
+SoundLevel=1
+LeverHoldTime_s=0.5
+Rewardduration_ms=40
+RewardGoProb=1
