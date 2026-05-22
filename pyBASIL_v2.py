@@ -69,6 +69,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.full_data_buffer = []
         self.trigger_pulses = []
         self.sound_outputs = []
+        self.trial_state_intervals = []
         self.full_trigger_pulses = []
         self.full_sound_outputs = []
         self.irfork_file = None
@@ -91,6 +92,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.current_parameter_signature = None
         self.parameter_block_index = 0
         self.active_trial_index = None
+        self.active_trial_start_s = None
         self.active_trial_end_s = None
         self.active_high_start_s = None
         self.active_crossing_total_s = 0.0
@@ -529,6 +531,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.current_parameter_signature = None
         self.parameter_block_index = 0
         self.active_trial_index = None
+        self.active_trial_start_s = None
         self.active_trial_end_s = None
         self.active_high_start_s = None
         self.active_crossing_total_s = 0.0
@@ -582,6 +585,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.full_data_buffer.clear()
         self.trigger_pulses.clear()
         self.sound_outputs.clear()
+        self.trial_state_intervals.clear()
         self.full_trigger_pulses.clear()
         self.full_sound_outputs.clear()
         self.current_ir_baseline = 0.0
@@ -853,6 +857,7 @@ class BasilAcquisitionApp(tk.Tk):
     def start_active_trial(self, trigger_time_s, iti_s):
         response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
         self.active_trial_index = self.trial_index
+        self.active_trial_start_s = trigger_time_s
         self.active_trial_end_s = trigger_time_s + response_window_s
         self.active_high_start_s = trigger_time_s
         self.active_crossing_total_s = 0.0
@@ -862,6 +867,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_trial_base_iti_s = iti_s
         self.active_trial_extra_timeout_s = 0.0
         self.next_trial_allowed_time_s = trigger_time_s + iti_s
+        self.start_trial_state_interval(trigger_time_s)
 
     def is_lever_task(self):
         return self.task_type.get().strip().lower() == "lever"
@@ -912,6 +918,7 @@ class BasilAcquisitionApp(tk.Tk):
 
     def start_active_lever_trial(self, trigger_time_s, iti_s):
         self.active_trial_index = self.trial_index
+        self.active_trial_start_s = trigger_time_s
         self.active_trial_end_s = None
         self.active_high_start_s = trigger_time_s
         self.active_crossing_total_s = 0.0
@@ -923,6 +930,20 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_lever_sound_id = self.parse_int(self.sound_id, 1)
         self.active_lever_next_sound_time_s = trigger_time_s
         self.next_trial_allowed_time_s = trigger_time_s + iti_s
+        self.start_trial_state_interval(trigger_time_s)
+
+    def start_trial_state_interval(self, start_s):
+        self.trial_state_intervals.append([start_s, None])
+        window = max(1, self.parse_float(self.window_s, 10))
+        oldest = start_s - window * 2
+        while self.trial_state_intervals and self.trial_state_intervals[0][1] is not None and self.trial_state_intervals[0][1] < oldest:
+            self.trial_state_intervals.pop(0)
+
+    def end_trial_state_interval(self, end_s):
+        for interval in reversed(self.trial_state_intervals):
+            if interval[1] is None:
+                interval[1] = end_s
+                break
 
     def get_lever_hold_time_s(self):
         return max(0.0, self.parse_float(self.lever_hold_time_s, 1))
@@ -980,6 +1001,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.write_trial_log()
         self.plot_queue.put(("results", None))
         self.plot_queue.put(("log", f"Lever trial {row['trial']} hold time was {hold_s:.3f} s. Result={row['ResultType']}."))
+        self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
 
     def write_trial_log(self):
@@ -1093,7 +1115,7 @@ class BasilAcquisitionApp(tk.Tk):
             self.clear_active_trial()
             return
         if self.is_lick_trigger():
-            self.finish_active_lick_trial(row)
+            self.finish_active_lick_trial(row, trial_end_s)
             return
         if self.active_high_start_s is not None:
             self.add_active_high_interval(trial_end_s)
@@ -1123,9 +1145,10 @@ class BasilAcquisitionApp(tk.Tk):
         self.plot_queue.put(("results", None))
         result = f", {row['ResultType']}" if row["ResultType"] else ""
         self.plot_queue.put(("log", f"Trial {row['trial']} total IR crossing time was {total_s:.3f} s. HIT={row['HIT']}{result}."))
+        self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
 
-    def finish_active_lick_trial(self, row):
+    def finish_active_lick_trial(self, row, trial_end_s):
         min_lick_count = self.get_min_lick_count()
         lick_count = self.active_lick_count
         row["lick_count"] = lick_count
@@ -1152,6 +1175,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.plot_queue.put(("results", None))
         result = f", {row['ResultType']}" if row["ResultType"] else ""
         self.plot_queue.put(("log", f"Trial {row['trial']} lick count was {lick_count}. HIT={row['HIT']}{result}."))
+        self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
 
     def get_punish_no_go_fa_s(self):
@@ -1204,6 +1228,7 @@ class BasilAcquisitionApp(tk.Tk):
 
     def clear_active_trial(self):
         self.active_trial_index = None
+        self.active_trial_start_s = None
         self.active_trial_end_s = None
         self.active_high_start_s = None
         self.active_crossing_total_s = 0.0
@@ -1851,9 +1876,16 @@ class BasilAcquisitionApp(tk.Tk):
             start_s + len(sound_values) / sound_fs >= min_t and start_s <= max_t
             for start_s, sound_fs, sound_values in self.sound_outputs
         )
+        visible_trial_state = any(
+            (end_s if end_s is not None else max_t) >= min_t and start_s <= max_t
+            for start_s, end_s in self.trial_state_intervals
+        )
         if visible_trigger:
             min_v = min(min_v, 0.0)
             max_v = max(max_v, 5.0)
+        if visible_trial_state:
+            min_v = min(min_v, 0.0)
+            max_v = max(max_v, 1.0)
         if visible_sound:
             for start_s, sound_fs, sound_values in self.sound_outputs:
                 sound_end = start_s + len(sound_values) / sound_fs
@@ -1877,6 +1909,7 @@ class BasilAcquisitionApp(tk.Tk):
             y = height - bottom_pad - (v - min_v) / (max_v - min_v) * plot_height
             points.extend([x, y])
         x_axis_y = height - bottom_pad
+        self.draw_active_trial_shading(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
         self.plot_canvas.create_line(left_pad, x_axis_y, width - right_pad, x_axis_y, fill="#cccccc")
         self.plot_canvas.create_line(left_pad, top_pad, left_pad, x_axis_y, fill="#cccccc")
         first_second = math.ceil(min_t)
@@ -1891,6 +1924,7 @@ class BasilAcquisitionApp(tk.Tk):
             self.plot_canvas.create_line(tick_x, x_axis_y, tick_x, x_axis_y + 4, fill="#999999")
             self.plot_canvas.create_text(tick_x, x_axis_y + 16, text=f"{tick_t:.1f}", fill="#555555")
         self.plot_canvas.create_text(width / 2, height - 6, text="Time (s)", fill="#555555")
+        self.draw_trial_state_trace(min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y)
         self.draw_trigger_trace(min_t, max_t, min_v, max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y)
         self.draw_sound_trace(min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y)
         if len(points) >= 4:
@@ -1905,6 +1939,49 @@ class BasilAcquisitionApp(tk.Tk):
         self.plot_canvas.create_text(width - 120, 10, anchor="nw", text="IRFork", fill="#1f77b4")
         self.plot_canvas.create_text(width - 120, 26, anchor="nw", text="Trigger output", fill="#d97904")
         self.plot_canvas.create_text(width - 120, 42, anchor="nw", text="Sound output", fill="#2ca02c")
+        self.plot_canvas.create_text(width - 120, 58, anchor="nw", text="Trial state", fill="#6f42c1")
+
+    def draw_active_trial_shading(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
+        if self.active_trial_index is None or self.active_trial_start_s is None:
+            return
+        shade_start_s = max(self.active_trial_start_s, min_t)
+        shade_end_s = self.active_trial_end_s if self.active_trial_end_s is not None else max_t
+        shade_end_s = min(max(shade_end_s, shade_start_s), max_t)
+        if shade_end_s < min_t or shade_start_s > max_t:
+            return
+        x0 = left_pad + (shade_start_s - min_t) / (max_t - min_t) * plot_width
+        x1 = left_pad + (shade_end_s - min_t) / (max_t - min_t) * plot_width
+        if x1 <= x0:
+            x1 = x0 + 1
+        self.plot_canvas.create_rectangle(x0, top_pad, x1, x_axis_y, fill="#eeeeee", outline="")
+        self.plot_canvas.create_line(x0, top_pad, x0, x_axis_y, fill="#bdbdbd", dash=(4, 3))
+
+    def draw_trial_state_trace(self, min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y):
+        if not self.trial_state_intervals:
+            return
+
+        def x_for(t):
+            return left_pad + (t - min_t) / (max_t - min_t) * plot_width
+
+        def y_for(v):
+            return x_axis_y - (v - min_v) / (max_v - min_v) * plot_height
+
+        low_y = y_for(0.0)
+        high_y = y_for(1.0)
+        if min_v <= 0.0 <= max_v:
+            self.plot_canvas.create_line(left_pad, low_y, left_pad + plot_width, low_y, fill="#d8ccef")
+        for start_s, end_s in list(self.trial_state_intervals):
+            interval_end_s = end_s if end_s is not None else max_t
+            if interval_end_s < min_t or start_s > max_t:
+                continue
+            start_x = x_for(max(start_s, min_t))
+            end_x = x_for(min(interval_end_s, max_t))
+            if end_x <= start_x:
+                end_x = start_x + 1
+            self.plot_canvas.create_line(start_x, low_y, start_x, high_y, fill="#6f42c1", width=2)
+            self.plot_canvas.create_line(start_x, high_y, end_x, high_y, fill="#6f42c1", width=2)
+            if end_s is not None and end_s <= max_t:
+                self.plot_canvas.create_line(end_x, high_y, end_x, low_y, fill="#6f42c1", width=2)
 
     def draw_trigger_trace(self, min_t, max_t, min_v, max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y):
         def x_for(t):
