@@ -37,6 +37,11 @@ except Exception:
     sd = None
 
 try:
+    import h5py
+except Exception:
+    h5py = None
+
+try:
     from pynwb import NWBFile, NWBHDF5IO, TimeSeries
 except Exception:
     NWBFile = None
@@ -294,7 +299,7 @@ class BasilAcquisitionApp(tk.Tk):
         self._entry(trial, 4, "Punish FA", self.punish_no_go_fa, width=6, row=3)
         self.min_lick_count_widgets = self._entry(trial, 6, "Min licks", self.min_lick_count, width=6, row=3)
         self.lick_threshold_widgets = self._entry(trial, 2, "Lick thresh", self.lick_threshold, width=6, row=3)
-        self.hit_threshold_widgets = self._entry(trial, 2, "HIT %", self.hit_threshold_s, width=6, row=3)
+        self.hit_threshold_widgets = self._entry(trial, 2, "Resp. hold %", self.hit_threshold_s, width=6, row=3)
         self.lever_hold_widgets = self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=6, row=3)
         for var in (self.sound_delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s):
             var.trace_add("write", lambda *_: self.update_trial_duration())
@@ -1364,7 +1369,7 @@ class BasilAcquisitionApp(tk.Tk):
         duration_s = len(signal) / fs if len(signal) else 0.0
         msg = f"Played sound id {sound_id}."
         try:
-            self.record_sound_output(signal, fs)
+            self.record_sound_output(signal, fs, sound_id)
             if nidaqmx is not None:
                 self.play_sound_on_ni(signal, fs)
             elif sd is not None:
@@ -1380,17 +1385,17 @@ class BasilAcquisitionApp(tk.Tk):
             self.log(msg)
         return duration_s
 
-    def record_sound_output(self, signal, fs):
+    def record_sound_output(self, signal, fs, sound_id=None):
         if self.acq_start_perf is None:
             return
         start_s = time.perf_counter() - self.acq_start_perf
         values = signal.tolist() if hasattr(signal, "tolist") else list(signal)
-        self.sound_outputs.append((start_s, fs, values))
-        self.full_sound_outputs.append((start_s, fs, values))
+        self.sound_outputs.append((start_s, fs, values, sound_id))
+        self.full_sound_outputs.append((start_s, fs, values, sound_id))
         window = max(1, self.parse_float(self.window_s, 10))
         oldest = start_s - window * 2
         while self.sound_outputs:
-            first_start, first_fs, first_values = self.sound_outputs[0]
+            first_start, first_fs, first_values = self.sound_outputs[0][:3]
             first_end = first_start + len(first_values) / first_fs
             if first_end >= oldest:
                 break
@@ -1511,6 +1516,13 @@ class BasilAcquisitionApp(tk.Tk):
             else:
                 messagebox.showerror("Save NWB", msg)
             return False
+        if h5py is None:
+            msg = "Cannot save GUI-compatible NWB: h5py is not installed. Install it with pip install h5py."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showerror("Save NWB", msg)
+            return False
         if not self.exp_folder:
             msg = "No session folder is available yet. Start acquisition or open a saved session first."
             if silent:
@@ -1560,7 +1572,7 @@ class BasilAcquisitionApp(tk.Tk):
         trigger_trace = self.build_trigger_trace(len(data), rate)
         nwbfile.add_acquisition(
             TimeSeries(
-                name="TriggerOutput",
+                name="Reward",
                 data=trigger_trace,
                 unit="volts",
                 starting_time=0.0,
@@ -1568,17 +1580,38 @@ class BasilAcquisitionApp(tk.Tk):
                 description="Commanded reward/trigger digital output represented as a 0 to 5 V trace.",
             )
         )
-        sound_data, sound_timestamps = self.build_sound_timeseries()
-        if len(sound_data):
-            nwbfile.add_acquisition(
-                TimeSeries(
-                    name="SoundOutput",
-                    data=sound_data,
-                    unit="volts",
-                    timestamps=sound_timestamps,
-                    description="Commanded sound waveform samples sent to the analog output, with acquisition-aligned timestamps.",
-                )
+        trial_type_trace = self.build_contract_trial_type_trace(len(data), rate)
+        nwbfile.add_acquisition(
+            TimeSeries(
+                name="TrialType",
+                data=trial_type_trace,
+                unit="marker",
+                starting_time=0.0,
+                rate=10.0,
+                description="Behavior GUI compatibility marker trace; value 99 marks trial anchors at 100 ms bins.",
             )
+        )
+        sound_copy, which_sound = self.build_contract_sound_traces(len(data), rate)
+        nwbfile.add_stimulus(
+            TimeSeries(
+                name="SoundCopy",
+                data=sound_copy,
+                unit="volts",
+                starting_time=0.0,
+                rate=rate,
+                description="Continuous sound signal trace resampled to the acquisition rate for behavior GUI compatibility.",
+            )
+        )
+        nwbfile.add_stimulus(
+            TimeSeries(
+                name="WhichSound",
+                data=which_sound,
+                unit="sound_id",
+                starting_time=0.0,
+                rate=rate,
+                description="Continuous encoded sound identity trace for behavior GUI compatibility.",
+            )
+        )
         tmp_path = os.path.join(self.exp_folder, f".{identifier}.tmp.nwb")
         try:
             self.nwb_saving = True
@@ -1586,6 +1619,8 @@ class BasilAcquisitionApp(tk.Tk):
                 os.remove(tmp_path)
             with NWBHDF5IO(tmp_path, "w") as io:
                 io.write(nwbfile)
+            self.write_nwb_contract_hdf5(tmp_path, rate)
+            self.validate_nwb_contract_hdf5(tmp_path)
             os.replace(tmp_path, nwb_path)
         except Exception as exc:
             try:
@@ -1610,6 +1645,152 @@ class BasilAcquisitionApp(tk.Tk):
     def safe_filename_component(self, text):
         cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(text)).strip(" .")
         return cleaned or "BASIL_session"
+
+    def write_nwb_contract_hdf5(self, path, rate):
+        utf8 = h5py.string_dtype(encoding="utf-8")
+        created_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        with h5py.File(path, "a") as h5f:
+            self.replace_hdf5_dataset(h5f, "file_create_date", [created_at], dtype=utf8)
+
+            trials = h5f.require_group("intervals").require_group("trials")
+            trial_ids = [int(row.get("trial", index + 1)) for index, row in enumerate(self.trial_rows)]
+            sound_ids = [int(row.get("sound_id", 0) or 0) for row in self.trial_rows]
+            hmcf = [self.nwb_contract_hmcf(row) for row in self.trial_rows]
+            trial_types = [self.nwb_contract_trial_type(row) for row in self.trial_rows]
+            self.replace_hdf5_dataset(trials, "id", trial_ids)
+            self.replace_hdf5_dataset(trials, "sound_ids", sound_ids)
+            self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)
+            self.replace_hdf5_dataset(trials, "trial_type", trial_types, dtype=utf8)
+
+            parameters = h5f.require_group("acquisition").require_group("Parameters")
+            parameter_items = self.build_nwb_contract_parameters(rate)
+            self.replace_hdf5_dataset(parameters, "key", [key for key, value in parameter_items], dtype=utf8)
+            self.replace_hdf5_dataset(parameters, "value", [value for key, value in parameter_items], dtype=utf8)
+
+    def replace_hdf5_dataset(self, parent, name, data, dtype=None):
+        if name in parent:
+            del parent[name]
+        if dtype is None:
+            parent.create_dataset(name, data=data)
+        else:
+            parent.create_dataset(name, data=data, dtype=dtype)
+
+    def build_nwb_contract_parameters(self, rate):
+        items = [
+            ("User", self.user_name.get()),
+            ("Mouse", self.mouse_id.get()),
+            ("Project", self.project_name.get()),
+            ("Output", self.output_format.get()),
+            ("Device", self.device.get()),
+            ("Channels", self.channels.get()),
+            ("frec", rate),
+            ("TaskType", self.task_type.get()),
+            ("TriggerType", self.trigger_type.get()),
+            ("Threshold", self.threshold_v.get()),
+            ("SoundDuration_s", self.sound_duration_s.get()),
+            ("ResponseWindow_s", self.response_window_s.get()),
+            ("Rewardduration_ms", self.pulse_ms.get()),
+            ("HIT", self.hit_threshold_s.get()),
+            ("PunishInterval", self.punish_interval.get()),
+            ("RewardGo", self.reward_go.get()),
+            ("PunishNoGoFA", self.punish_no_go_fa.get()),
+            ("Minlickcount", self.min_lick_count.get()),
+            ("Lickthreshold", self.lick_threshold.get()),
+        ]
+        if self.parameter_rows:
+            latest = self.parameter_rows[-1]
+            for key, value in latest.items():
+                items.append((key, value))
+        seen = set()
+        unique_items = []
+        for key, value in items:
+            key = str(key)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_items.append((key, str(value)))
+        return unique_items
+
+    def validate_nwb_contract_hdf5(self, path):
+        required_paths = (
+            "/stimulus/presentation/SoundCopy/data",
+            "/stimulus/presentation/WhichSound/data",
+            "/acquisition/Reward/data",
+            "/acquisition/TrialType/data",
+            "/acquisition/IRFork/data",
+            "/intervals/trials/id",
+            "/intervals/trials/sound_ids",
+            "/intervals/trials/HMCF",
+            "/intervals/trials/trial_type",
+            "/file_create_date",
+            "/acquisition/Parameters/key",
+            "/acquisition/Parameters/value",
+        )
+        with h5py.File(path, "r") as h5f:
+            missing = [item for item in required_paths if item not in h5f]
+            if missing:
+                raise RuntimeError(f"NWB contract paths are missing: {', '.join(missing)}")
+
+            trial_count = len(h5f["/intervals/trials/id"])
+            aligned_paths = (
+                "/intervals/trials/sound_ids",
+                "/intervals/trials/HMCF",
+                "/intervals/trials/trial_type",
+            )
+            for item in aligned_paths:
+                if len(h5f[item]) != trial_count:
+                    raise RuntimeError(f"NWB contract trial table length mismatch: {item}")
+
+            parameter_key_count = len(h5f["/acquisition/Parameters/key"])
+            parameter_value_count = len(h5f["/acquisition/Parameters/value"])
+            if parameter_key_count != parameter_value_count:
+                raise RuntimeError("NWB contract parameter key/value length mismatch.")
+
+            trial_type_values = {
+                self.decode_hdf5_string(value)
+                for value in h5f["/intervals/trials/trial_type"][()]
+                if self.decode_hdf5_string(value)
+            }
+            bad_trial_types = trial_type_values - {"Go", "NoGo"}
+            if bad_trial_types:
+                raise RuntimeError(f"NWB contract trial_type has unsupported values: {sorted(bad_trial_types)}")
+
+            hmcf_values = {
+                self.decode_hdf5_string(value)
+                for value in h5f["/intervals/trials/HMCF"][()]
+                if self.decode_hdf5_string(value)
+            }
+            bad_hmcf = hmcf_values - {"Hit", "Miss", "Correct", "FalseAlarm"}
+            if bad_hmcf:
+                raise RuntimeError(f"NWB contract HMCF has unsupported values: {sorted(bad_hmcf)}")
+
+            if trial_count and 99 not in set(h5f["/acquisition/TrialType/data"][()]):
+                raise RuntimeError("NWB contract TrialType trace has trials but no value 99 anchors.")
+
+    def decode_hdf5_string(self, value):
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return str(value)
+
+    def nwb_contract_trial_type(self, row):
+        trial_type = str(row.get("TrialType", ""))
+        if trial_type.endswith("GO"):
+            return "Go"
+        if trial_type.endswith("noGo"):
+            return "NoGo"
+        return ""
+
+    def nwb_contract_hmcf(self, row):
+        result = str(row.get("ResultType", "")).upper()
+        if result == "HIT":
+            return "Hit"
+        if result == "MISS":
+            return "Miss"
+        if result == "CR":
+            return "Correct"
+        if result == "FA":
+            return "FalseAlarm"
+        return ""
 
     def read_irfork_binary(self, path):
         if np is not None:
@@ -1643,12 +1824,52 @@ class BasilAcquisitionApp(tk.Tk):
             return [], []
         values = []
         timestamps = []
-        for start_s, fs, sound_values in self.full_sound_outputs:
+        for sound_output in self.full_sound_outputs:
+            start_s, fs, sound_values = sound_output[:3]
             values.extend(sound_values)
             timestamps.extend(start_s + i / fs for i in range(len(sound_values)))
         if np is not None:
             return np.asarray(values, dtype=float), np.asarray(timestamps, dtype=float)
         return values, timestamps
+
+    def build_contract_sound_traces(self, sample_count, rate):
+        if np is not None:
+            sound_copy = np.zeros(sample_count, dtype=float)
+            which_sound = np.zeros(sample_count, dtype=int)
+        else:
+            sound_copy = [0.0] * sample_count
+            which_sound = [0] * sample_count
+        for sound_output in self.full_sound_outputs:
+            start_s, fs, sound_values = sound_output[:3]
+            sound_id = sound_output[3] if len(sound_output) > 3 else 0
+            start_idx = int(max(0.0, start_s) * rate)
+            output_count = int(math.ceil(len(sound_values) * rate / fs)) if fs else 0
+            for offset in range(output_count):
+                target_idx = start_idx + offset
+                if target_idx >= sample_count:
+                    break
+                source_idx = min(len(sound_values) - 1, int(offset * fs / rate))
+                sound_copy[target_idx] = float(sound_values[source_idx])
+                which_sound[target_idx] = int(sound_id or 0)
+        return sound_copy, which_sound
+
+    def build_contract_trial_type_trace(self, ir_sample_count, ir_rate):
+        trial_bin_s = 0.1
+        duration_s = ir_sample_count / ir_rate if ir_rate else 0.0
+        marker_count = max(1, int(math.ceil(duration_s / trial_bin_s)) + 1)
+        if np is not None:
+            trace = np.zeros(marker_count, dtype=int)
+        else:
+            trace = [0] * marker_count
+        for row in self.trial_rows:
+            try:
+                trigger_time_s = float(row.get("trigger_time_s", 0.0))
+            except Exception:
+                continue
+            marker_idx = int(round(trigger_time_s / trial_bin_s))
+            if 0 <= marker_idx < marker_count:
+                trace[marker_idx] = 99
+        return trace
 
     def _drain_plot_queue(self):
         try:
@@ -1903,7 +2124,7 @@ class BasilAcquisitionApp(tk.Tk):
         visible_trigger = any(end_s >= min_t and start_s <= max_t for start_s, end_s in self.trigger_pulses)
         visible_sound = any(
             start_s + len(sound_values) / sound_fs >= min_t and start_s <= max_t
-            for start_s, sound_fs, sound_values in self.sound_outputs
+            for start_s, sound_fs, sound_values in (sound_output[:3] for sound_output in self.sound_outputs)
         )
         visible_trial_state = any(
             (end_s if end_s is not None else max_t) >= min_t and start_s <= max_t
@@ -1916,7 +2137,8 @@ class BasilAcquisitionApp(tk.Tk):
             min_v = min(min_v, 0.0)
             max_v = max(max_v, 1.0)
         if visible_sound:
-            for start_s, sound_fs, sound_values in self.sound_outputs:
+            for sound_output in self.sound_outputs:
+                start_s, sound_fs, sound_values = sound_output[:3]
                 sound_end = start_s + len(sound_values) / sound_fs
                 if sound_end < min_t or start_s > max_t or not sound_values:
                     continue
@@ -2042,7 +2264,8 @@ class BasilAcquisitionApp(tk.Tk):
         def y_for(v):
             return x_axis_y - (v - min_v) / (max_v - min_v) * plot_height
 
-        for start_s, fs, values in list(self.sound_outputs):
+        for sound_output in list(self.sound_outputs):
+            start_s, fs, values = sound_output[:3]
             if not values:
                 continue
             end_s = start_s + len(values) / fs
