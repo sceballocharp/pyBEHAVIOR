@@ -72,12 +72,15 @@ class BasilAcquisitionApp(tk.Tk):
         self.data_buffer = []
         self.full_time_buffer = []
         self.full_data_buffer = []
+        self.soundcopy_buffer = []
+        self.full_soundcopy_buffer = []
         self.trigger_pulses = []
         self.sound_outputs = []
         self.trial_state_intervals = []
         self.full_trigger_pulses = []
         self.full_sound_outputs = []
         self.irfork_file = None
+        self.soundcopy_file = None
         self.exp_folder = ""
         self.irfork_was_high = False
         self.last_trigger_time = -1e12
@@ -90,6 +93,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.trial_index = 0
         self.session_start_perf = None
         self.acq_start_perf = None
+        self.acq_sample_index = 0
         self.trial_log_path = ""
         self.parameters_log_path = ""
         self.trial_rows = []
@@ -109,6 +113,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_lever_sound_id = 1
         self.active_lever_next_sound_time_s = None
         self.lever_sound_gap_s = 0.5
+        self.sim_sample_index = 0
         self.sim_next_pulse_start_s = 0.0
         self.sim_pulse_end_s = -1.0
         self.results_window = None
@@ -558,6 +563,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.trial_index = 0
         self.session_start_perf = time.perf_counter()
         self.acq_start_perf = None
+        self.acq_sample_index = 0
         self.trial_log_path = ""
         self.parameters_log_path = ""
         self.trial_rows = []
@@ -577,6 +583,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_lever_sound_id = 1
         self.active_lever_next_sound_time_s = None
         self.lever_sound_gap_s = 0.5
+        self.sim_sample_index = 0
         self.sim_next_pulse_start_s = 0.0
         self.sim_pulse_end_s = -1.0
         self.current_trial_var.set("0")
@@ -617,6 +624,8 @@ class BasilAcquisitionApp(tk.Tk):
         self.data_buffer.clear()
         self.full_time_buffer.clear()
         self.full_data_buffer.clear()
+        self.soundcopy_buffer.clear()
+        self.full_soundcopy_buffer.clear()
         self.trigger_pulses.clear()
         self.sound_outputs.clear()
         self.trial_state_intervals.clear()
@@ -645,11 +654,12 @@ class BasilAcquisitionApp(tk.Tk):
                 if self.ai_task is not None and not use_simulation:
                     raw = self.ai_task.read(number_of_samples_per_channel=count, timeout=2.0)
                     data = self.normalize_read(raw, count)
+                    chunk_start_sample = self.acq_sample_index
+                    times = [(chunk_start_sample + i) / rate for i in range(len(data))]
+                    self.acq_sample_index += len(data)
                 else:
-                    data = self.simulate_data(count, rate, time.perf_counter() - start_time)
+                    data, times = self.simulate_data(count, rate)
                     time.sleep(callback_s)
-                t0 = time.perf_counter() - start_time
-                times = [t0 + i / rate for i in range(len(data))]
                 self.handle_data(times, data)
             except Exception as exc:
                 self.plot_queue.put(("log", f"Acquisition error: {exc}"))
@@ -665,40 +675,58 @@ class BasilAcquisitionApp(tk.Tk):
             return [list(row) for row in zip(*channels)]
         return [[x] for x in raw[:count]]
 
-    def simulate_data(self, count, rate, t0):
+    def simulate_data(self, count, rate):
         values = []
+        times = []
         for i in range(count):
-            t = t0 + i / rate
+            sample_index = self.acq_sample_index + i
+            t = sample_index / rate
+            times.append(t)
             # Simulated beam crossings every 3 seconds, with randomized crossing duration.
             while t >= self.sim_next_pulse_start_s:
                 self.sim_pulse_end_s = self.sim_next_pulse_start_s + random.uniform(0.1, 2.0)
                 self.sim_next_pulse_start_s += 3.0
             ir = 1.4 if t < self.sim_pulse_end_s else 0.1
             values.append([ir, 0.0, 0.0])
-        return values
+        self.acq_sample_index += count
+        self.sim_sample_index = self.acq_sample_index
+        return values, times
 
     def handle_data(self, times, rows):
         if not rows:
             return
         ir_col = 0
         raw_ir_values = [row[ir_col] for row in rows]
+        soundcopy_col = self.get_soundcopy_column(rows)
+        raw_soundcopy_values = [row[soundcopy_col] for row in rows] if soundcopy_col is not None else [0.0] * len(rows)
         self.time_buffer.extend(times)
         self.data_buffer.extend(raw_ir_values)
+        self.soundcopy_buffer.extend(raw_soundcopy_values)
         self.full_time_buffer.extend(times)
         self.full_data_buffer.extend(raw_ir_values)
+        self.full_soundcopy_buffer.extend(raw_soundcopy_values)
 
         if self.irfork_file is not None:
             self.irfork_file.write(struct.pack(f"{len(rows)}d", *raw_ir_values))
+        if self.soundcopy_file is not None and soundcopy_col is not None:
+            self.soundcopy_file.write(struct.pack(f"{len(rows)}d", *raw_soundcopy_values))
 
         window = self.parse_float(self.window_s, 10)
         min_time = self.time_buffer[-1] - window
         while self.time_buffer and self.time_buffer[0] < min_time:
             self.time_buffer.pop(0)
             self.data_buffer.pop(0)
+            if self.soundcopy_buffer:
+                self.soundcopy_buffer.pop(0)
         self.current_ir_baseline = statistics.median(self.data_buffer) if self.subtract_baseline.get() and self.data_buffer else 0.0
         corrected_ir_values = [value - self.current_ir_baseline for value in raw_ir_values]
         self.check_trigger(times, corrected_ir_values)
         self.plot_queue.put(("plot", (list(self.time_buffer), list(self.data_buffer))))
+
+    def get_soundcopy_column(self, rows):
+        if not rows or len(rows[0]) < 2:
+            return None
+        return 1
 
     def check_trigger(self, times, ir_values):
         threshold = self.get_current_trigger_threshold()
@@ -745,7 +773,7 @@ class BasilAcquisitionApp(tk.Tk):
             if self.is_lick_trigger():
                 self.add_active_lick()
             if self.play_sound_on_crossing.get():
-                self.play_loaded_sound(sound_id=sound_id, from_worker=True)
+                self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
             self.last_trigger_time = sample_time_s
             trial_type_id, trial_type = self.classify_trial_sound(sound_id)
             trigger_name = self.trigger_type.get().strip() or "Trigger"
@@ -777,13 +805,18 @@ class BasilAcquisitionApp(tk.Tk):
         if not self.exp_folder:
             self.prepare_session_folder()
         self.irfork_file = open(os.path.join(self.exp_folder, "IRFork.bin"), "wb")
-        self.log(f"Writing IRFork.bin: {self.exp_folder}")
+        self.soundcopy_file = open(os.path.join(self.exp_folder, "SoundCopy.bin"), "wb")
+        self.log(f"Writing IRFork.bin and SoundCopy.bin: {self.exp_folder}")
 
     def close_irfork_file(self):
         if self.irfork_file is not None:
             self.irfork_file.close()
             self.irfork_file = None
             self.log("Closed IRFork.bin.")
+        if self.soundcopy_file is not None:
+            self.soundcopy_file.close()
+            self.soundcopy_file = None
+            self.log("Closed SoundCopy.bin.")
 
     def write_parameters_dat(self):
         path = os.path.join(self.exp_folder, "parameters.dat")
@@ -793,6 +826,8 @@ class BasilAcquisitionApp(tk.Tk):
             f.write(f"ProjectName={self.project_name.get()}\n")
             f.write(f"NICard_filename={self.ni_script.get().replace(os.sep, '/')}\n")
             f.write(f"Sound_filename={self.sound_file.get().replace(os.sep, '/')}\n")
+            f.write("IRForkColumn=1\n")
+            f.write("SoundCopyColumn=2\n")
             f.write(f"SimulationMode={int(self.simulation_mode.get())}\n")
             f.write(f"frec={self.rate_hz.get()}\n")
             f.write(f"bin={self.callback_s.get()}\n")
@@ -831,10 +866,13 @@ class BasilAcquisitionApp(tk.Tk):
         self.trial_index += 1
         trial_type_id, trial_type = self.classify_trial_sound(sound_id)
         timestamp = datetime.now().isoformat(timespec="milliseconds")
+        rate = self.parse_float(self.rate_hz, 1000)
+        trigger_sample = int(round(trigger_time_s * rate))
         trial_row = {
             "trial": self.trial_index,
             "timestamp": timestamp,
             "trigger_time_s": f"{trigger_time_s:.6f}",
+            "trigger_sample": trigger_sample,
             "crossing_duration_s": "",
             "TrialType": f"{trial_type_id} {trial_type}",
             "HIT": "",
@@ -850,6 +888,7 @@ class BasilAcquisitionApp(tk.Tk):
             "timestamp": timestamp,
             "sound_id": sound_id,
             "trigger_time_s": f"{trigger_time_s:.6f}",
+            "trigger_sample": trigger_sample,
             "task_type": self.task_type.get(),
             "hit_threshold_percent": self.parse_float(self.hit_threshold_s, 50),
             "hit_threshold_s": self.get_hit_threshold_s(),
@@ -990,7 +1029,7 @@ class BasilAcquisitionApp(tk.Tk):
         if sample_time_s < self.active_lever_next_sound_time_s:
             return
         sound_id = max(1, self.active_lever_sound_id)
-        duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True)
+        duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
         if duration_s is None:
             self.active_lever_next_sound_time_s = None
             return
@@ -1010,7 +1049,7 @@ class BasilAcquisitionApp(tk.Tk):
             row["CR"] = 0
             row["FA"] = 0
             row["ResultType"] = "HIT"
-            self.maybe_send_go_reward(row, hold_s)
+            self.maybe_send_go_reward(row, hold_s, start_s=sample_time_s)
             self.write_trial_log()
             self.plot_queue.put(("results", None))
 
@@ -1030,7 +1069,7 @@ class BasilAcquisitionApp(tk.Tk):
         row["FA"] = 0
         row["ResultType"] = "HIT" if success else "MISS"
         if success:
-            self.maybe_send_go_reward(row, hold_s)
+            self.maybe_send_go_reward(row, hold_s, start_s=trial_end_s)
         self.apply_trial_timeout(row)
         self.write_trial_log()
         self.plot_queue.put(("results", None))
@@ -1112,7 +1151,7 @@ class BasilAcquisitionApp(tk.Tk):
             row["CR"] = 0
             row["FA"] = 0
             row["ResultType"] = "HIT"
-            self.maybe_send_go_reward(row, total_s)
+            self.maybe_send_go_reward(row, total_s, start_s=sample_time_s)
             self.write_trial_log()
         elif is_nogo and total_s >= hit_threshold_s and not row["FA"]:
             row["HIT"] = 0
@@ -1133,7 +1172,7 @@ class BasilAcquisitionApp(tk.Tk):
             row["CR"] = 0
             row["FA"] = 0
             row["ResultType"] = "HIT"
-            self.maybe_send_go_reward(row, float(self.active_lick_count))
+            self.maybe_send_go_reward(row, float(self.active_lick_count), start_s=self.active_trial_start_s)
             self.write_trial_log()
         elif is_nogo and self.active_lick_count >= min_lick_count and not row["FA"]:
             row["HIT"] = 0
@@ -1165,7 +1204,7 @@ class BasilAcquisitionApp(tk.Tk):
             row["FA"] = 0
             row["ResultType"] = "HIT" if row["HIT"] else "MISS"
             if row["HIT"]:
-                self.maybe_send_go_reward(row, total_s)
+                self.maybe_send_go_reward(row, total_s, start_s=trial_end_s)
         elif is_nogo:
             row["HIT"] = 0
             row["MISS"] = 0
@@ -1195,7 +1234,7 @@ class BasilAcquisitionApp(tk.Tk):
             row["FA"] = 0
             row["ResultType"] = "HIT" if row["HIT"] else "MISS"
             if row["HIT"]:
-                self.maybe_send_go_reward(row, float(lick_count))
+                self.maybe_send_go_reward(row, float(lick_count), start_s=trial_end_s)
         elif is_nogo:
             row["HIT"] = 0
             row["MISS"] = 0
@@ -1230,7 +1269,7 @@ class BasilAcquisitionApp(tk.Tk):
                 f"Next trial allowed after {total_timeout_s:g} s from trial start.",
             ))
 
-    def maybe_send_go_reward(self, row, total_s):
+    def maybe_send_go_reward(self, row, total_s, start_s=None):
         if self.active_reward_decided:
             return
         self.active_reward_decided = True
@@ -1238,7 +1277,7 @@ class BasilAcquisitionApp(tk.Tk):
         draw = random.random()
         measure = f"{int(total_s)} licks" if self.is_lick_trigger() else f"{total_s:.3f} s total IR crossing"
         if draw <= reward_probability and self.trigger_output_on_crossing.get():
-            self.send_output_pulse(from_worker=True)
+            self.send_output_pulse(from_worker=True, start_s=start_s)
             self.active_reward_sent = True
             self.plot_queue.put((
                 "log",
@@ -1289,9 +1328,9 @@ class BasilAcquisitionApp(tk.Tk):
         self.last_trial_sound_var.set(str(sound_id))
         self.last_trial_type_var.set(f"{trial_type_id} {trial_type}")
 
-    def send_output_pulse(self, from_worker=False):
+    def send_output_pulse(self, from_worker=False, start_s=None):
         pulse_s = max(0, self.parse_float(self.pulse_ms, 50) / 1000.0)
-        self.record_trigger_pulse(pulse_s)
+        self.record_trigger_pulse(pulse_s, start_s=start_s)
         try:
             if self.reward_task is None and nidaqmx is not None:
                 self.setup_tasks()
@@ -1309,10 +1348,11 @@ class BasilAcquisitionApp(tk.Tk):
         else:
             self.log(msg)
 
-    def record_trigger_pulse(self, pulse_s):
+    def record_trigger_pulse(self, pulse_s, start_s=None):
         if self.acq_start_perf is None:
             return
-        start_s = time.perf_counter() - self.acq_start_perf
+        if start_s is None:
+            start_s = time.perf_counter() - self.acq_start_perf
         end_s = start_s + pulse_s
         self.trigger_pulses.append((start_s, end_s))
         self.full_trigger_pulses.append((start_s, end_s))
@@ -1359,7 +1399,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.log("Could not extract selected sound from MAT file.")
         return None
 
-    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None):
+    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None):
         if sound_id is None:
             sound_id = self.consume_next_sound_id() if use_sequence else self.parse_int(self.sound_id, 1)
         signal = self.get_sound_by_id(sound_id)
@@ -1369,7 +1409,7 @@ class BasilAcquisitionApp(tk.Tk):
         duration_s = len(signal) / fs if len(signal) else 0.0
         msg = f"Played sound id {sound_id}."
         try:
-            self.record_sound_output(signal, fs, sound_id)
+            self.record_sound_output(signal, fs, sound_id, start_s=start_s)
             if nidaqmx is not None:
                 self.play_sound_on_ni(signal, fs)
             elif sd is not None:
@@ -1385,10 +1425,11 @@ class BasilAcquisitionApp(tk.Tk):
             self.log(msg)
         return duration_s
 
-    def record_sound_output(self, signal, fs, sound_id=None):
+    def record_sound_output(self, signal, fs, sound_id=None, start_s=None):
         if self.acq_start_perf is None:
             return
-        start_s = time.perf_counter() - self.acq_start_perf
+        if start_s is None:
+            start_s = time.perf_counter() - self.acq_start_perf
         values = signal.tolist() if hasattr(signal, "tolist") else list(signal)
         self.sound_outputs.append((start_s, fs, values, sound_id))
         self.full_sound_outputs.append((start_s, fs, values, sound_id))
@@ -1580,7 +1621,9 @@ class BasilAcquisitionApp(tk.Tk):
                 description="Commanded reward/trigger digital output represented as a 0 to 5 V trace.",
             )
         )
-        trial_type_trace = self.build_contract_trial_type_trace(len(data), rate)
+        sound_epochs = self.build_contract_sound_epochs(len(data), rate)
+        export_trial_rows = self.get_nwb_contract_trial_rows(len(data), rate, sound_epochs)
+        trial_type_trace = self.build_contract_trial_type_trace(len(data), rate, export_trial_rows, sound_epochs)
         nwbfile.add_acquisition(
             TimeSeries(
                 name="TrialType",
@@ -1591,7 +1634,10 @@ class BasilAcquisitionApp(tk.Tk):
                 description="Behavior GUI compatibility marker trace; value 99 marks trial anchors at 100 ms bins.",
             )
         )
-        sound_copy, which_sound = self.build_contract_sound_traces(len(data), rate)
+        sound_copy, which_sound = self.build_contract_sound_traces(len(data), rate, sound_epochs)
+        recorded_soundcopy = self.get_recorded_soundcopy_trace(len(data))
+        if recorded_soundcopy is not None:
+            sound_copy = recorded_soundcopy
         nwbfile.add_stimulus(
             TimeSeries(
                 name="SoundCopy",
@@ -1599,7 +1645,7 @@ class BasilAcquisitionApp(tk.Tk):
                 unit="volts",
                 starting_time=0.0,
                 rate=rate,
-                description="Continuous sound signal trace resampled to the acquisition rate for behavior GUI compatibility.",
+                description="Continuous sound copy trace for behavior GUI compatibility; uses recorded NI SoundCopy when available.",
             )
         )
         nwbfile.add_stimulus(
@@ -1619,7 +1665,7 @@ class BasilAcquisitionApp(tk.Tk):
                 os.remove(tmp_path)
             with NWBHDF5IO(tmp_path, "w") as io:
                 io.write(nwbfile)
-            self.write_nwb_contract_hdf5(tmp_path, rate)
+            self.write_nwb_contract_hdf5(tmp_path, rate, export_trial_rows)
             self.validate_nwb_contract_hdf5(tmp_path)
             os.replace(tmp_path, nwb_path)
         except Exception as exc:
@@ -1646,24 +1692,24 @@ class BasilAcquisitionApp(tk.Tk):
         cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(text)).strip(" .")
         return cleaned or "BASIL_session"
 
-    def write_nwb_contract_hdf5(self, path, rate):
+    def write_nwb_contract_hdf5(self, path, rate, trial_rows):
         utf8 = h5py.string_dtype(encoding="utf-8")
         created_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
         with h5py.File(path, "a") as h5f:
             self.replace_hdf5_dataset(h5f, "file_create_date", [created_at], dtype=utf8)
 
             trials = h5f.require_group("intervals").require_group("trials")
-            trial_ids = [int(row.get("trial", index + 1)) for index, row in enumerate(self.trial_rows)]
-            sound_ids = [int(row.get("sound_id", 0) or 0) for row in self.trial_rows]
-            hmcf = [self.nwb_contract_hmcf(row) for row in self.trial_rows]
-            trial_types = [self.nwb_contract_trial_type(row) for row in self.trial_rows]
+            trial_ids = [int(row.get("trial", index + 1)) for index, row in enumerate(trial_rows)]
+            sound_ids = [int(row.get("sound_id", 0) or 0) for row in trial_rows]
+            hmcf = [self.nwb_contract_hmcf(row) for row in trial_rows]
+            trial_types = [self.nwb_contract_trial_type(row) for row in trial_rows]
             self.replace_hdf5_dataset(trials, "id", trial_ids)
             self.replace_hdf5_dataset(trials, "sound_ids", sound_ids)
             self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)
             self.replace_hdf5_dataset(trials, "trial_type", trial_types, dtype=utf8)
 
             parameters = h5f.require_group("acquisition").require_group("Parameters")
-            parameter_items = self.build_nwb_contract_parameters(rate)
+            parameter_items = self.build_nwb_contract_parameters(rate, len(trial_rows))
             self.replace_hdf5_dataset(parameters, "key", [key for key, value in parameter_items], dtype=utf8)
             self.replace_hdf5_dataset(parameters, "value", [value for key, value in parameter_items], dtype=utf8)
 
@@ -1675,7 +1721,7 @@ class BasilAcquisitionApp(tk.Tk):
         else:
             parent.create_dataset(name, data=data, dtype=dtype)
 
-    def build_nwb_contract_parameters(self, rate):
+    def build_nwb_contract_parameters(self, rate, exported_trial_count=None):
         items = [
             ("User", self.user_name.get()),
             ("Mouse", self.mouse_id.get()),
@@ -1696,6 +1742,9 @@ class BasilAcquisitionApp(tk.Tk):
             ("PunishNoGoFA", self.punish_no_go_fa.get()),
             ("Minlickcount", self.min_lick_count.get()),
             ("Lickthreshold", self.lick_threshold.get()),
+            ("NWBExportedTrials", exported_trial_count if exported_trial_count is not None else len(self.trial_rows)),
+            ("NWBOriginalTrialRows", len(self.trial_rows)),
+            ("NWBTrialAnchor", "sound_epoch_start_or_trigger_time"),
         ]
         if self.parameter_rows:
             latest = self.parameter_rows[-1]
@@ -1764,7 +1813,21 @@ class BasilAcquisitionApp(tk.Tk):
             if bad_hmcf:
                 raise RuntimeError(f"NWB contract HMCF has unsupported values: {sorted(bad_hmcf)}")
 
-            if trial_count and 99 not in set(h5f["/acquisition/TrialType/data"][()]):
+            ir_count = len(h5f["/acquisition/IRFork/data"])
+            for item in (
+                "/stimulus/presentation/SoundCopy/data",
+                "/stimulus/presentation/WhichSound/data",
+                "/acquisition/Reward/data",
+            ):
+                if len(h5f[item]) != ir_count:
+                    raise RuntimeError(f"NWB contract continuous signal length mismatch: {item}")
+
+            anchor_count = int((h5f["/acquisition/TrialType/data"][()] == 99).sum())
+            if anchor_count != trial_count:
+                raise RuntimeError(
+                    f"NWB contract trial anchor count mismatch: {anchor_count} anchors for {trial_count} trial rows."
+                )
+            if trial_count and anchor_count == 0:
                 raise RuntimeError("NWB contract TrialType trace has trials but no value 99 anchors.")
 
     def decode_hdf5_string(self, value):
@@ -1832,28 +1895,121 @@ class BasilAcquisitionApp(tk.Tk):
             return np.asarray(values, dtype=float), np.asarray(timestamps, dtype=float)
         return values, timestamps
 
-    def build_contract_sound_traces(self, sample_count, rate):
+    def build_contract_sound_epochs(self, sample_count, rate):
+        duration_s = sample_count / rate if rate else 0.0
+        epochs = []
+        for sound_output in self.full_sound_outputs:
+            start_s, fs, sound_values = sound_output[:3]
+            sound_id = sound_output[3] if len(sound_output) > 3 else 0
+            if fs <= 0 or start_s >= duration_s:
+                continue
+            epochs.append({
+                "start_s": max(0.0, float(start_s)),
+                "fs": fs,
+                "values": sound_values,
+                "sound_id": int(sound_id or 0),
+            })
+        return epochs
+
+    def get_recorded_soundcopy_trace(self, sample_count):
+        soundcopy_path = os.path.join(self.exp_folder, "SoundCopy.bin") if self.exp_folder else ""
+        if soundcopy_path and os.path.exists(soundcopy_path):
+            values = self.read_irfork_binary(soundcopy_path)
+        elif self.full_soundcopy_buffer:
+            values = self.full_soundcopy_buffer
+        else:
+            return None
+
+        if len(values) == 0:
+            return None
+        if np is not None:
+            trace = np.asarray(values, dtype=float).reshape(-1)
+            if len(trace) < sample_count:
+                trace = np.pad(trace, (0, sample_count - len(trace)), mode="constant")
+            elif len(trace) > sample_count:
+                trace = trace[:sample_count]
+            if not np.any(np.abs(trace) > 1e-12):
+                return None
+            return trace
+
+        trace = [float(value) for value in values]
+        if len(trace) < sample_count:
+            trace.extend([0.0] * (sample_count - len(trace)))
+        elif len(trace) > sample_count:
+            trace = trace[:sample_count]
+        if not any(abs(value) > 1e-12 for value in trace):
+            return None
+        return trace
+
+    def get_nwb_contract_trial_rows(self, sample_count, rate, sound_epochs):
+        duration_s = sample_count / rate if rate else 0.0
+        rows = []
+        for row in self.trial_rows:
+            anchor_s = self.nwb_contract_trial_anchor_s(row, sound_epochs)
+            if anchor_s is None or anchor_s >= duration_s:
+                continue
+            rows.append(row)
+        skipped = len(self.trial_rows) - len(rows)
+        if skipped:
+            self.log(
+                f"NWB export skipped {skipped} trial rows outside the continuous recording "
+                f"duration ({duration_s:.3f} s)."
+            )
+        return rows
+
+    def nwb_contract_trial_anchor_s(self, row, sound_epochs):
+        try:
+            trigger_time_s = float(row.get("trigger_time_s", 0.0))
+        except Exception:
+            return None
+        try:
+            sound_id = int(row.get("sound_id", 0) or 0)
+        except Exception:
+            sound_id = 0
+        best_start_s = None
+        best_distance_s = None
+        for epoch in sound_epochs:
+            if sound_id and epoch["sound_id"] not in (0, sound_id):
+                continue
+            start_s = epoch["start_s"]
+            if start_s < trigger_time_s - 0.25 or start_s > trigger_time_s + 1.0:
+                continue
+            distance_s = abs(start_s - trigger_time_s)
+            if best_distance_s is None or distance_s < best_distance_s:
+                best_start_s = start_s
+                best_distance_s = distance_s
+        return best_start_s if best_start_s is not None else trigger_time_s
+
+    def build_contract_sound_traces(self, sample_count, rate, sound_epochs):
         if np is not None:
             sound_copy = np.zeros(sample_count, dtype=float)
             which_sound = np.zeros(sample_count, dtype=int)
         else:
             sound_copy = [0.0] * sample_count
             which_sound = [0] * sample_count
-        for sound_output in self.full_sound_outputs:
-            start_s, fs, sound_values = sound_output[:3]
-            sound_id = sound_output[3] if len(sound_output) > 3 else 0
+        for epoch in sound_epochs:
+            start_s = epoch["start_s"]
+            fs = epoch["fs"]
+            sound_values = epoch["values"]
+            sound_id = epoch["sound_id"]
             start_idx = int(max(0.0, start_s) * rate)
             output_count = int(math.ceil(len(sound_values) * rate / fs)) if fs else 0
             for offset in range(output_count):
                 target_idx = start_idx + offset
                 if target_idx >= sample_count:
                     break
-                source_idx = min(len(sound_values) - 1, int(offset * fs / rate))
-                sound_copy[target_idx] = float(sound_values[source_idx])
+                source_start = min(len(sound_values), int(offset * fs / rate))
+                source_end = min(len(sound_values), max(source_start + 1, int((offset + 1) * fs / rate)))
+                if source_start < source_end:
+                    source_bin = sound_values[source_start:source_end]
+                    if np is not None:
+                        sound_copy[target_idx] = float(np.max(np.abs(source_bin)))
+                    else:
+                        sound_copy[target_idx] = max(abs(float(value)) for value in source_bin)
                 which_sound[target_idx] = int(sound_id or 0)
         return sound_copy, which_sound
 
-    def build_contract_trial_type_trace(self, ir_sample_count, ir_rate):
+    def build_contract_trial_type_trace(self, ir_sample_count, ir_rate, trial_rows, sound_epochs):
         trial_bin_s = 0.1
         duration_s = ir_sample_count / ir_rate if ir_rate else 0.0
         marker_count = max(1, int(math.ceil(duration_s / trial_bin_s)) + 1)
@@ -1861,12 +2017,11 @@ class BasilAcquisitionApp(tk.Tk):
             trace = np.zeros(marker_count, dtype=int)
         else:
             trace = [0] * marker_count
-        for row in self.trial_rows:
-            try:
-                trigger_time_s = float(row.get("trigger_time_s", 0.0))
-            except Exception:
+        for row in trial_rows:
+            anchor_s = self.nwb_contract_trial_anchor_s(row, sound_epochs)
+            if anchor_s is None:
                 continue
-            marker_idx = int(round(trigger_time_s / trial_bin_s))
+            marker_idx = int(round(anchor_s / trial_bin_s))
             if 0 <= marker_idx < marker_count:
                 trace[marker_idx] = 99
         return trace
