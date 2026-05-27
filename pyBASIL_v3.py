@@ -112,6 +112,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_trial_extra_timeout_s = 0.0
         self.active_lever_sound_id = 1
         self.active_lever_next_sound_time_s = None
+        self.active_lever_low_start_s = None
         self.lever_sound_gap_s = 0.5
         self.sim_sample_index = 0
         self.sim_next_pulse_start_s = 0.0
@@ -582,6 +583,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_trial_extra_timeout_s = 0.0
         self.active_lever_sound_id = 1
         self.active_lever_next_sound_time_s = None
+        self.active_lever_low_start_s = None
         self.lever_sound_gap_s = 0.5
         self.sim_sample_index = 0
         self.sim_next_pulse_start_s = 0.0
@@ -964,9 +966,14 @@ class BasilAcquisitionApp(tk.Tk):
 
         if self.active_trial_index is not None:
             if is_high:
+                self.active_lever_low_start_s = None
                 self.evaluate_active_lever_trial(sample_time_s)
             elif crossed_down:
-                self.finish_active_lever_trial(sample_time_s, success=False)
+                self.active_lever_low_start_s = sample_time_s
+            elif self.active_lever_low_start_s is not None:
+                low_duration_s = sample_time_s - self.active_lever_low_start_s
+                if low_duration_s >= self.get_lever_release_debounce_s():
+                    self.finish_active_lever_trial(self.active_lever_low_start_s, success=False)
             return
 
         if not crossed_up:
@@ -1002,6 +1009,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_trial_extra_timeout_s = 0.0
         self.active_lever_sound_id = self.parse_int(self.sound_id, 1)
         self.active_lever_next_sound_time_s = trigger_time_s
+        self.active_lever_low_start_s = None
         self.next_trial_allowed_time_s = trigger_time_s + iti_s
         self.start_trial_state_interval(trigger_time_s)
 
@@ -1020,6 +1028,9 @@ class BasilAcquisitionApp(tk.Tk):
 
     def get_lever_hold_time_s(self):
         return max(0.0, self.parse_float(self.lever_hold_time_s, 1))
+
+    def get_lever_release_debounce_s(self):
+        return 0.05
 
     def play_next_lever_sound(self, sample_time_s):
         if not self.play_sound_on_crossing.get():
@@ -1312,6 +1323,7 @@ class BasilAcquisitionApp(tk.Tk):
         self.active_trial_extra_timeout_s = 0.0
         self.active_lever_sound_id = 1
         self.active_lever_next_sound_time_s = None
+        self.active_lever_low_start_s = None
 
     def classify_trial_sound(self, sound_id):
         if self.is_lever_task():
