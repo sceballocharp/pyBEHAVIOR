@@ -1,6 +1,6 @@
-# pyBASIL_v2
+# pyBEHAVIOR
 
-`pyBASIL_v2` is a Python/Tkinter acquisition interface for BASIL behavioral experiments. It is designed to run closed-loop mouse behavior sessions with NI-DAQ acquisition, IR-fork or lick-triggered trial detection, calibrated sound playback, reward pulses, live plotting, trial logging, and NWB export.
+Python/Tkinter acquisition interface behavioral experiments. It is designed to run closed-loop mouse behavior sessions with NI-DAQ acquisition, IR-fork or lick-triggered trial detection, calibrated sound playback, reward pulses, live plotting, trial logging, and NWB export.
 
 The app is a Python counterpart to the local MATLAB BASIL acquisition tools, while keeping the session workflow visible and editable from a single GUI.
 
@@ -23,10 +23,10 @@ The app is a Python counterpart to the local MATLAB BASIL acquisition tools, whi
 
 | File | Purpose |
 | --- | --- |
-| `pyBASIL_v2.py` | Main acquisition GUI and runtime logic. |
+| `pyBEHAVIOR_vXX.py` | Main acquisition GUI and runtime logic. |
 | `protocol_generator.py` | GUI tool for creating parameter `.dat` files. |
 | `requirements.txt` | Python dependencies. |
-| `run_pyBASIL_v2.bat` | Windows launcher for the main app using the local `.venv`. |
+| `run_pyBEHAVIOR_vXX.bat` | Windows launcher for the main app using the local `.venv`. |
 | `run_protocol_generator.bat` | Windows launcher for the protocol generator. |
 | `setup_python_env.bat` | Creates the local Python virtual environment and installs dependencies. |
 | `setup_valves_IRFork.m` | Reference NI hardware setup used by the Python app defaults. |
@@ -38,13 +38,13 @@ On a Windows acquisition computer:
 
 ```bat
 setup_python_env.bat
-run_pyBASIL_v2.bat
+run_pyBEHAVIOR_vXX.bat
 ```
 
 Or launch directly:
 
 ```bat
-.venv\Scripts\python.exe pyBASIL_v2.py
+.venv\Scripts\python.exe pyBEHAVIOR_vXX.py
 ```
 
 To create or edit a protocol file:
@@ -67,7 +67,7 @@ The app can still open in a reduced mode if some optional packages are missing. 
 
 ## Typical Session Workflow
 
-1. Launch `pyBASIL_v2`.
+1. Launch `pyBEHAVIOR_vXX`.
 2. Set the user, mouse, project, save root, NI device, channels, and acquisition rate.
 3. Select or import a protocol `.dat` file if needed.
 4. Choose the NI setup script and sound `.mat` file.
