@@ -1,0 +1,16 @@
+UserName=Azul
+MouseId=1
+ProjectName=Chrono_test
+NICard_filename=C:/Users/Behaviour_4/Documents/Github/pyBASIL/setup_valves_IRFork.m
+Sound_filename=C:/Users/Behaviour_4/Documents/Github/pyBASIL/AllSounds_Corrected.mat
+frec=1000
+bin=0.1
+TriggerTypeDropDown=IRFork
+OuputformatDropDown=NWB
+TaskType=Lever
+LeverThreshold=2.55
+GoSoundId=1
+SoundLevel=1
+LeverHoldTime_s=1
+Rewardduration_ms=200
+RewardGo=1
