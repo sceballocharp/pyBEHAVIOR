@@ -1,6 +1,6 @@
 # pyBEHAVIOR
 
-Python/Tkinter acquisition interface behavioral experiments. It is designed to run closed-loop mouse behavior sessions with NI-DAQ acquisition, IR-fork or lick-triggered trial detection, calibrated sound playback, reward pulses, live plotting, trial logging, and NWB export.
+Python/Tkinter acquisition interface for behavioral experiments. It is designed to run closed-loop mouse behavior sessions with NI-DAQ acquisition, IR-fork or lick-triggered trial detection, calibrated sound playback, reward pulses, live plotting, trial logging, and NWB export.
 
 The app is a Python counterpart to the local MATLAB BASIL acquisition tools, while keeping the session workflow visible and editable from a single GUI.
 
