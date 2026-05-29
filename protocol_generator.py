@@ -57,12 +57,29 @@ PARAMETERS = [
     Parameter("LeverHoldTime_s", "Lever hold time s", "1", "LeverTiming", "float"),
     Parameter("LeverRewardduration_ms", "Reward duration ms", "40", "LeverOutcome", "float"),
     Parameter("LeverRewardGo", "RewardGo Prob", "1", "LeverOutcome", "float"),
+    Parameter("DMTSTaskType", "Task type", "DMTS", "DMTS"),
+    Parameter("DMTSMaxTrials", "Max trials", "300", "DMTS", "int"),
+    Parameter("DMTSSampleSoundId", "Sample sound ID", "1", "DMTS", "int"),
+    Parameter("DMTSTestSoundId", "Test sound ID", "2", "DMTS", "int"),
+    Parameter("DMTSSoundLevel", "Sound level", "1", "DMTS", "float"),
+    Parameter("DMTSRandomSeed", "Random seed", "0", "DMTS", "int"),
+    Parameter("DMTSITI_s", "ITI", "2", "DMTSTiming", "float"),
+    Parameter("DMTSITIrandMin_s", "ITI min", "0", "DMTSTiming", "float"),
+    Parameter("DMTSITIrandMax_s", "ITI max", "0", "DMTSTiming", "float"),
+    Parameter("DMTSSoundDuration_s", "Sound duration s", "0.2", "DMTSTiming", "float"),
+    Parameter("DMTSDelay_s", "Delay s", "2", "DMTSTiming", "float"),
+    Parameter("DMTSResponseWindow_s", "Response window s", "2", "DMTSTiming", "float"),
+    Parameter("DMTSRewardDelay_s", "Reward delay s", "0", "DMTSTiming", "float"),
+    Parameter("DMTSRewardduration_ms", "Reward duration ms", "40", "DMTSOutcome", "float"),
+    Parameter("DMTSRewardProb", "Reward prob", "1", "DMTSOutcome", "float"),
+    Parameter("DMTSHITThreshold_percent", "Threshold of RW for HIT %", "50", "DMTSOutcome", "float"),
 ]
 
 COMMON_SECTIONS = ("Session",)
 BEHAVIOR_TABS = [
     ("Classic Go/No-go", ("GoNoGo", "GoNoGoTiming", "GoNoGoOutcome")),
     ("Lever", ("Lever", "LeverTiming", "LeverOutcome")),
+    ("DMTS", ("DMTS", "DMTSTiming", "DMTSOutcome")),
 ]
 SECTION_LABELS = {
     "GoNoGo": "Task",
@@ -71,6 +88,9 @@ SECTION_LABELS = {
     "Lever": "Lever",
     "LeverTiming": "Timing",
     "LeverOutcome": "Outcome",
+    "DMTS": "Task",
+    "DMTSTiming": "Timing",
+    "DMTSOutcome": "Outcome",
 }
 
 
@@ -111,8 +131,10 @@ class ProtocolGenerator(tk.Tk):
         for name, sections in BEHAVIOR_TABS:
             tab = ttk.Frame(self.notebook)
             tab.columnconfigure(0, weight=1)
+            tab.rowconfigure(0, weight=1)
             self.notebook.add(tab, text=name)
-            self._populate_sections(tab, sections, row_offset=0)
+            scrollable = self._add_scrollable_area(tab)
+            self._populate_sections(scrollable, sections, row_offset=0)
         self.notebook.bind("<<NotebookTabChanged>>", lambda _event: self.on_tab_changed())
 
         right = ttk.Frame(root)
@@ -137,6 +159,37 @@ class ProtocolGenerator(tk.Tk):
         ttk.Button(actions, text="Load .dat", command=self.load_dat).grid(row=0, column=2, padx=6)
         ttk.Button(actions, text="Save .dat", command=self.save_dat).grid(row=0, column=3, padx=(6, 0))
         ttk.Label(actions, textvariable=self.status_var).grid(row=1, column=0, columnspan=4, sticky="w", pady=(6, 0))
+
+    def _add_scrollable_area(self, parent):
+        canvas = tk.Canvas(parent, width=430, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=canvas.yview)
+        inner = ttk.Frame(canvas)
+        inner.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        inner_window = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(inner_window, width=event.width))
+        canvas.bind("<Enter>", lambda _event, target=canvas: self._activate_scroll_canvas(target))
+        canvas.bind("<Leave>", lambda _event: canvas.unbind_all("<MouseWheel>"))
+        canvas.bind("<Destroy>", lambda _event: canvas.unbind_all("<MouseWheel>"))
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        inner.columnconfigure(0, weight=1)
+        return inner
+
+    def _activate_scroll_canvas(self, canvas):
+        self._active_scroll_canvas = canvas
+        canvas.bind_all("<MouseWheel>", self._on_parameter_mousewheel)
+
+    def _on_parameter_mousewheel(self, event):
+        canvas = getattr(self, "_active_scroll_canvas", None)
+        if canvas is None:
+            return
+        try:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        except tk.TclError:
+            pass
 
     def _populate_sections(self, parent, sections, row_offset):
         parent.columnconfigure(0, weight=1)
@@ -199,6 +252,8 @@ class ProtocolGenerator(tk.Tk):
     def on_tab_changed(self):
         if self.active_behavior() == "Lever":
             self.current_path.set(os.path.join(APP_DIR, "protocols", "lever_parameters.dat"))
+        elif self.active_behavior() == "DMTS":
+            self.current_path.set(os.path.join(APP_DIR, "protocols", "dmts_parameters.dat"))
         else:
             self.current_path.set(os.path.join(APP_DIR, "protocols", "go_nogo_parameters.dat"))
         self.schedule_redraw()
@@ -263,9 +318,10 @@ class ProtocolGenerator(tk.Tk):
             return
         values = read_dat(path)
         is_lever = values.get("TaskType") == "Lever" or "LeverThreshold" in values
-        self.notebook.select(1 if is_lever else 0)
+        is_dmts = values.get("TaskType") == "DMTS" or "DMTSDelay_s" in values
+        self.notebook.select(2 if is_dmts else 1 if is_lever else 0)
         for key, value in values.items():
-            target = self.alias_for_loaded_key(key, is_lever)
+            target = self.alias_for_loaded_key(key, is_lever, is_dmts)
             if target in self.variables:
                 self.variables[target].set(value)
         self.sync_trial_duration()
@@ -273,7 +329,26 @@ class ProtocolGenerator(tk.Tk):
         self.current_path.set(path)
         self.status_var.set(f"Loaded {os.path.basename(path)}.")
 
-    def alias_for_loaded_key(self, key, is_lever):
+    def alias_for_loaded_key(self, key, is_lever, is_dmts=False):
+        if is_dmts:
+            return {
+                "TaskType": "DMTSTaskType",
+                "MaxTrials": "DMTSMaxTrials",
+                "SampleSoundId": "DMTSSampleSoundId",
+                "TestSoundId": "DMTSTestSoundId",
+                "SoundLevel": "DMTSSoundLevel",
+                "RandomSeed": "DMTSRandomSeed",
+                "ITI_s": "DMTSITI_s",
+                "ITIrandMin_s": "DMTSITIrandMin_s",
+                "ITIrandMax_s": "DMTSITIrandMax_s",
+                "SoundDuration_s": "DMTSSoundDuration_s",
+                "Delay_s": "DMTSDelay_s",
+                "ResponseWindow_s": "DMTSResponseWindow_s",
+                "RewardDelay_s": "DMTSRewardDelay_s",
+                "Rewardduration_ms": "DMTSRewardduration_ms",
+                "RewardProb": "DMTSRewardProb",
+                "HITThreshold_percent": "DMTSHITThreshold_percent",
+            }.get(key, key)
         if is_lever:
             return {
                 "TaskType": "LeverTaskType",
@@ -327,6 +402,36 @@ class ProtocolGenerator(tk.Tk):
             if not 0 <= self.parse_float("LeverRewardGo", -1) <= 1:
                 errors.append("RewardGo Prob must be between 0 and 1.")
             return errors
+        if self.active_behavior() == "DMTS":
+            if self.parse_int("DMTSSampleSoundId", 0) < 1:
+                errors.append("Sample sound ID must be a positive integer.")
+            if self.parse_int("DMTSTestSoundId", 0) < 1:
+                errors.append("Test sound ID must be a positive integer.")
+            if self.parse_float("DMTSITI_s", -1) < 0:
+                errors.append("ITI must be positive or 0.")
+            iti_min = self.parse_float("DMTSITIrandMin_s", None)
+            iti_max = self.parse_float("DMTSITIrandMax_s", None)
+            if iti_min is None or iti_min < 0:
+                errors.append("ITI min must be positive or 0.")
+            if iti_max is None or iti_max < 0:
+                errors.append("ITI max must be positive or 0.")
+            if iti_min is not None and iti_max is not None and iti_min > iti_max:
+                errors.append("ITI min must be smaller than or equal to ITI max.")
+            if self.parse_float("DMTSSoundDuration_s", 0) <= 0:
+                errors.append("Sound duration s must be greater than 0.")
+            if self.parse_float("DMTSDelay_s", -1) < 0:
+                errors.append("Delay s must be positive or 0.")
+            if self.parse_float("DMTSResponseWindow_s", 0) <= 0:
+                errors.append("Response window s must be greater than 0.")
+            if self.parse_float("DMTSRewardDelay_s", -1) < 0:
+                errors.append("Reward delay s must be positive or 0.")
+            if self.parse_float("DMTSRewardduration_ms", -1) < 0:
+                errors.append("Reward duration ms must be positive or 0.")
+            if not 0 <= self.parse_float("DMTSRewardProb", -1) <= 1:
+                errors.append("Reward prob must be between 0 and 1.")
+            if not 0 <= self.parse_float("DMTSHITThreshold_percent", -1) <= 100:
+                errors.append("Threshold of RW for HIT % must be between 0 and 100.")
+            return errors
         if abs((self.parse_float("GoWeight", 0) + self.parse_float("NoGoWeight", 0)) - 1.0) > 1e-6:
             errors.append("Go and no-go weights must sum to 1.")
         if trigger == "IRFork" and not 0 <= self.parse_float("HITThreshold_percent", -1) <= 100:
@@ -349,6 +454,8 @@ class ProtocolGenerator(tk.Tk):
         self.canvas.delete("all")
         if self.active_behavior() == "Lever":
             self.draw_lever_preview()
+        elif self.active_behavior() == "DMTS":
+            self.draw_dmts_preview()
         else:
             self.draw_go_nogo_preview()
 
@@ -405,6 +512,62 @@ class ProtocolGenerator(tk.Tk):
         canvas.create_line(x, margin_top - 24, x, reward_y + 18, fill="#333333", dash=(4, 3))
         canvas.create_text(x, margin_top - 28, text="threshold crossed", anchor="s")
         self.summary_var.set(f"Lever threshold hold {hold:.3g} s before reward")
+
+    def draw_dmts_preview(self):
+        canvas = self.canvas
+        width = max(500, canvas.winfo_width())
+        margin_left, margin_right, margin_top, row_gap = 132, 28, 36, 46
+        iti = max(0.0, self.parse_float("DMTSITI_s", 2))
+        iti_min = max(0.0, self.parse_float("DMTSITIrandMin_s", 0))
+        iti_max = max(iti_min, self.parse_float("DMTSITIrandMax_s", iti_min))
+        sound_duration = max(0.01, self.parse_float("DMTSSoundDuration_s", 0.2))
+        delay = max(0.0, self.parse_float("DMTSDelay_s", 2))
+        response_window = max(0.01, self.parse_float("DMTSResponseWindow_s", 2))
+        reward_delay = max(0.0, self.parse_float("DMTSRewardDelay_s", 0))
+        reward_duration = max(0.0, self.parse_float("DMTSRewardduration_ms", 40) / 1000.0)
+        sample_start = iti + iti_max
+        sample_end = sample_start + sound_duration
+        test_start = sample_end + delay
+        test_end = test_start + sound_duration
+        response_start = test_end
+        response_end = response_start + response_window
+        reward_delay_end = response_end + reward_delay
+        reward_end = reward_delay_end + reward_duration
+        total_s = max(reward_end, 1.0)
+        scale = (width - margin_left - margin_right) / total_s
+        iti_y = margin_top
+        sample_y = margin_top + row_gap
+        delay_y = margin_top + row_gap * 2
+        test_y = margin_top + row_gap * 3
+        response_y = margin_top + row_gap * 4
+        reward_y = margin_top + row_gap * 5
+        axis_y = reward_y + 42
+
+        self.draw_axis(margin_left, axis_y, width - margin_right, total_s, scale)
+        for label, y in (
+            ("ITI", iti_y),
+            ("Sample sound", sample_y),
+            ("Delay", delay_y),
+            ("Test sound", test_y),
+            ("Response window", response_y),
+            ("Reward", reward_y),
+        ):
+            canvas.create_text(margin_left - 12, y, text=label, anchor="e")
+            canvas.create_line(margin_left, y, width - margin_right, y, fill="#dddddd")
+        self.draw_span(margin_left, iti_y, scale, 0, iti, "#6c757d", "ITI")
+        self.draw_double_arrow(margin_left, iti_y + 18, scale, iti + iti_min, iti + iti_max, "#6c757d", "rand range")
+        self.draw_span(margin_left, sample_y, scale, sample_start, sample_end, "#1f77b4", "sample")
+        self.draw_double_arrow(margin_left, delay_y + 18, scale, sample_end, test_start, "#6c757d", "delay")
+        self.draw_span(margin_left, test_y, scale, test_start, test_end, "#ff7f0e", "test")
+        self.draw_span(margin_left, response_y, scale, response_start, response_end, "#2ca02c", "response")
+        self.draw_span(margin_left, reward_y, scale, reward_delay_end, reward_end, "#17a589", "reward")
+        self.summary_var.set(
+            "DMTS: "
+            f"sample sound {self.variables['DMTSSampleSoundId'].get()}, "
+            f"ITI {iti:.3g}+{iti_min:.3g}-{iti_max:.3g} s, "
+            f"delay {delay:.3g} s, test sound {self.variables['DMTSTestSoundId'].get()}, "
+            f"HIT threshold {self.variables['DMTSHITThreshold_percent'].get()}% RW"
+        )
 
     def go_nogo_timing(self):
         iti = max(0, self.parse_float("ITI_s", 2))
@@ -491,6 +654,22 @@ def write_dat(path, values, parameters):
         "LeverSoundLevel": "SoundLevel",
         "LeverRewardduration_ms": "Rewardduration_ms",
         "LeverRewardGo": "RewardGo",
+        "DMTSTaskType": "TaskType",
+        "DMTSMaxTrials": "MaxTrials",
+        "DMTSSampleSoundId": "SampleSoundId",
+        "DMTSTestSoundId": "TestSoundId",
+        "DMTSSoundLevel": "SoundLevel",
+        "DMTSRandomSeed": "RandomSeed",
+        "DMTSITI_s": "ITI_s",
+        "DMTSITIrandMin_s": "ITIrandMin_s",
+        "DMTSITIrandMax_s": "ITIrandMax_s",
+        "DMTSSoundDuration_s": "SoundDuration_s",
+        "DMTSDelay_s": "Delay_s",
+        "DMTSResponseWindow_s": "ResponseWindow_s",
+        "DMTSRewardDelay_s": "RewardDelay_s",
+        "DMTSRewardduration_ms": "Rewardduration_ms",
+        "DMTSRewardProb": "RewardProb",
+        "DMTSHITThreshold_percent": "HITThreshold_percent",
     }
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
