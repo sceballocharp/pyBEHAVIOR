@@ -198,6 +198,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.auto_scale = tk.BooleanVar(value=False)
         self.ai_terminal_config = tk.StringVar(value="RSE")
         self.subtract_baseline = tk.BooleanVar(value=False)
+        self.left_y_min = tk.StringVar(value="-1")
+        self.left_y_max = tk.StringVar(value="5")
+        self.right_y_min = tk.StringVar(value="-1")
+        self.right_y_max = tk.StringVar(value="5")
         self._entry(acq, 0, "Device", self.device, width=9)
         self._entry(acq, 2, "Channels", self.channels, width=16)
         self._entry(acq, 4, "Rate Hz", self.rate_hz, width=9)
@@ -213,6 +217,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         ).grid(row=0, column=11)
         ttk.Checkbutton(acq, text="Auto scale", variable=self.auto_scale).grid(row=0, column=12, padx=10)
         ttk.Checkbutton(acq, text="Subtract baseline", variable=self.subtract_baseline).grid(row=0, column=13, padx=10)
+        self._entry(acq, 0, "Left ymin", self.left_y_min, width=7, row=1)
+        self._entry(acq, 2, "Left ymax", self.left_y_max, width=7, row=1)
+        self._entry(acq, 4, "Right ymin", self.right_y_min, width=7, row=1)
+        self._entry(acq, 6, "Right ymax", self.right_y_max, width=7, row=1)
 
         trig = ttk.LabelFrame(root, text="Trigger And Sound")
         trig.grid(row=3, column=0, sticky="ew", pady=(0, 6))
@@ -2437,6 +2445,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         values = [value - ir_baseline for value in values]
         min_t, max_t = times[0], times[-1] if times[-1] != times[0] else times[0] + 1
         min_v, max_v = min(values), max(values)
+        overlay_min_v, overlay_max_v = 0.0, 1.0
         visible_trigger = any(end_s >= min_t and start_s <= max_t for start_s, end_s in self.trigger_pulses)
         visible_sound = any(
             start_s + len(sound_values) / sound_fs >= min_t and start_s <= max_t
@@ -2447,25 +2456,34 @@ class BehaviorAcquisitionApp(tk.Tk):
             for start_s, end_s in self.trial_state_intervals
         )
         if visible_trigger:
-            min_v = min(min_v, 0.0)
-            max_v = max(max_v, 5.0)
+            overlay_min_v = min(overlay_min_v, 0.0)
+            overlay_max_v = max(overlay_max_v, 5.0)
         if visible_trial_state:
-            min_v = min(min_v, 0.0)
-            max_v = max(max_v, 1.0)
+            overlay_min_v = min(overlay_min_v, 0.0)
+            overlay_max_v = max(overlay_max_v, 1.0)
         if visible_sound:
             for sound_output in self.sound_outputs:
                 start_s, sound_fs, sound_values = sound_output[:3]
                 sound_end = start_s + len(sound_values) / sound_fs
                 if sound_end < min_t or start_s > max_t or not sound_values:
                     continue
-                min_v = min(min_v, min(sound_values))
-                max_v = max(max_v, max(sound_values))
+                overlay_min_v = min(overlay_min_v, min(sound_values))
+                overlay_max_v = max(overlay_max_v, max(sound_values))
         if not self.auto_scale.get():
-            min_v, max_v = -1.0, 5.0
+            min_v = self.parse_float(self.left_y_min, -1.0)
+            max_v = self.parse_float(self.left_y_max, 5.0)
+            overlay_min_v = self.parse_float(self.right_y_min, -1.0)
+            overlay_max_v = self.parse_float(self.right_y_max, 5.0)
+            if max_v < min_v:
+                min_v, max_v = max_v, min_v
+            if overlay_max_v < overlay_min_v:
+                overlay_min_v, overlay_max_v = overlay_max_v, overlay_min_v
         if max_v == min_v:
             max_v = min_v + 1
+        if overlay_max_v == overlay_min_v:
+            overlay_max_v = overlay_min_v + 1
         left_pad = 42
-        right_pad = 10
+        right_pad = 52
         top_pad = 12
         bottom_pad = 34
         plot_width = max(1, width - left_pad - right_pad)
@@ -2479,6 +2497,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.draw_active_trial_shading(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
         self.plot_canvas.create_line(left_pad, x_axis_y, width - right_pad, x_axis_y, fill="#cccccc")
         self.plot_canvas.create_line(left_pad, top_pad, left_pad, x_axis_y, fill="#cccccc")
+        right_axis_x = left_pad + plot_width
+        self.plot_canvas.create_line(right_axis_x, top_pad, right_axis_x, x_axis_y, fill="#cccccc")
         first_second = math.ceil(min_t)
         last_second = math.floor(max_t)
         for second in range(first_second, last_second + 1):
@@ -2490,17 +2510,22 @@ class BehaviorAcquisitionApp(tk.Tk):
             tick_t = min_t + frac * (max_t - min_t)
             self.plot_canvas.create_line(tick_x, x_axis_y, tick_x, x_axis_y + 4, fill="#999999")
             self.plot_canvas.create_text(tick_x, x_axis_y + 16, text=f"{tick_t:.1f}", fill="#555555")
+            left_tick_v = min_v + (1.0 - frac) * (max_v - min_v)
+            right_tick_v = overlay_min_v + (1.0 - frac) * (overlay_max_v - overlay_min_v)
+            tick_y = top_pad + frac * plot_height
+            self.plot_canvas.create_text(left_pad - 5, tick_y, text=f"{left_tick_v:.1f}", anchor="e", fill="#1f77b4", font=("Segoe UI", 8))
+            self.plot_canvas.create_text(right_axis_x + 5, tick_y, text=f"{right_tick_v:.1f}", anchor="w", fill="#555555", font=("Segoe UI", 8))
         self.plot_canvas.create_text(width / 2, height - 6, text="Time (s)", fill="#555555")
-        self.draw_trial_state_trace(min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y)
-        self.draw_trigger_trace(min_t, max_t, min_v, max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y)
-        self.draw_sound_trace(min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y)
+        self.draw_trial_state_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
+        self.draw_trigger_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y)
+        self.draw_sound_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
         if len(points) >= 4:
             self.plot_canvas.create_line(*points, fill="#1f77b4", width=2)
         self.plot_canvas.create_text(
             8,
             8,
             anchor="nw",
-            text=f"{min_v:.2f} to {max_v:.2f} V, baseline {ir_baseline:.2f} V",
+            text=f"Left {min_v:.2f} to {max_v:.2f} V, right {overlay_min_v:.2f} to {overlay_max_v:.2f}, baseline {ir_baseline:.2f} V",
             fill="#555555",
         )
         self.plot_canvas.create_text(width - 120, 10, anchor="nw", text="IRFork", fill="#1f77b4")
