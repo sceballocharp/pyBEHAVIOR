@@ -8,7 +8,7 @@ This document describes the `parameters.dat` fields used by the current protocol
 - `Lever`
 - `DMTS`
 
-`pyBEHAVIOR_v4.py` currently imports and runs the Classic Go/No-Go and Lever fields. DMTS fields are documented here because the generator now creates them, but runtime DMTS behavior still needs to be implemented in `pyBEHAVIOR_v4.py`.
+`pyBEHAVIOR_v4.py` currently imports and runs Classic Go/No-Go, Lever, and an initial DMTS sample-delay-test structure. DMTS match/non-match trial classes are not yet implemented.
 
 ## Common Parameters
 
@@ -65,7 +65,7 @@ TaskType=ClassicGoNoGo
 | Parameter | GUI label | Used when | Meaning |
 | --- | --- | --- | --- |
 | `Rewardduration_ms` | Reward duration ms | All response modes | Water valve/trigger pulse duration in ms. |
-| `RewardGoProb` | RewardGo Prob | GO HITs | Probability that a GO HIT is rewarded, from `0` to `1`. |
+| `RewardGo` | RewardGo Prob | GO HITs | Saved reward probability key for GO HITs, from `0` to `1`. `RewardGoProb` is accepted as an import alias. |
 | `PunishNoGoFA` | Timeout false alarms | no-go FA | Timeout duration after a no-go false alarm, in seconds. |
 | `HITThreshold_percent` | HIT threshold % | `TriggerTypeDropDown=IRFork` | Percentage of `ResponseWindow_s` that the IR beam signal must remain above threshold to count as HIT/FA. |
 | `Minlickcount` | Min lick count | `TriggerTypeDropDown=Lick` | Number of upward crossings over `Lickthreshold` required to count as HIT/FA. |
@@ -122,7 +122,7 @@ Saved with:
 TaskType=DMTS
 ```
 
-DMTS means delayed match to sample. The protocol generator can create these parameters and preview the timing. Runtime handling still needs to be added to `pyBEHAVIOR_v4.py`.
+DMTS means delayed match to sample. The protocol generator can create these parameters and preview the timing. `pyBEHAVIOR_v4.py` now has an initial runtime structure for one sample/test pair: sample sound, delay, test sound, response window, and HIT/MISS scoring from either lick count or IR beam crossing duration.
 
 ### Task
 
@@ -163,8 +163,14 @@ DMTS means delayed match to sample. The protocol generator can create these para
 | --- | --- |
 | `OutputformatDropDown` | Alias for `OuputformatDropDown`. |
 | `HIT`, `HIT_s`, `HITThreshold_s` | Legacy names for the HIT threshold field. |
-| `RewardGo` | Classic/Lever reward probability; `RewardGoProb` is also accepted for Go/No-Go import. |
+| `RewardGoProb` | Alias for the saved `RewardGo` reward probability field. |
 | `PunishInterval` | Legacy punishment field; prefer `PunishNoGoFA`. |
+
+## Parameter Blocks
+
+`Parameters.csv` stores one row per accepted trial. The `Block` column groups consecutive trials that used the same protocol/settings. It is intended to change only when an experiment parameter changes, not simply because a new trial starts.
+
+Trial-specific fields such as `trial`, `timestamp`, `sound_id`, `trigger_time_s`, `trigger_sample`, and the drawn per-trial `iti_s` are ignored when assigning block labels. The ITI settings (`ITI_s`, `ITIrandMin_s`, and `ITIrandMax_s`) are still part of the block signature, so changing the protocol's ITI configuration starts a new block.
 
 ## Runtime Status
 
@@ -172,4 +178,4 @@ DMTS means delayed match to sample. The protocol generator can create these para
 | --- | --- | --- | --- |
 | Classic Go/No-Go | Yes | Yes | Implemented. |
 | Lever | Yes | Yes | Implemented. |
-| DMTS | Yes | Not yet complete | Not yet implemented. |
+| DMTS | Yes | Yes | Initial sample-delay-test structure implemented; match/non-match trial classes are not yet implemented. |
