@@ -205,7 +205,7 @@ For layout-only edits, keep these command bindings unchanged.
 - `Lick thresh` visible for non-lever, non-tAC lick trigger.
 - `Resp. hold %` visible for non-lever, non-tAC non-lick trigger.
 - Lever hold/start debounce/release fields visible for lever.
-- `Require release + bonus` checkbox visible for lever.
+- `Require release + bonus` and `Require release within window` checkboxes visible for lever in `Trial Structure`.
 - `Random DMTS sounds` checkbox visible for DMTS.
 - Sample/test/fork grace/sound IDs visible for DMTS.
 - tAC left/right channel and threshold fields visible for `TaskType=tAC` and `TaskType=tACPretraining`.
@@ -303,4 +303,4 @@ Before finishing a GUI restructuring change:
 
 
 
-The lever-only `Require release within window` checkbox uses `self.lever_req_rel_window`. Selecting it clears the bonus checkbox, and selecting bonus clears window-only. The generator uses the same mutually exclusive choices.
+The lever-only `Require release + bonus` and `Require release within window` checkboxes are placed in `Trial Structure` with the lever timing fields. `Require release within window` uses `self.lever_req_rel_window`. Selecting it clears the bonus checkbox, and selecting bonus clears window-only. The generator uses the same mutually exclusive choices.
