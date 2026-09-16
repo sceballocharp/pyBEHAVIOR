@@ -1,8 +1,8 @@
-UserName=username
+UserName=Sebastian
 MouseId=1
-ProjectName=ProjectName
-NICard_filename=C:/Users/Behaviour_2/Documents/New project/setup_valves_IRFork.m
-Sound_filename=
+ProjectName=Test
+NICard_filename=C:/Users/seceball/Documents/GitHub/pyBEHAVIOR/setup_valves_IRFork.m
+Sound_filename=C:/Users/seceball/Documents/GitHub/pyBEHAVIOR/AllSounds_Corrected.mat
 frec=1000
 bin=0.1
 TriggerTypeDropDown=Lick
@@ -33,4 +33,3 @@ RewardProb=1
 PunishNoGoFA=0
 TACMinlickcount=1
 PlaySound=0
-TriggerOutput=1
