@@ -295,6 +295,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.sound_id = tk.StringVar(value="1")
         self.sound_level = tk.StringVar(value="1")
         self.lever_require_release = tk.BooleanVar(value=False)
+        self.lever_req_rel_window = tk.BooleanVar(value=False)
         self.dmts_random_match_trials = tk.BooleanVar(value=False)
         self.behavior_channel_var = tk.StringVar(value="")
         self.behavior_rule_var = tk.StringVar(value="")
@@ -314,8 +315,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self._entry(trig, 2, "Level", self.sound_level, width=6, row=1)
         self._entry(trig, 7, "Light TTL ms", self.light_ttl_pulse_ms, width=6, row=1)
         ttk.Button(trig, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=1, column=4, padx=8, pady=4)
-        self.lever_release_check = ttk.Checkbutton(trig, text="Require release", variable=self.lever_require_release)
+        self.lever_release_check = ttk.Checkbutton(trig, text="Require release + bonus", variable=self.lever_require_release, command=lambda: self.select_lever_release_mode("bonus"))
         self.lever_release_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+        self.lever_window_check = ttk.Checkbutton(trig, text="Require release within window", variable=self.lever_req_rel_window, command=lambda: self.select_lever_release_mode("window"))
         self.dmts_random_match_check = ttk.Checkbutton(trig, text="Random DMTS sounds", variable=self.dmts_random_match_trials)
         self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
         ttk.Label(trig, textvariable=self.behavior_channel_var).grid(row=2, column=0, columnspan=4, padx=6, pady=(2, 4), sticky="w")
@@ -477,6 +479,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.hit_threshold_s,
             self.lever_hold_time_s,
             self.lever_require_release,
+            self.lever_req_rel_window,
             self.tac_left_channel,
             self.tac_right_channel,
             self.tac_min_lick_count,
@@ -655,8 +658,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.lever_release_debounce_widgets, is_lever, row=8, col=2)
         if is_lever:
             self.lever_release_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+            self.lever_window_check.grid(row=8, column=4, columnspan=4, padx=8, pady=4, sticky="w")
         else:
             self.lever_release_check.grid_remove()
+            self.lever_window_check.grid_remove()
         if is_dmts:
             self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
         else:
@@ -735,7 +740,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 f"{right_sound}=right; first side to {self.get_tac_min_lick_count()} licks chooses"
             )
         elif self.is_lever_task():
-            release = "release required" if self.lever_require_release.get() else "reward at hold"
+            release = "release within target to target + window" if self.lever_req_rel_window.get() else ("release with bonus" if self.lever_require_release.get() else "reward at hold")
             rule = f"Lever: start on ai6 crossing; hold {self.get_lever_hold_time_s():g} s, {release}"
         elif self.is_dmts_task():
             if self.is_lick_trigger():
@@ -990,7 +995,23 @@ class BehaviorAcquisitionApp(tk.Tk):
                 params[key.strip()] = value.strip()
         return params
 
+    def select_lever_release_mode(self, mode):
+        if mode == "window" and self.lever_req_rel_window.get():
+            self.lever_require_release.set(False)
+        elif mode == "bonus" and self.lever_require_release.get():
+            self.lever_req_rel_window.set(False)
+
     def apply_imported_parameters(self, params):
+        # Prefer the canonical key when both old and new names are present.
+        params = dict(params)
+        if "LeverReqRelBonus" not in params and "LeverRequireRelease" in params:
+            params["LeverReqRelBonus"] = params["LeverRequireRelease"]
+        # Old protocols must not inherit window mode from the previous session.
+        params.setdefault("LeverReqRelWindow", "0")
+        if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
+            if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
+                self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
+            params["LeverReqRelBonus"] = "0"
         mapping = {
             "UserName": self.user_name,
             "MouseId": self.mouse_id,
@@ -1034,7 +1055,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverStartDebounce_s": self.lever_start_debounce_s,
             "LeverReleaseDebounce_s": self.lever_release_debounce_s,
             "LeverReleaseWindow_s": self.lever_release_window_s,
-            "LeverRequireRelease": self.lever_require_release,
+            "LeverReqRelBonus": self.lever_require_release,
+            "LeverReqRelWindow": self.lever_req_rel_window,
             "SampleSoundId": self.sample_sound_id,
             "TestSoundId": self.test_sound_id,
             "DMTSRandomMatchTrials": self.dmts_random_match_trials,
@@ -1727,7 +1749,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverStartDebounce_s": self.lever_start_debounce_s.get(),
             "LeverReleaseDebounce_s": self.lever_release_debounce_s.get(),
             "LeverReleaseWindow_s": self.lever_release_window_s.get(),
-            "LeverRequireRelease": int(self.lever_require_release.get()),
+            "LeverReqRelBonus": int(self.lever_require_release.get()),
+            "LeverReqRelWindow": int(self.lever_req_rel_window.get()),
             "MaxTrials": self.max_trials.get(),
             "SampleSoundId": self.sample_sound_id.get(),
             "TestSoundId": self.test_sound_id.get(),
@@ -1801,7 +1824,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverStartDebounce_s",
             "LeverReleaseDebounce_s",
             "LeverReleaseWindow_s",
-            "LeverRequireRelease",
+            "LeverReqRelBonus",
+            "LeverReqRelWindow",
             "MaxTrials",
         )
         params = self.get_current_parameters()
@@ -1880,7 +1904,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "lever_start_debounce_s": self.parse_float_value(params["LeverStartDebounce_s"], 0.1),
             "lever_release_debounce_s": self.parse_float_value(params["LeverReleaseDebounce_s"], 0.05),
             "lever_release_window_s": self.parse_float_value(params["LeverReleaseWindow_s"], 0.25),
-            "lever_require_release": params["LeverRequireRelease"],
+            "lever_require_release": params["LeverReqRelBonus"],
+            "lever_req_rel_window": params["LeverReqRelWindow"],
             "iti_s": iti,
             "iti_rand_min_s": params["ITIrandMin_s"],
             "iti_rand_max_s": params["ITIrandMax_s"],
@@ -2614,6 +2639,13 @@ class BehaviorAcquisitionApp(tk.Tk):
         return max(0.0, self.parse_float(self.lever_start_debounce_s, 0.1))
 
     def is_lever_release_success(self, release_time_s):
+        if self.lever_req_rel_window.get():
+            if self.active_high_start_s is None:
+                return False
+            # Compare absolute times so inclusive boundaries avoid subtraction drift.
+            earliest_s = self.active_high_start_s + self.get_lever_hold_time_s()
+            latest_s = earliest_s + self.get_lever_release_window_s()
+            return earliest_s <= release_time_s <= latest_s
         if not self.lever_require_release.get():
             return bool(self.active_lever_release_armed)
         if self.active_high_start_s is None:
@@ -2627,7 +2659,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         return max(0.0, self.parse_float(self.lever_release_window_s, 0.25))
 
     def get_lever_release_reward_count(self, hold_s):
-        if not self.is_lever_task() or not self.lever_require_release.get():
+        if self.lever_req_rel_window.get() or not self.is_lever_task() or not self.lever_require_release.get():
             return 1
         target_s = self.get_lever_hold_time_s()
         window_s = self.get_lever_release_window_s()
@@ -2656,7 +2688,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         hold_s = max(0.0, sample_time_s - self.active_high_start_s)
         row["crossing_duration_s"] = f"{hold_s:.6f}"
         if hold_s >= self.get_lever_hold_time_s() and not row["HIT"]:
-            if self.lever_require_release.get():
+            if self.lever_req_rel_window.get() or self.lever_require_release.get():
                 if not self.active_lever_release_armed:
                     self.active_lever_release_armed = True
                     self.plot_queue.put(("log", f"Lever trial {row['trial']} target hold reached; release now to trigger reward."))
@@ -3793,7 +3825,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("LeverHoldTime_s", params["LeverHoldTime_s"]),
             ("LeverStartDebounce_s", params["LeverStartDebounce_s"]),
             ("LeverReleaseWindow_s", params["LeverReleaseWindow_s"]),
-            ("LeverRequireRelease", params["LeverRequireRelease"]),
+            ("LeverReqRelBonus", params["LeverReqRelBonus"]),
+            ("LeverReqRelWindow", params["LeverReqRelWindow"]),
             ("SampleSoundId", params["SampleSoundId"]),
             ("TestSoundId", params["TestSoundId"]),
             ("DMTSRandomMatchTrials", params["DMTSRandomMatchTrials"]),

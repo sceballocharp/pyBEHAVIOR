@@ -205,7 +205,7 @@ For layout-only edits, keep these command bindings unchanged.
 - `Lick thresh` visible for non-lever, non-tAC lick trigger.
 - `Resp. hold %` visible for non-lever, non-tAC non-lick trigger.
 - Lever hold/start debounce/release fields visible for lever.
-- `Require release` checkbox visible for lever.
+- `Require release + bonus` checkbox visible for lever.
 - `Random DMTS sounds` checkbox visible for DMTS.
 - Sample/test/fork grace/sound IDs visible for DMTS.
 - tAC left/right channel and threshold fields visible for `TaskType=tAC` and `TaskType=tACPretraining`.
@@ -252,7 +252,7 @@ Do not rename `self.pavlov` unless every import/export/runtime reference is upda
 This is safe if the same variable and command are preserved:
 
 ```python
-ttk.Checkbutton(new_parent, text="Require release", variable=self.lever_require_release)
+ttk.Checkbutton(new_parent, text="Require release + bonus", variable=self.lever_require_release)
 ```
 
 If the checkbox is task-specific, update `update_task_parameter_visibility()` so it appears/disappears correctly.
@@ -302,3 +302,5 @@ Before finishing a GUI restructuring change:
 - Running hardware or file operations from `_build_ui()` makes the GUI hard to open safely.
 
 
+
+The lever-only `Require release within window` checkbox uses `self.lever_req_rel_window`. Selecting it clears the bonus checkbox, and selecting bonus clears window-only. The generator uses the same mutually exclusive choices.

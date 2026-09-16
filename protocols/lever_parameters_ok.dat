@@ -14,3 +14,4 @@ SoundLevel=1
 LeverHoldTime_s=1
 Rewardduration_ms=200
 RewardGo=1
+LeverReqRelWindow=0

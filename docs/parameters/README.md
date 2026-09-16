@@ -91,3 +91,7 @@ The protocol generator uses behavior-specific UI keys such as `LeverRewardGo`, `
 - Protocol generator validation must match runtime expectations. For probabilities, validate `0 <= value <= 1`.
 
 
+
+`LeverReqRelBonus` is the canonical lever release/bonus parameter. The runtime and protocol generator still accept `LeverRequireRelease` as an import alias; when both are present, `LeverReqRelBonus` takes precedence. New exports use `LeverReqRelBonus`. The internal variable and trial-log field `lever_require_release` are unchanged.
+
+`LeverReqRelWindow` defaults to `0`, including when absent on import. It is saved in session parameters, Parameters.csv, and NWB parameter metadata, and mirrored as `lever_req_rel_window` in TrialLog.csv. If both release flags are enabled on import, window-only wins with a message.

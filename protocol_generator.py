@@ -55,7 +55,8 @@ PARAMETERS = [
     Parameter("LeverThreshold", "Lever threshold V", "1", "Lever", "float"),
     Parameter("LeverGoSoundId", "GO sound ID", "1", "Lever", "int"),
     Parameter("LeverSoundLevel", "Sound level", "1", "Lever", "float"),
-    Parameter("LeverRequireRelease", "Require release", "0", "Lever", "choice", ("0", "1")),
+    Parameter("LeverReqRelBonus", "Require release + bonus", "0", "Lever", "choice", ("0", "1")),
+    Parameter("LeverReqRelWindow", "Require release within window", "0", "Lever", "choice", ("0", "1")),
     Parameter("LeverHoldTime_s", "Lever hold time s", "1", "LeverTiming", "float"),
     Parameter("LeverStartDebounce_s", "Start debounce s", "0.1", "LeverTiming", "float"),
     Parameter("LeverReleaseDebounce_s", "Release debounce s", "0.05", "LeverTiming", "float"),
@@ -284,7 +285,15 @@ class ProtocolGenerator(tk.Tk):
         if parameter.key in {"Minlickcount", "Lickthreshold"}:
             self._lick_widgets.extend([label, widget])
 
+    def sync_lever_release_mode(self, changed_key):
+        if self.variables[changed_key].get() == "1":
+            other = "LeverReqRelBonus" if changed_key == "LeverReqRelWindow" else "LeverReqRelWindow"
+            if self.variables[other].get() != "0":
+                self.variables[other].set("0")
+
     def _bind_updates(self):
+        for key in ("LeverReqRelBonus", "LeverReqRelWindow"):
+            self.variables[key].trace_add("write", lambda *_args, key=key: self.sync_lever_release_mode(key))
         for variable in self.variables.values():
             variable.trace_add("write", lambda *_args: self.schedule_redraw())
         for key in ("Sounddelay_s", "SoundDuration_s", "RewardDelay_s", "ResponseWindow_s", "Rewardduration_ms"):
@@ -397,12 +406,19 @@ class ProtocolGenerator(tk.Tk):
         if not path:
             return
         values = read_dat(path)
+        values.setdefault("LeverReqRelWindow", "0")
+        bonus = values.get("LeverReqRelBonus", values.get("LeverRequireRelease", "0"))
+        conflict = values["LeverReqRelWindow"] == "1" and bonus == "1"
+        if values["LeverReqRelWindow"] == "1":
+            values["LeverReqRelBonus"] = "0"
         is_lever = values.get("TaskType") == "Lever" or "LeverThreshold" in values
         is_dmts = values.get("TaskType") == "DMTS" or "DMTSDelay_s" in values
         is_tac_pre = values.get("TaskType") in {"tACPretraining", "tAC-pretraining", "tAC_pretraining"}
         is_tac = values.get("TaskType") == "tAC" or "TACLeftChannel" in values
         self.notebook.select(4 if is_tac_pre else 3 if is_tac else 2 if is_dmts else 1 if is_lever else 0)
         for key, value in values.items():
+            if key == "LeverRequireRelease" and "LeverReqRelBonus" in values:
+                continue
             target = self.alias_for_loaded_key(key, is_lever, is_dmts, is_tac, is_tac_pre)
             if target in self.variables:
                 self.variables[target].set(value)
@@ -410,9 +426,12 @@ class ProtocolGenerator(tk.Tk):
         self.sync_tac_trial_duration()
         self.update_response_visibility()
         self.current_path.set(path)
-        self.status_var.set(f"Loaded {os.path.basename(path)}.")
+        suffix = " Both lever release modes enabled; LeverReqRelWindow takes precedence." if conflict else ""
+        self.status_var.set(f"Loaded {os.path.basename(path)}.{suffix}")
 
     def alias_for_loaded_key(self, key, is_lever, is_dmts=False, is_tac=False, is_tac_pre=False):
+        if key == "LeverRequireRelease":
+            return "LeverReqRelBonus"
         if is_tac_pre:
             return {
                 "TaskType": "TACPreTaskType",
@@ -695,7 +714,9 @@ class ProtocolGenerator(tk.Tk):
         start_debounce = max(0, self.parse_float("LeverStartDebounce_s", 0.1))
         reward_s = max(0, self.parse_float("LeverRewardduration_ms", 40) / 1000)
         reward_start = crossing_time + hold
-        total_s = max(reward_start + reward_s, 2.0)
+        window_only = self.variables["LeverReqRelWindow"].get() == "1"
+        release_window = max(0, self.parse_float("LeverReleaseWindow_s", 0.25))
+        total_s = max(reward_start + (release_window if window_only else 0) + reward_s, 2.0)
         scale = (width - margin_left - margin_right) / total_s
         signal_y, hold_y, sound_y, reward_y = margin_top, margin_top + row_gap, margin_top + row_gap * 2, margin_top + row_gap * 3
         self.draw_axis(margin_left, reward_y + 42, width - margin_right, total_s, scale)
@@ -711,14 +732,18 @@ class ProtocolGenerator(tk.Tk):
         self.draw_span(margin_left, hold_y, scale, crossing_time, reward_start, "#9467bd", "above threshold")
         self.draw_span(margin_left, hold_y, scale, crossing_time, crossing_time + start_debounce, "#8c564b", "accepted")
         self.draw_double_arrow(margin_left, hold_y + 18, scale, crossing_time, reward_start, "#9467bd", "LeverHoldTime_s")
-        if self.variables["LeverRequireRelease"].get() == "1":
+        if window_only:
+            self.draw_double_arrow(margin_left, reward_y + 18, scale, reward_start, reward_start + release_window, "#d62728", "valid release window")
+        elif self.variables["LeverReqRelBonus"].get() == "1":
             self.draw_double_arrow(margin_left, reward_y + 18, scale, reward_start, total_s, "#d62728", "release after hold")
         self.draw_span(margin_left, reward_y, scale, reward_start, reward_start + reward_s, "#2ca02c", "reward")
         x = margin_left + crossing_time * scale
         canvas.create_line(x, margin_top - 24, x, reward_y + 18, fill="#333333", dash=(4, 3))
         canvas.create_text(x, margin_top - 28, text="threshold crossed", anchor="s")
         summary = f"Lever press accepted after {start_debounce:.3g} s above threshold; hold {hold:.3g} s"
-        if self.variables["LeverRequireRelease"].get() == "1":
+        if window_only:
+            summary += f", release in [{hold:.3g}, {hold + release_window:.3g}] s: one reward; early/late: MISS"
+        elif self.variables["LeverReqRelBonus"].get() == "1":
             summary += ", reward on release after target hold"
         else:
             summary += " before reward"

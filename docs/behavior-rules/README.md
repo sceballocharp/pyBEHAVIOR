@@ -142,7 +142,8 @@ The trial trigger time remains the original upward crossing time, not the later 
 When:
 
 ```text
-LeverRequireRelease=0
+LeverReqRelBonus=0
+LeverReqRelWindow=0
 ```
 
 Reward logic is triggered once the signal has remained above threshold for `LeverHoldTime_s`.
@@ -152,7 +153,7 @@ Reward logic is triggered once the signal has remained above threshold for `Leve
 When:
 
 ```text
-LeverRequireRelease=1
+LeverReqRelBonus=1
 ```
 
 The animal must release after a valid hold. Release is accepted after the signal has stayed below threshold for `LeverReleaseDebounce_s`.
@@ -170,6 +171,18 @@ LeverHoldTime_s - LeverReleaseWindow_s <= hold_s <= LeverHoldTime_s + LeverRelea
 ```
 
 This target window sends three reward pulses total. Releases later than the upper edge still count as HIT but send the normal single reward pulse. The default release window is `0.25` s.
+
+### Window-Only Release Mode
+
+With `LeverReqRelWindow=1`, a release is successful only when:
+
+```text
+LeverHoldTime_s <= hold_s <= LeverHoldTime_s + LeverReleaseWindow_s
+```
+
+For a 1 s target and 0.25 s window, 1–1.25 s inclusive is HIT; earlier and later releases are MISS. A HIT gets one reward opportunity, subject to `RewardGo` and enabled output. Reaching the target while still holding does not score HIT or send reward. The trial ends on confirmed release, even after the upper limit. Scoring uses the initial downward crossing, not the later debounce confirmation. Short dips retain the existing debounce behavior.
+
+The new flag defaults to 0. Both release flags off selects simple hold. GUI controls are mutually exclusive; importing both flags as 1 selects window-only and reports the conflict. Existing bonus timing and reward counts are unchanged.
 
 ### Lever Sound Playback
 

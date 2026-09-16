@@ -277,7 +277,8 @@ The GUI `Device` field supplies the device name, so `Dev1` can be changed for an
 ## Behavior Highlights
 
 - Classic Go/No-Go can score by IRFork time-above-threshold or lick count.
-- Lever can run simple hold mode or optional press-hold-release mode.
+- Lever can run simple hold, release with bonus, or window-only release mode.
+- `LeverReqRelWindow=1` rewards only releases from the target hold time through target + release window (inclusive); early and late releases are MISS.
 - Lever release mode uses `LeverHoldTime_s +/- LeverReleaseWindow_s` as a bonus zone: releases inside the window send three reward pulses total, late releases still count as HIT with one pulse, and too-early releases are MISS.
 - DMTS presents sample, delay, test, response window, then reward period.
 - tAC starts automatically after ITI and rewards left-correct trials on `port2/line6` and right-correct trials on `port2/line7`.
