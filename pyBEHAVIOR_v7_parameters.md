@@ -155,9 +155,9 @@ Saved with:
 TaskType=DMTS
 ```
 
-DMTS means delayed match to sample. The protocol generator can create these parameters and preview the timing. At the beginning of a live session, the closed-loop sequence is regenerated as DMTS trial types: `1` is match and `2` is non-match. Match trials use the same sound ID for sample and test. Non-match trials use different sample and test sound IDs. If `DMTSRandomMatchTrials` is enabled, those IDs are chosen from `DMTSSoundIds`; if it is disabled, the fixed `SampleSoundId`/`TestSoundId` fields are used. Match trials score as HIT when the response criterion is met and MISS when it is not met. Non-match trials score as CR when the response criterion is not met and FA when it is met; FA adds the no-go timeout. HIT, CR, and FA are assigned only if the trial reaches the reward-period decision. For IRFork-triggered DMTS, if the fork event ends before the test sound is presented, the trial stops as a MISS.
+DMTS means delayed match to sample. Trial type `1` is match (same sample/test sound ID); `2` is non-match (different IDs). `DMTSRandomMatchTrials` chooses IDs from `DMTSSoundIds`; otherwise the fixed sound fields are used. In Lick mode, the first side reaching `Minlickcount` on a match trial locks the outcome: left HIT, right FA; neither side gives MISS. Simultaneous qualifying crossings favor left. On non-match trials, left licks below `Minlickcount` give CR; reaching criterion gives FA. Right licks are recorded but do not affect non-match scoring. Match HIT rewards left; non-match CR rewards right at response-window end plus `RewardDelay_s`. FA trials continue to normal end, then add punishment timeout to the ITI. IRFork mode retains its existing scoring and fork-hold requirement.
 
-DMTS trial starts use the same clean-reset rule as Classic Go/No-Go: after the trial ends and the ITI has elapsed, the trigger signal must be observed below threshold before a new upward crossing can start the next trial.
+DMTS in Lick mode starts trials automatically after the previous trial ends and its ITI plus any false-alarm timeout have elapsed. The first trial starts on the first acquired sample. No lick or below-threshold reset is required to start a trial; licks count only during the response window after the test sound. IRFork mode still requires a below-threshold reset after the ITI followed by a new upward crossing.
 
 ### Task
 
@@ -167,6 +167,7 @@ DMTS trial starts use the same clean-reset rule as Classic Go/No-Go: after the t
 | `MaxTrials` | Max trials | Maximum number of accepted trials. |
 | `GoWeight` | Match weight | Relative probability for DMTS trial type `1`, match. |
 | `NoGoWeight` | Non-match weight | Relative probability for DMTS trial type `2`, non-match. |
+| `BlankWeight` | Blank weight (silent) | Relative probability for DMTS trial type `0`. Default `0`, including older protocols. No sample/test sounds, reward, or punishment; normal timing and lick recording remain. |
 | `GoSoundId` | Match trial type | Fixed runtime value `1` for match trials. |
 | `NoGoSoundId` | Non-match trial type | Fixed runtime value `2` for non-match trials. |
 | `SampleSoundId` | Sample sound ID | First/sample sound stimulus. |
@@ -196,6 +197,9 @@ DMTS trial starts use the same clean-reset rule as Classic Go/No-Go: after the t
 | `Rewardduration_ms` | Reward duration ms | Water valve/trigger pulse duration in ms. |
 | `RewardProb` | Reward prob | Probability that a correct DMTS response is rewarded, from `0` to `1`. |
 | `HITThreshold_percent` | Threshold of RW for HIT % | Percentage of the response window required for HIT classification. |
+| `Minlickcount` | Min licks | Match: first side reaching this count locks HIT (left) or FA (right). Non-match: left below this count gives CR, otherwise FA; right counts do not affect scoring. |
+| `TACLeftChannel` / `TACRightChannel` | Left/right lick channel | DMTS Lick mode inputs, default `ai0` / `ai1`; both must be in `Channels`. |
+| `TACLeftThreshold` / `TACRightThreshold` | Left/right threshold | Independent lick thresholds in volts, default `1` each. Older `Lickthreshold` imports provide the fallback for both. |
 
 ## tAC
 

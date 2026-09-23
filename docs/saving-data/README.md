@@ -42,6 +42,8 @@ The helper writes nothing if `path` or `rows` is empty. Field names come from th
 
 ## TrialLog.csv
 
+DMTS blanks are logged as `TrialType=0 DMTS-blank`, `ResultType=BLANK`, with zero sample/test sound IDs and zero HIT/MISS/CR/FA flags. Their left/right lick counts are retained. `BlankWeight` is saved in the session parameters and NWB metadata, and `blank_weight` in per-trial parameter rows. Blank NWB trial anchors use the trigger/start time rather than a nearby sound epoch.
+
 Trial rows are created by `create_trial()` and finalized by task-specific finish functions.
 
 Important fields:

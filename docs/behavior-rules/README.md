@@ -190,6 +190,12 @@ The new flag defaults to 0. Both release flags off selects simple hold. GUI cont
 
 ## DMTS
 
+DMTS sequences support three relative weights: `GoWeight` for match (code `1`), `NoGoWeight` for non-match (code `2`), and `BlankWeight` for blank (code `0`). The protocol generator exposes all three by name. The runtime sequence uses values `1 2 0` and weights in match/non-match/blank order. Old protocols default to `BlankWeight=0`.
+
+Blank trials play neither sample nor test sound (`sample_sound_id=0`, `test_sound_id=0`) while retaining the normal sample/delay/test/response/reward-period timing and ITI. Left and right licks are recorded independently during the response window, but do not select a choice or trigger reward or punishment. Completed blanks use `TrialType=0 DMTS-blank`, `ResultType=BLANK`, and all HIT/MISS/CR/FA flags are zero. IRFork blanks also retain their full timeline without aborting on fork release. NWB exports retain blank trials with type code `0`, no scored HMCF outcome, and the trial start as their anchor.
+
+In Lick mode, the first trial starts on the first acquired sample, and subsequent trials start automatically after trial end plus the configured ITI and any false-alarm timeout. Licks during the ITI do not restart the wait. Trial initiation requires neither a lick nor a below-threshold reset. Only upward crossings within the post-test response window count toward the response. IRFork mode retains its reset-and-crossing start rule. `MaxTrials` limits both modes.
+
 Task identifier:
 
 ```text
@@ -226,13 +232,13 @@ Match trials use the same sample and test sound ID. Non-match trials use differe
 DMTS can use either:
 
 - IRFork time-above-threshold percentage.
-- Lick count.
+- Independent left/right lick counts: `TACLeftChannel`/`TACRightChannel` default to `ai0`/`ai1`, with separate `TACLeftThreshold`/`TACRightThreshold` voltages. Counts are never combined. On match trials, the first side to reach `Minlickcount` locks the outcome: left HIT, right FA; neither side reaching criterion gives MISS. Same-sample ties favor left. On non-match trials, left counts below `Minlickcount` throughout the response window give CR; reaching criterion gives FA. Right licks are recorded but do not affect non-match scoring. Upward crossings before the response window do not count, including signals held high into that window.
 
 The response window starts after the test sound. For IRFork DMTS, if the fork event ends before the test sound, the trial stops as MISS after `DMTSForkGrace_s`.
 
 ### DMTS Outcomes
 
-At the reward-period decision:
+At the reward-period decision, **IRFork mode** retains these outcomes:
 
 | Trial relation | Response met | Outcome |
 | --- | --- | --- |
@@ -241,7 +247,11 @@ At the reward-period decision:
 | sample != test | no | CR |
 | sample != test | yes | FA |
 
-Only HIT sends reward through `maybe_send_go_reward()`. FA can add the no-go timeout.
+In IRFork mode, only HIT sends reward through `maybe_send_go_reward()`. FA can add the no-go timeout.
+
+In **Lick mode**, match HIT rewards left (`port2/line6`); non-match CR rewards right (`port2/line7`) without requiring any right licks. Both rewards use the configured reward probability and enabled output, at response-window end plus `RewardDelay_s`. A match trial with a right-first FA still runs to its normal end, as does a non-match left-lick FA. Both FAs add `PunishNoGoFA` to the ITI after normal trial end. Later licks cannot override the first qualifying side on a match trial, but right licks never prevent a subsequent left FA on a non-match trial.
+
+Both raw lick traces are plotted and recorded as `LeftLick.bin` and `RightLick.bin` when binary recording is enabled, and exported to NWB through the existing optional-trace export. Both configured channels must be distinct and included in `Channels`. Trial logs preserve `left_lick_count` and `right_lick_count`. For match trials, `choice_side` stores the first qualifying side, `correct_side` is left, and `lick_count` holds the chosen side's count (zero without a choice). For non-match trials, `choice_side` is left only for a left-criterion FA, `correct_side` is empty because no side response is required, and `lick_count` holds the left count. Existing single-threshold protocols import their `Lickthreshold` as the default for both side thresholds unless side-specific values are supplied.
 
 ## tAC
 

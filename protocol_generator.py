@@ -1,4 +1,5 @@
 import os
+import math
 import tkinter as tk
 from dataclasses import dataclass
 from tkinter import filedialog, messagebox, ttk
@@ -67,6 +68,7 @@ PARAMETERS = [
     Parameter("DMTSMaxTrials", "Max trials", "300", "DMTS", "int"),
     Parameter("DMTSMatchWeight", "Match weight", "0.5", "DMTS", "float"),
     Parameter("DMTSNonMatchWeight", "Non-match weight", "0.5", "DMTS", "float"),
+    Parameter("DMTSBlankWeight", "Blank weight (silent)", "0", "DMTS", "float"),
     Parameter("DMTSSampleSoundId", "Sample sound ID", "1", "DMTS", "int"),
     Parameter("DMTSTestSoundId", "Test sound ID", "1", "DMTS", "int"),
     Parameter("DMTSRandomMatchTrials", "Random DMTS sounds", "1", "DMTS", "choice", ("0", "1")),
@@ -83,6 +85,11 @@ PARAMETERS = [
     Parameter("DMTSRewardduration_ms", "Reward duration ms", "40", "DMTSOutcome", "float"),
     Parameter("DMTSRewardProb", "Reward prob", "1", "DMTSOutcome", "float"),
     Parameter("DMTSHITThreshold_percent", "Threshold of RW for HIT %", "50", "DMTSOutcome", "float"),
+    Parameter("DMTSMinlickcount", "Min lick count", "1", "DMTSOutcome", "int"),
+    Parameter("DMTSLeftThreshold", "Left lick threshold V", "1", "DMTSOutcome", "float"),
+    Parameter("DMTSRightThreshold", "Right lick threshold V", "1", "DMTSOutcome", "float"),
+    Parameter("DMTSLeftChannel", "Left lick channel", "ai0", "DMTSOutcome"),
+    Parameter("DMTSRightChannel", "Right lick channel", "ai1", "DMTSOutcome"),
     Parameter("TACTaskType", "Task type", "tAC", "TAC"),
     Parameter("TACMaxTrials", "Max trials", "300", "TAC", "int"),
     Parameter("TACLeftWeight", "Left weight", "0.5", "TAC", "float"),
@@ -280,9 +287,9 @@ class ProtocolGenerator(tk.Tk):
         if parameter.key in {"NICard_filename", "Sound_filename"}:
             command = self.choose_ni_script if parameter.key == "NICard_filename" else self.choose_sound_file
             ttk.Button(parent, text="Browse", command=command).grid(row=row, column=2, padx=(0, 6), pady=3)
-        if parameter.key == "HITThreshold_percent":
-            self._hit_widgets = [label, widget]
-        if parameter.key in {"Minlickcount", "Lickthreshold"}:
+        if parameter.key in {"HITThreshold_percent", "DMTSHITThreshold_percent"}:
+            self._hit_widgets.extend([label, widget])
+        if parameter.key in {"Minlickcount", "Lickthreshold", "DMTSMinlickcount", "DMTSLeftThreshold", "DMTSRightThreshold", "DMTSLeftChannel", "DMTSRightChannel"}:
             self._lick_widgets.extend([label, widget])
 
     def sync_lever_release_mode(self, changed_key):
@@ -413,8 +420,18 @@ class ProtocolGenerator(tk.Tk):
             values["LeverReqRelBonus"] = "0"
         is_lever = values.get("TaskType") == "Lever" or "LeverThreshold" in values
         is_dmts = values.get("TaskType") == "DMTS" or "DMTSDelay_s" in values
+        if is_dmts:
+            values.setdefault("BlankWeight", values.get("DMTSBlankWeight", "0"))
+            for key in ("Minlickcount",):
+                if key not in values and "DMTS" + key not in values:
+                    values[key] = self.get_parameter("DMTS" + key).default
+            values.setdefault("TACLeftChannel", values.get("DMTSLeftChannel", "ai0"))
+            values.setdefault("TACRightChannel", values.get("DMTSRightChannel", "ai1"))
+            legacy_threshold = values.get("Lickthreshold", values.get("DMTSLickthreshold", "1"))
+            values.setdefault("TACLeftThreshold", values.get("DMTSLeftThreshold", legacy_threshold))
+            values.setdefault("TACRightThreshold", values.get("DMTSRightThreshold", legacy_threshold))
         is_tac_pre = values.get("TaskType") in {"tACPretraining", "tAC-pretraining", "tAC_pretraining"}
-        is_tac = values.get("TaskType") == "tAC" or "TACLeftChannel" in values
+        is_tac = values.get("TaskType") == "tAC" or (not is_dmts and "TACLeftChannel" in values)
         self.notebook.select(4 if is_tac_pre else 3 if is_tac else 2 if is_dmts else 1 if is_lever else 0)
         for key, value in values.items():
             if key == "LeverRequireRelease" and "LeverReqRelBonus" in values:
@@ -479,6 +496,7 @@ class ProtocolGenerator(tk.Tk):
                 "MaxTrials": "DMTSMaxTrials",
                 "GoWeight": "DMTSMatchWeight",
                 "NoGoWeight": "DMTSNonMatchWeight",
+                "BlankWeight": "DMTSBlankWeight",
                 "SampleSoundId": "DMTSSampleSoundId",
                 "TestSoundId": "DMTSTestSoundId",
                 "DMTSRandomMatchTrials": "DMTSRandomMatchTrials",
@@ -495,6 +513,11 @@ class ProtocolGenerator(tk.Tk):
                 "Rewardduration_ms": "DMTSRewardduration_ms",
                 "RewardProb": "DMTSRewardProb",
                 "HITThreshold_percent": "DMTSHITThreshold_percent",
+                "Minlickcount": "DMTSMinlickcount",
+                "TACLeftThreshold": "DMTSLeftThreshold",
+                "TACRightThreshold": "DMTSRightThreshold",
+                "TACLeftChannel": "DMTSLeftChannel",
+                "TACRightChannel": "DMTSRightChannel",
             }.get(key, key)
         if is_lever:
             return {
@@ -533,9 +556,9 @@ class ProtocolGenerator(tk.Tk):
         errors = []
         trigger = self.variables["TriggerTypeDropDown"].get()
         for parameter in self.active_parameters():
-            if parameter.key == "HITThreshold_percent" and trigger != "IRFork":
+            if parameter.key in {"HITThreshold_percent", "DMTSHITThreshold_percent"} and trigger != "IRFork":
                 continue
-            if parameter.key in {"Minlickcount", "Lickthreshold"} and trigger != "Lick":
+            if parameter.key in {"Minlickcount", "Lickthreshold", "DMTSMinlickcount", "DMTSLeftThreshold", "DMTSRightThreshold", "DMTSLeftChannel", "DMTSRightChannel"} and trigger != "Lick":
                 continue
             if parameter.kind == "float" and self.parse_float(parameter.key, None) is None:
                 errors.append(f"{parameter.label} must be numeric.")
@@ -556,6 +579,11 @@ class ProtocolGenerator(tk.Tk):
                 errors.append("RewardGo Prob must be between 0 and 1.")
             return errors
         if self.active_behavior() == "DMTS":
+            weights = [self.parse_float(key, None) for key in ("DMTSMatchWeight", "DMTSNonMatchWeight", "DMTSBlankWeight")]
+            if any(weight is None or not math.isfinite(weight) or weight < 0 for weight in weights):
+                errors.append("Match, non-match and blank weights must be finite and nonnegative.")
+            elif sum(weights) <= 0:
+                errors.append("At least one DMTS weight must be greater than zero.")
             if self.parse_int("DMTSSampleSoundId", 0) < 1:
                 errors.append("Sample sound ID must be a positive integer.")
             if self.parse_int("DMTSTestSoundId", 0) < 1:
@@ -584,8 +612,19 @@ class ProtocolGenerator(tk.Tk):
                 errors.append("Reward duration ms must be positive or 0.")
             if not 0 <= self.parse_float("DMTSRewardProb", -1) <= 1:
                 errors.append("Reward prob must be between 0 and 1.")
-            if not 0 <= self.parse_float("DMTSHITThreshold_percent", -1) <= 100:
+            if trigger == "IRFork" and not 0 <= self.parse_float("DMTSHITThreshold_percent", -1) <= 100:
                 errors.append("Threshold of RW for HIT % must be between 0 and 100.")
+            if trigger == "Lick":
+                if self.parse_int("DMTSMinlickcount", 0) < 1:
+                    errors.append("Min lick count must be an integer of at least 1.")
+                for key in ("DMTSLeftThreshold", "DMTSRightThreshold"):
+                    threshold = self.parse_float(key, None)
+                    if threshold is None or not math.isfinite(threshold):
+                        errors.append(f"{self.get_parameter(key).label} must be a finite number.")
+                left = self.variables["DMTSLeftChannel"].get().strip()
+                right = self.variables["DMTSRightChannel"].get().strip()
+                if not left or not right or left.lower() == right.lower():
+                    errors.append("Left and right lick channels must be nonempty and different.")
             return errors
         if self.active_behavior() == "tAC":
             if self.parse_int("TACLeftSoundId", 0) < 1:
@@ -878,10 +917,16 @@ class ProtocolGenerator(tk.Tk):
             f"sample sound {self.variables['DMTSSampleSoundId'].get()}, "
             f"ITI after trial {iti:.3g}+{iti_min:.3g}-{iti_max:.3g} s, "
             f"delay {delay:.3g} s, test sound {self.variables['DMTSTestSoundId'].get()}, "
-            f"match/non-match weights "
-            f"{self.variables['DMTSMatchWeight'].get()}/{self.variables['DMTSNonMatchWeight'].get()}, "
+            f"match/non-match/blank weights "
+            f"{self.variables['DMTSMatchWeight'].get()}/{self.variables['DMTSNonMatchWeight'].get()}/{self.variables['DMTSBlankWeight'].get()} (blank is silent), "
             f"sound pool {self.variables['DMTSSoundIds'].get() or 'fixed IDs'}, "
-            f"HIT threshold {self.variables['DMTSHITThreshold_percent'].get()}% RW"
+            + (
+                f"match: first side to {self.variables['DMTSMinlickcount'].get()} licks locks (left HIT/right FA); "
+                f"non-match: left below criterion gives CR + right reward; "
+                f"left/right thresholds {self.variables['DMTSLeftThreshold'].get()}/{self.variables['DMTSRightThreshold'].get()} V"
+                if self.variables["TriggerTypeDropDown"].get() == "Lick"
+                else f"HIT threshold {self.variables['DMTSHITThreshold_percent'].get()}% RW"
+            )
         )
 
     def go_nogo_timing(self):
@@ -1043,6 +1088,7 @@ def write_dat(path, values, parameters):
         "DMTSMaxTrials": "MaxTrials",
         "DMTSMatchWeight": "GoWeight",
         "DMTSNonMatchWeight": "NoGoWeight",
+        "DMTSBlankWeight": "BlankWeight",
         "DMTSSampleSoundId": "SampleSoundId",
         "DMTSTestSoundId": "TestSoundId",
         "DMTSRandomMatchTrials": "DMTSRandomMatchTrials",
@@ -1059,6 +1105,11 @@ def write_dat(path, values, parameters):
         "DMTSRewardduration_ms": "Rewardduration_ms",
         "DMTSRewardProb": "RewardProb",
         "DMTSHITThreshold_percent": "HITThreshold_percent",
+        "DMTSMinlickcount": "Minlickcount",
+        "DMTSLeftThreshold": "TACLeftThreshold",
+        "DMTSRightThreshold": "TACRightThreshold",
+        "DMTSLeftChannel": "TACLeftChannel",
+        "DMTSRightChannel": "TACRightChannel",
         "TACTaskType": "TaskType",
         "TACMaxTrials": "MaxTrials",
         "TACLeftWeight": "GoWeight",
@@ -1090,9 +1141,9 @@ def write_dat(path, values, parameters):
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
         for parameter in parameters:
-            if parameter.key == "HITThreshold_percent" and values.get("TriggerTypeDropDown") != "IRFork":
+            if parameter.key in {"HITThreshold_percent", "DMTSHITThreshold_percent"} and values.get("TriggerTypeDropDown") != "IRFork":
                 continue
-            if parameter.key in {"Minlickcount", "Lickthreshold"} and values.get("TriggerTypeDropDown") != "Lick":
+            if parameter.key in {"Minlickcount", "Lickthreshold", "DMTSMinlickcount", "DMTSLeftThreshold", "DMTSRightThreshold", "DMTSLeftChannel", "DMTSRightChannel"} and values.get("TriggerTypeDropDown") != "Lick":
                 continue
             key = aliases.get(parameter.key, parameter.key)
             value = values.get(parameter.key, parameter.default)
