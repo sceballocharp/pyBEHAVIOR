@@ -1,3 +1,5 @@
 Sounds/AllSounds_from_wav.mat
 *.pyc
 *.pyc
+/data
+*.pyc
