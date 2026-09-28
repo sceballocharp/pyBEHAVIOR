@@ -291,6 +291,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.play_sound_on_crossing = tk.BooleanVar(value=True)
         self.threshold_v = tk.StringVar(value="1")
         self.pulse_ms = tk.StringVar(value="50")
+        self.right_pulse_ms = tk.StringVar(value="50")
         self.light_ttl_pulse_ms = tk.StringVar(value="200")
         self.sound_id = tk.StringVar(value="1")
         self.sound_level = tk.StringVar(value="1")
@@ -306,15 +307,18 @@ class BehaviorAcquisitionApp(tk.Tk):
         ttk.Combobox(trig, textvariable=self.trigger_type, values=("IRFork", "Lick", "None"), width=9).grid(row=0, column=1)
         ttk.Checkbutton(trig, text="Write BehaviorSignal.bin", variable=self.write_behavior_signal_bin).grid(row=0, column=2, padx=8)
         ttk.Checkbutton(trig, text="Trigger reward", variable=self.trigger_output_on_crossing).grid(row=0, column=3, padx=8)
-        ttk.Button(trig, text="Left Reward", command=lambda: self.send_output_pulse(reward_side="left")).grid(row=0, column=4, padx=4)
-        ttk.Button(trig, text="Right Reward", command=lambda: self.send_output_pulse(reward_side="right")).grid(row=0, column=5, padx=4)
+        rewards = ttk.Frame(trig)
+        rewards.grid(row=0, column=4, rowspan=2, padx=4)
+        ttk.Button(rewards, text="Left Reward", command=lambda: self.send_output_pulse(reward_side="left")).grid(row=0, column=0, pady=4, sticky="ew")
+        ttk.Button(rewards, text="Right Reward", command=lambda: self.send_output_pulse(reward_side="right")).grid(row=1, column=0, pady=4, sticky="ew")
+        self._entry(rewards, 1, "Pulse ms", self.pulse_ms, width=6, row=0)
+        self._entry(rewards, 1, "Pulse ms", self.right_pulse_ms, width=6, row=1)
         ttk.Checkbutton(trig, text="Play sound", variable=self.play_sound_on_crossing).grid(row=0, column=6, padx=8)
         self._entry(trig, 7, "Threshold V", self.threshold_v, width=6)
-        self._entry(trig, 9, "Pulse ms", self.pulse_ms, width=6)
         self._entry(trig, 0, "Sound id", self.sound_id, width=6, row=1)
         self._entry(trig, 2, "Level", self.sound_level, width=6, row=1)
         self._entry(trig, 7, "Light TTL ms", self.light_ttl_pulse_ms, width=6, row=1)
-        ttk.Button(trig, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=1, column=4, padx=8, pady=4)
+        ttk.Button(trig, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=0, column=5, padx=8, pady=4)
         self.dmts_random_match_check = ttk.Checkbutton(trig, text="Random DMTS sounds", variable=self.dmts_random_match_trials)
         self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
         ttk.Label(trig, textvariable=self.behavior_channel_var).grid(row=2, column=0, columnspan=4, padx=6, pady=(2, 4), sticky="w")
@@ -466,7 +470,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.tac_left_threshold_widgets = self._entry(trial, 0, "Left thresh", self.tac_left_threshold, width=6, row=13)
         self.tac_right_threshold_widgets = self._entry(trial, 2, "Right thresh", self.tac_right_threshold, width=6, row=13)
         self.tac_min_lick_count_widgets = self._entry(trial, 0, "Choice licks", self.tac_min_lick_count, width=6, row=14)
-        for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms):
+        for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms, self.right_pulse_ms):
             var.trace_add("write", lambda *_: self.update_trial_duration())
         self.task_type.trace_add("write", lambda *_: (self.update_task_parameter_visibility(), self.update_trial_duration(), self.update_behavior_readouts()))
         self.trigger_type.trace_add("write", lambda *_: (self.update_task_parameter_visibility(), self.update_behavior_readouts()))
@@ -767,7 +771,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             reward_end_s = (
                 self.parse_float(self.response_window_s, 0)
                 + self.parse_float(self.reward_delay_s, 0)
-                + self.parse_float(self.pulse_ms, 0) / 1000.0
+                + max(self.get_reward_pulse_s("left"), self.get_reward_pulse_s("right"))
             )
             total = max(sound_end_s, reward_end_s)
         self.trial_duration_s.set(f"{total:g}")
@@ -1003,6 +1007,9 @@ class BehaviorAcquisitionApp(tk.Tk):
     def apply_imported_parameters(self, params):
         # Prefer the canonical key when both old and new names are present.
         params = dict(params)
+        # Legacy protocols specify one duration for both valves.
+        if "Rewardduration_ms" in params:
+            params.setdefault("RightRewardduration_ms", params["Rewardduration_ms"])
         if str(params.get("TaskType", "")).lower() == "dmts":
             params.setdefault("TACLeftChannel", "ai0")
             params.setdefault("TACRightChannel", "ai1")
@@ -1042,6 +1049,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "ResponseWindow_s": self.response_window_s,
             "RewardDelay_s": self.reward_delay_s,
             "Rewardduration_ms": self.pulse_ms,
+            "RightRewardduration_ms": self.right_pulse_ms,
             "LightTTLPulse_ms": self.light_ttl_pulse_ms,
             "RewardProb": self.reward_go,
             "HIT": self.hit_threshold_s,
@@ -1747,6 +1755,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "ResponseWindow_s": self.response_window_s.get(),
             "RewardDelay_s": self.reward_delay_s.get(),
             "Rewardduration_ms": self.pulse_ms.get(),
+            "RightRewardduration_ms": self.right_pulse_ms.get(),
             "LightTTLPulse_ms": self.light_ttl_pulse_ms.get(),
             "HIT": self.hit_threshold_s.get(),
             "HITThreshold_percent": self.hit_threshold_s.get(),
@@ -1823,6 +1832,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "ResponseWindow_s",
             "RewardDelay_s",
             "Rewardduration_ms",
+            "RightRewardduration_ms",
             "LightTTLPulse_ms",
             "HIT",
             "HITThreshold_percent",
@@ -1940,6 +1950,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "response_window_s": self.parse_float_value(params["ResponseWindow_s"], 2),
             "reward_delay_s": self.parse_float_value(params["RewardDelay_s"], 0),
             "reward_duration_ms": self.parse_float_value(params["Rewardduration_ms"], 50),
+            "right_reward_duration_ms": self.parse_float_value(params["RightRewardduration_ms"], 50),
             "reward_go": params["RewardGo"],
             "reward_prob": params["RewardProb"],
             "left_reward_line": params["LeftRewardLine"],
@@ -2075,7 +2086,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         delay_s = max(0.0, self.parse_float(self.delay_s, 0))
         response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
         reward_delay_s = max(0.0, self.parse_float(self.reward_delay_s, 0))
-        reward_duration_s = max(0.0, self.parse_float(self.pulse_ms, 50) / 1000.0)
+        reward_duration_s = max(self.get_reward_pulse_s("left"), self.get_reward_pulse_s("right"))
         self.active_trial_index = self.trial_index
         self.active_trial_start_s = trigger_time_s
         self.active_response_end_s = None
@@ -3107,7 +3118,7 @@ class BehaviorAcquisitionApp(tk.Tk):
 
     def send_reward_pulses(self, count, from_worker=False, start_s=None, reward_side="left"):
         count = max(1, int(count))
-        pulse_s = max(0.0, self.parse_float(self.pulse_ms, 50) / 1000.0)
+        pulse_s = self.get_reward_pulse_s(reward_side)
         for index in range(count):
             pulse_start_s = start_s
             if start_s is not None:
@@ -3140,7 +3151,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_pending_reward_probability = reward_probability
         self.active_pending_reward_draw = draw
         self.active_pending_reward_side = reward_side
-        reward_duration_s = max(0.0, self.parse_float(self.pulse_ms, 50) / 1000.0)
+        reward_duration_s = self.get_reward_pulse_s(reward_side)
         if self.active_trial_end_s is not None:
             self.active_trial_end_s = max(self.active_trial_end_s, reward_start_s + reward_duration_s)
         self.plot_queue.put((
@@ -3298,8 +3309,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         else:
             self.log(msg)
 
+    def get_reward_pulse_s(self, reward_side="left"):
+        duration = self.right_pulse_ms if reward_side == "right" else self.pulse_ms
+        return max(0.0, self.parse_float(duration, 50) / 1000.0)
+
     def send_output_pulse(self, from_worker=False, start_s=None, reward_side="left"):
-        pulse_s = max(0, self.parse_float(self.pulse_ms, 50) / 1000.0)
+        pulse_s = self.get_reward_pulse_s(reward_side)
         self.record_trigger_pulse(pulse_s, start_s=start_s)
         pulse_ok = False
         try:
@@ -3931,6 +3946,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("SoundDuration_s", params["SoundDuration_s"]),
             ("ResponseWindow_s", params["ResponseWindow_s"]),
             ("Rewardduration_ms", params["Rewardduration_ms"]),
+            ("RightRewardduration_ms", params["RightRewardduration_ms"]),
             ("HIT", params["HIT"]),
             ("RewardGo", params["RewardGo"]),
             ("RewardProb", params["RewardProb"]),

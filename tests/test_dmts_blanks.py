@@ -12,7 +12,7 @@ from test_dmts_protocol_generator import GeneratorHarness
 import protocol_generator as pg
 
 
-NAMES = {"start_active_dmts_trial", "choose_dmts_trial_sound_ids",
+NAMES = {"start_active_dmts_trial", "choose_dmts_trial_sound_ids", "get_reward_pulse_s",
          "generate_sequence", "_parse_number_list", "consume_next_dmts_trial_type",
          "nwb_contract_trial_anchor_s", "nwb_contract_hmcf", "nwb_contract_trial_type"}
 METHODS = load_methods("pyBEHAVIOR_v7.py", NAMES)
@@ -22,10 +22,11 @@ METHODS.update(math=math, random=random)
 class DMTSBlankTests(unittest.TestCase):
     def test_blank_is_silent_records_licks_and_keeps_normal_timing(self):
         app, row = harness()
-        for name in ("start_active_dmts_trial", "choose_dmts_trial_sound_ids"):
+        for name in ("start_active_dmts_trial", "choose_dmts_trial_sound_ids", "get_reward_pulse_s"):
             setattr(app, name, MethodType(METHODS[name], app))
         app.sound_duration_s, app.delay_s = Var("0.2"), Var("1")
         app.response_window_s, app.reward_delay_s, app.pulse_ms = Var("1"), Var("0.1"), Var("40")
+        app.right_pulse_ms = Var("40")
         app.parse_float = lambda var, default: float(var.get())
         app.trial_index = 1
         app.start_trial_state_interval = Mock()

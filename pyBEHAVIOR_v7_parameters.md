@@ -47,6 +47,8 @@ The GUI `Channels` field should include `ai6,ai5,ai1,ai0` for the current rig la
 
 Reward outputs use two digital lines. Left/default rewards use `Device/port2/line6`; right rewards use `Device/port2/line7`. The GUI has manual **Left Reward** and **Right Reward** buttons for single pulses, plus **100 Left** and **100 Right** buttons for reward-train testing.
 
+Each reward button has its own **Pulse ms** entry, used for manual pulses, automatic rewards, and reward trains on that side. `Rewardduration_ms` stores the left/default duration and `RightRewardduration_ms` stores the right duration. Importing an older protocol with only `Rewardduration_ms` sets both sides to that duration. Trial timing reserves enough time for either valve when the reward side is not yet known.
+
 ## Classic Go/No-Go
 
 Saved with:
