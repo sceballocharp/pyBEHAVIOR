@@ -2,7 +2,7 @@
 import ast
 import os
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 import unittest
 from unittest.mock import Mock, mock_open, patch
 
@@ -93,6 +93,47 @@ for name in NAMES:
 
 
 class LeverModeTests(unittest.TestCase):
+    def test_bonus_probability_and_other_modes(self):
+        methods = load_methods("pyBEHAVIOR_v7.py", {
+            "maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side",
+        })
+        methods["random"] = SimpleNamespace(random=lambda: 0.75)
+        cases = [
+            # mode, release time, RewardGo, output enabled, expected pulses
+            ("bonus", 0.75, 0.5, True, 3),
+            ("bonus", 1.25, 0.5, True, 3),
+            ("bonus", 1.0, 0, True, 3),
+            ("bonus", 1.5, 0.5, True, 0),
+            ("bonus", 1.5, 0.8, True, 1),
+            ("bonus", 1.5, 0, True, 0),
+            ("bonus", 1.0, 0.5, False, 0),
+            ("bonus", 0.74, 1, True, 0),
+            ("simple", 1.5, 0.5, True, 0),
+            ("simple", 1.5, 1, True, 1),
+            ("window", 1.1, 0.5, True, 0),
+            ("window", 1.1, 1, True, 1),
+        ]
+        for mode, release, probability, enabled, pulses in cases:
+            with self.subTest(mode=mode, release=release, probability=probability, enabled=enabled):
+                app = LeverHarness(mode)
+                app.row["TrialType"] = "Lever"
+                app.active_reward_decided = False
+                app.reward_go = Var(probability)
+                app.trigger_output_on_crossing = Var(enabled)
+                app.parse_float = lambda var, default: float(var.get())
+                app.send_reward_pulses = Mock()
+                for name in ("maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side"):
+                    setattr(app, name, MethodType(methods[name], app))
+                app.evaluate_active_lever_trial(min(1.0, release - 0.001))
+                app.release(release)
+                self.assertEqual(app.row["HIT"], int(release >= 0.75))
+                if pulses:
+                    app.send_reward_pulses.assert_called_once()
+                    self.assertEqual(app.send_reward_pulses.call_args.args[0], pulses)
+                    self.assertEqual(app.send_reward_pulses.call_args.kwargs["reward_side"], "left")
+                else:
+                    app.send_reward_pulses.assert_not_called()
+
     def test_window_boundaries_and_single_reward(self):
         for release, hit in [(0.99, False), (1.0, True), (1.1, True), (1.25, True), (1.26, False), (3, False)]:
             with self.subTest(release=release):

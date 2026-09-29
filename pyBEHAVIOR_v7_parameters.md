@@ -143,11 +143,13 @@ TaskType=Lever
 | `LeverReqRelWindow` | Require release within window | Default `0`. When `1`, release from `LeverHoldTime_s` through `LeverHoldTime_s + LeverReleaseWindow_s` (inclusive) scores HIT with one reward opportunity. Early or late release scores MISS. |
 | `LeverReleaseWindow_s` | Release window s | Timing window around `LeverHoldTime_s`. With Require release + bonus enabled, releases before `LeverHoldTime_s - LeverReleaseWindow_s` are MISS. Releases within `LeverHoldTime_s +/- LeverReleaseWindow_s` are HIT and send three reward pulses total. Releases later than this window still count as HIT and send the normal single reward pulse. |
 | `Rewardduration_ms` | Reward duration ms | Water valve/trigger pulse duration in ms. |
-| `RewardGo` | RewardGo Prob | Probability that a successful lever response is rewarded, from `0` to `1`. |
+| `RewardGo` | RewardGo Prob | Probability that a successful lever response is rewarded, from `0` to `1`. In Release + bonus mode, applies only to late-release single rewards; in-window triple rewards have probability `1`. Other lever modes use this probability for every HIT. |
 
 Lever trials also require a clean reset between trials: after the trial ends and the ITI has elapsed, the lever signal must be observed below `LeverThreshold` before the next upward crossing can start a new trial. A new lever press must then remain above `LeverThreshold` for `LeverStartDebounce_s` before the trial is accepted, preventing single-sample noise from starting trials. The live plot shows both the lever/IR fork signal from `ai6` and licks from `ai0`; only `ai6` controls the lever behavior.
 
 With Require release + bonus enabled, `LeverReleaseWindow_s` controls the timing zone around the target hold time. For example, with `LeverHoldTime_s=1.0` and `LeverReleaseWindow_s=0.25`, releasing before `0.75` s is MISS, releasing from `0.75` to `1.25` s is HIT with three reward pulses total, and releasing after `1.25` s remains a HIT but sends only one reward pulse.
+
+In this example, `RewardGo=0.5` rewards approximately half of late releases with one pulse, while every in-window release receives three pulses. `RewardGo=0` disables late-release rewards but preserves triple rewards. The GUI **Trigger reward** switch must still be enabled for any automatic reward. A HIT stays a HIT when its single reward is probabilistically omitted.
 
 ## DMTS
 

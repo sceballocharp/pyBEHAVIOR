@@ -3089,6 +3089,14 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_reward_decided = True
         reward_count = max(1, int(reward_count))
         reward_probability = min(1.0, max(0.0, self.parse_float(self.reward_go, 1.0)))
+        if (
+            self.is_lever_task()
+            and self.lever_require_release.get()
+            and not self.lever_req_rel_window.get()
+            and reward_count == 3
+        ):
+            # In-window bonus releases are guaranteed; RewardGo gates late releases only.
+            reward_probability = 1.0
         draw = random.random()
         if self.is_lick_trigger() or self.is_tac_task():
             measure = f"{int(total_s)} licks"
