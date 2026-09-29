@@ -641,7 +641,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         is_tac_family = self.is_tac_family_task()
         is_lick = self.is_lick_trigger()
         is_classic = not is_lever and not is_dmts and not is_tac_family
-        self.set_widget_pair_visible(self.reward_go_widgets, not is_lever and not is_tac_pretraining, row=1, col=0)
+        self.set_widget_pair_visible(self.reward_go_widgets, not is_tac_pretraining, row=1, col=0)
         self.set_widget_pair_visible(self.pavlov_widgets, is_classic or is_dmts or is_tac, row=1, col=2)
         self.set_widget_pair_visible(self.iti_widgets, not is_tac_pretraining, row=2, col=0)
         self.set_widget_pair_visible(self.iti_rand_min_widgets, not is_tac_pretraining, row=2, col=2)
