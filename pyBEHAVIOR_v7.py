@@ -2601,6 +2601,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         if hit or (cr and self.is_lick_trigger()):
             measure = float(row.get("lick_count") or self.active_crossing_total_s)
             self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
+        if same_sound and not self.is_active_dmts_blank():
+            self.maybe_send_pavlov_reward(row, start_s=reward_start_s)
         self.set_trial_end_time(row, self.active_trial_end_s if self.active_trial_end_s is not None else reward_start_s)
         self.write_trial_log()
         self.store_trial_crossing_duration(row)
@@ -3208,12 +3210,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.active_reward_sent = True
             self.plot_queue.put((
                 "log",
-                f"Trial {row['trial']} GO Pavlov reward sent, p={pavlov_probability:.3f}, draw={draw:.3f}.",
+                f"Trial {row['trial']} {row['TrialType']} Pavlov reward sent, p={pavlov_probability:.3f}, draw={draw:.3f}.",
             ))
         else:
             self.plot_queue.put((
                 "log",
-                f"Trial {row['trial']} GO Pavlov reward skipped, p={pavlov_probability:.3f}, draw={draw:.3f}.",
+                f"Trial {row['trial']} {row['TrialType']} Pavlov reward skipped, p={pavlov_probability:.3f}, draw={draw:.3f}.",
             ))
 
     def get_active_trial_row(self):

@@ -36,7 +36,7 @@ def harness(match=True, lick=True, minimum=2):
     )
     for name in NAMES:
         setattr(app, name, MethodType(METHODS[name], app))
-    for name in ("write_trial_log", "set_trial_end_time", "store_trial_crossing_duration", "maybe_send_go_reward"):
+    for name in ("write_trial_log", "set_trial_end_time", "store_trial_crossing_duration", "maybe_send_go_reward", "maybe_send_pavlov_reward"):
         setattr(app, name, Mock())
     return app, row
 
