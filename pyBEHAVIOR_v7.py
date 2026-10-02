@@ -100,6 +100,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.trigger_pulses = []
         self.sound_outputs = []
         self.trial_state_intervals = []
+        self.dmts_plot_windows = []
         self.full_trigger_pulses = []
         self.full_sound_outputs = []
         self.behavior_signal_file = None
@@ -1372,6 +1373,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.trigger_pulses.clear()
         self.sound_outputs.clear()
         self.trial_state_intervals.clear()
+        self.dmts_plot_windows.clear()
         self.full_trigger_pulses.clear()
         self.full_sound_outputs.clear()
         self.current_behavior_baseline = 0.0
@@ -2094,6 +2096,16 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_dmts_response_end_s = self.active_dmts_response_start_s + response_window_s
         self.active_dmts_reward_start_s = self.active_dmts_response_end_s + reward_delay_s
         self.active_trial_end_s = self.active_dmts_reward_start_s + reward_duration_s
+        # Keep recent timing markers after the active trial has been cleared.
+        oldest = trigger_time_s - max(1, self.parse_float(self.window_s, 10)) * 2
+        self.dmts_plot_windows = [
+            window for window in self.dmts_plot_windows if window[2] >= oldest
+        ]
+        self.dmts_plot_windows.append((
+            self.active_dmts_response_start_s,
+            self.active_dmts_response_end_s,
+            self.active_dmts_reward_start_s,
+        ))
         self.active_high_start_s = None
         self.active_crossing_total_s = 0.0
         self.active_lick_count = 0
@@ -2522,6 +2534,19 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         if self.is_lick_trigger():
             self.record_dmts_lick_choices(lick_crossings)
+            if (
+                is_match_trial
+                and not self.is_active_dmts_blank()
+                and self.active_choice_side == "left"
+                and not self.active_reward_decided
+            ):
+                row = self.get_active_trial_row()
+                if row is not None:
+                    # The first qualifying choice is locked, so this HIT cannot
+                    # be reversed by later licks. Keep the full response window.
+                    self.maybe_send_go_reward(
+                        row, float(self.active_left_lick_count), start_s=sample_time_s,
+                    )
         elif crossed_up:
             self.active_high_start_s = sample_time_s
         elif crossed_down:
@@ -2598,7 +2623,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             for outcome in ("HIT", "MISS", "CR", "FA"):
                 row[outcome] = 0
             row["ResultType"] = "BLANK"
-        if hit or (cr and self.is_lick_trigger()):
+        if (hit or (cr and self.is_lick_trigger())) and not self.active_reward_decided:
             measure = float(row.get("lick_count") or self.active_crossing_total_s)
             self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
         if same_sound and not self.is_active_dmts_blank():
@@ -4800,6 +4825,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.plot_canvas.create_text(width - 130, legend_y, anchor="nw", text="Trigger reward", fill="#d97904")
             self.plot_canvas.create_text(width - 130, legend_y + 16, anchor="nw", text="Sound output", fill="#2ca02c")
             self.plot_canvas.create_text(width - 130, legend_y + 32, anchor="nw", text="Trial state", fill="#6f42c1")
+            if self.is_dmts_task():
+                self.plot_canvas.create_text(width - 150, legend_y + 48, anchor="nw", text="Response window", fill="#16854b")
+                self.plot_canvas.create_text(width - 150, legend_y + 64, anchor="nw", text="Scheduled reward", fill="#d97904")
         else:
             self.plot_canvas.delete("plot_dynamic")
         self.draw_iti_shading(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
@@ -4815,6 +4843,34 @@ class BehaviorAcquisitionApp(tk.Tk):
             if len(points) >= 4:
                 self.plot_canvas.create_line(*points, fill=color, width=2, tags=("plot_dynamic",))
         self.draw_since_last_trial_timer(max_t, width)
+        self.draw_dmts_window_markers(min_t, max_t, left_pad, plot_width, x_axis_y)
+
+    def draw_dmts_window_markers(self, min_t, max_t, left_pad, plot_width, x_axis_y):
+        """Draw a few canvas shapes per visible trial, without sampled traces."""
+        if not self.is_dmts_task() or max_t <= min_t:
+            return
+        scale = plot_width / (max_t - min_t)
+        for start_s, end_s, reward_s in list(self.dmts_plot_windows):
+            if end_s > min_t and start_s < max_t:
+                x0 = left_pad + (max(start_s, min_t) - min_t) * scale
+                x1 = left_pad + (min(end_s, max_t) - min_t) * scale
+                self.plot_canvas.create_rectangle(
+                    x0, x_axis_y - 7, x1, x_axis_y - 2,
+                    fill="#16854b", outline="", tags=("plot_dynamic",),
+                )
+                for boundary in (start_s, end_s):
+                    if min_t <= boundary <= max_t:
+                        x = left_pad + (boundary - min_t) * scale
+                        self.plot_canvas.create_line(
+                            x, x_axis_y - 11, x, x_axis_y - 2,
+                            fill="#16854b", width=2, tags=("plot_dynamic",),
+                        )
+            if min_t <= reward_s <= max_t:
+                x = left_pad + (reward_s - min_t) * scale
+                self.plot_canvas.create_line(
+                    x, x_axis_y - 18, x, x_axis_y - 9,
+                    fill="#d97904", width=2, tags=("plot_dynamic",),
+                )
 
     def draw_iti_shading(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
         if self.last_trial_end_time_s <= -1e11 or self.next_trial_allowed_time_s <= self.last_trial_end_time_s:
