@@ -16,19 +16,19 @@ class DMTSPlotMarkerTests(unittest.TestCase):
         app.draw = MethodType(DRAW, app)
         return app
 
-    def test_clips_band_and_only_draws_visible_boundaries(self):
+    def test_clips_shading_and_only_draws_visible_boundaries(self):
         app = self.app([(1, 4, 5), (-10, -8, -7), (12, 14, 15)])
-        app.draw(2, 6, 40, 400, 200)
+        app.draw(2, 6, 40, 12, 400, 200)
         app.plot_canvas.create_rectangle.assert_called_once_with(
-            40, 193, 240, 198, fill="#16854b", outline="", tags=("plot_dynamic",))
+            40, 12, 240, 200, fill="#fff0db", outline="", tags=("plot_dynamic",))
         self.assertEqual(app.plot_canvas.create_line.call_count, 2)
-        self.assertEqual(app.plot_canvas.create_line.call_args_list[0].args, (240, 189, 240, 198))
+        self.assertEqual(app.plot_canvas.create_line.call_args_list[0].args, (240, 12, 240, 200))
         self.assertEqual(app.plot_canvas.create_line.call_args_list[1].args, (340, 182, 340, 191))
 
     def test_other_tasks_and_zero_time_span_draw_nothing(self):
         for dmts, end in ((False, 6), (True, 2)):
             app = self.app([(1, 4, 5)], dmts)
-            app.draw(2, end, 40, 400, 200)
+            app.draw(2, end, 40, 12, 400, 200)
             self.assertEqual(app.plot_canvas.mock_calls, [])
 
 

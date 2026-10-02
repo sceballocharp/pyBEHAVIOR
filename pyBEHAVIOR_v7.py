@@ -4826,11 +4826,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.plot_canvas.create_text(width - 130, legend_y + 16, anchor="nw", text="Sound output", fill="#2ca02c")
             self.plot_canvas.create_text(width - 130, legend_y + 32, anchor="nw", text="Trial state", fill="#6f42c1")
             if self.is_dmts_task():
-                self.plot_canvas.create_text(width - 150, legend_y + 48, anchor="nw", text="Response window", fill="#16854b")
+                self.plot_canvas.create_text(width - 150, legend_y + 48, anchor="nw", text="Response window", fill="#d97904")
                 self.plot_canvas.create_text(width - 150, legend_y + 64, anchor="nw", text="Scheduled reward", fill="#d97904")
         else:
             self.plot_canvas.delete("plot_dynamic")
         self.draw_iti_shading(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
+        self.draw_dmts_window_markers(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
         self.draw_trial_state_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
         self.draw_trigger_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y)
         self.draw_sound_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
@@ -4843,9 +4844,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             if len(points) >= 4:
                 self.plot_canvas.create_line(*points, fill=color, width=2, tags=("plot_dynamic",))
         self.draw_since_last_trial_timer(max_t, width)
-        self.draw_dmts_window_markers(min_t, max_t, left_pad, plot_width, x_axis_y)
 
-    def draw_dmts_window_markers(self, min_t, max_t, left_pad, plot_width, x_axis_y):
+    def draw_dmts_window_markers(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
         """Draw a few canvas shapes per visible trial, without sampled traces."""
         if not self.is_dmts_task() or max_t <= min_t:
             return
@@ -4855,15 +4855,15 @@ class BehaviorAcquisitionApp(tk.Tk):
                 x0 = left_pad + (max(start_s, min_t) - min_t) * scale
                 x1 = left_pad + (min(end_s, max_t) - min_t) * scale
                 self.plot_canvas.create_rectangle(
-                    x0, x_axis_y - 7, x1, x_axis_y - 2,
-                    fill="#16854b", outline="", tags=("plot_dynamic",),
+                    x0, top_pad, x1, x_axis_y,
+                    fill="#fff0db", outline="", tags=("plot_dynamic",),
                 )
                 for boundary in (start_s, end_s):
                     if min_t <= boundary <= max_t:
                         x = left_pad + (boundary - min_t) * scale
                         self.plot_canvas.create_line(
-                            x, x_axis_y - 11, x, x_axis_y - 2,
-                            fill="#16854b", width=2, tags=("plot_dynamic",),
+                            x, top_pad, x, x_axis_y,
+                            fill="#d97904", dash=(4, 3), tags=("plot_dynamic",),
                         )
             if min_t <= reward_s <= max_t:
                 x = left_pad + (reward_s - min_t) * scale
