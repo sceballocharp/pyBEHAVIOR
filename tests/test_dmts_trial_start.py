@@ -9,6 +9,7 @@ from test_lever_modes import load_methods, Var
 
 METHODS = load_methods("pyBEHAVIOR_v7.py", {
     "check_trigger", "apply_trial_timeout", "finish_active_dmts_timeline",
+    "update_dmts_lapse_state",
 })
 
 
@@ -89,6 +90,32 @@ class DMTSTrialStartTests(unittest.TestCase):
         app.trial_index = 3
         app.check_trigger([0, 1], [0, 0])
         app.create_trial.assert_not_called()
+
+    def test_reminder_can_complete_at_max_trials(self):
+        app = harness()
+        app.trial_index = 3
+        app.dmts_reminder_remaining = 3
+        app.check_trigger([0], [0])
+        app.create_trial.assert_called_once()
+
+    def test_final_unresponsive_reminder_finishes_then_requests_stop(self):
+        app = harness()
+        app.running = True
+        app.active_trial_index = 1
+        app.active_trial_end_s = 10
+        app.active_dmts_reminder = True
+        app.dmts_reminder_remaining = 1
+        app.dmts_reminder_engaged = False
+        app.active_left_lick_count = app.active_right_lick_count = 0
+        app.get_active_trial_row = Mock(return_value={
+            "trial": 1, "TrialType": "DMTS-match", "ResultType": "MISS",
+        })
+        app.check_trigger([10, 20], [0, 0])
+        self.assertFalse(app.running)
+        self.assertIsNone(app.active_trial_index)
+        app.create_trial.assert_not_called()
+        app.write_trial_log.assert_called_once()
+        self.assertIn(("stop_session", None), list(app.plot_queue.queue))
 
     def test_irfork_still_needs_reset_and_crossing(self):
         app = harness(lick=False)

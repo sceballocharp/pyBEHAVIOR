@@ -1251,6 +1251,11 @@ class BehaviorAcquisitionApp(tk.Tk):
                 return
         self.clear_buffers()
         self.running = True
+        self.dmts_match_miss_streak = 0
+        self.dmts_reminder_remaining = 0
+        self.dmts_reminder_engaged = False
+        self.dmts_lapse_stop_requested = False
+        self.active_dmts_reminder = False
         self.irfork_was_high = False
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
@@ -1552,6 +1557,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         threshold = self.get_current_trigger_threshold()
 
         for sample_index, (sample_time_s, value) in enumerate(zip(times, ir_values)):
+            if getattr(self, "dmts_lapse_stop_requested", False):
+                break
             if self.is_lever_task():
                 self.check_lever_trigger_sample(sample_time_s, value, threshold)
                 continue
@@ -1577,6 +1584,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                     self.finish_active_dmts_timeline(self.active_trial_end_s)
                 else:
                     self.finish_active_trial(self.active_trial_end_s)
+                if getattr(self, "dmts_lapse_stop_requested", False):
+                    break
 
             is_high = value >= threshold
             crossed_up = is_high and not self.irfork_was_high
@@ -1621,7 +1630,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                     continue
 
             max_trials = max(0, self.parse_int(self.max_trials, 0))
-            if max_trials and self.trial_index >= max_trials:
+            if max_trials and self.trial_index >= max_trials and not (auto_start_dmts and getattr(self, "dmts_reminder_remaining", 0)):
                 if not auto_start_dmts:
                     self.plot_queue.put(("log", f"Accepted crossing ignored: max trials {max_trials} reached."))
                 continue
@@ -1904,6 +1913,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "CR": "",
             "FA": "",
             "ResultType": "",
+            "dmts_reminder": 0,
             "light_code": light_code,
             "sound_id": sound_id,
             "stimulus_mode": stimulus_mode,
@@ -2084,6 +2094,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.start_trial_state_interval(trigger_time_s)
 
     def start_active_dmts_trial(self, trigger_time_s, iti_s, sample_sound_id=None, test_sound_id=None):
+        self.active_dmts_reminder = bool(getattr(self, "dmts_reminder_remaining", 0))
+        row = self.get_active_trial_row()
+        if row is not None:
+            row["dmts_reminder"] = int(self.active_dmts_reminder)
         sound_duration_s = max(0.0, self.parse_float(self.sound_duration_s, 0))
         delay_s = max(0.0, self.parse_float(self.delay_s, 0))
         response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
@@ -2713,10 +2727,38 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.set_trial_end_time(row, trial_end_s)
             self.apply_trial_timeout(row, trial_end_s)
             self.store_trial_crossing_duration(row)
+            self.update_dmts_lapse_state(row)
         self.write_trial_log()
         self.plot_queue.put(("results", None))
         self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
+        if getattr(self, "dmts_lapse_stop_requested", False):
+            self.plot_queue.put(("stop_session", None))
+
+    def update_dmts_lapse_state(self, row):
+        if not self.is_lick_trigger():
+            return
+        if getattr(self, "active_dmts_reminder", False):
+            engaged = self.active_left_lick_count > 0 or self.active_right_lick_count > 0
+            self.dmts_reminder_engaged = self.dmts_reminder_engaged or engaged
+            self.dmts_reminder_remaining -= 1
+            self.plot_queue.put(("log", f"DMTS reminder trial {row['trial']} completed; response-window licking={int(engaged)}, remaining={self.dmts_reminder_remaining}."))
+            if not self.dmts_reminder_remaining:
+                self.dmts_match_miss_streak = 0
+                if self.dmts_reminder_engaged:
+                    self.plot_queue.put(("log", "DMTS reminder complete: licking resumed; returning to normal trials."))
+                else:
+                    self.dmts_lapse_stop_requested = True
+                    self.running = False
+                    self.plot_queue.put(("log", "DMTS stopping: no response-window licking during 3 reminder trials."))
+            return
+        if not str(row.get("TrialType", "")).endswith("DMTS-match"):
+            return
+        self.dmts_match_miss_streak = getattr(self, "dmts_match_miss_streak", 0) + 1 if row.get("ResultType") == "MISS" else 0
+        if self.dmts_match_miss_streak >= 5:
+            self.dmts_reminder_remaining = 3
+            self.dmts_reminder_engaged = False
+            self.plot_queue.put(("log", "DMTS: 5 consecutive match misses; next 3 trials are match-only with guaranteed Pavlov reward (when output is enabled)."))
 
     def start_active_lever_trial(self, trigger_time_s, iti_s):
         self.active_trial_index = self.trial_index
@@ -3226,7 +3268,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def maybe_send_pavlov_reward(self, row, start_s=None):
         if self.active_reward_sent or self.active_pending_reward_due_s is not None:
             return
-        pavlov_probability = self.get_pavlov_probability()
+        pavlov_probability = 1.0 if getattr(self, "active_dmts_reminder", False) and "DMTS-match" in str(row.get("TrialType", "")) else self.get_pavlov_probability()
         if pavlov_probability <= 0:
             return
         draw = random.random()
@@ -3694,6 +3736,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         return sound_id
 
     def consume_next_dmts_trial_type(self):
+        if getattr(self, "dmts_reminder_remaining", 0) and self.is_lick_trigger():
+            return 1
         trial_type_id = int(self.consume_next_sound_id())
         return trial_type_id if trial_type_id in (0, 1, 2) else 1
 
@@ -4326,6 +4370,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                 elif kind == "health":
                     health_pending = True
                     health_payload = payload
+                elif kind == "stop_session":
+                    self.stop_live()
         except queue.Empty:
             pass
         if results_pending:
