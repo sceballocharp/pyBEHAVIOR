@@ -50,7 +50,13 @@ The selected local config and PYNQ library must match. A fingerprint compares
 LED labels, irradiances, device ID, pulse settings and extension-cable setting.
 Changing the local YAML requires uploading it and restarting the remote driver.
 Unknown IDs, mismatched libraries and unexpected driver phases stop the Behavior
-session with a recorded error. Manually stopping an unscored LED trial records
+session with a recorded error. A presentation already in progress is allowed up
+to one additional second to complete. Any completion wait moves the response,
+reward and trial-end boundaries later by the same amount; it preserves response
+window length and excludes responses before confirmed completion. The wait is
+saved as `dmts_light_timing_extension_s` in CSV/NWB and logged in the GUI. This
+PC-side change requires restarting pyBEHAVIOR, with no PYNQ file update.
+Manually stopping an unscored LED trial records
 ABORTED rather than awarding a reward.
 
 ## YAML format

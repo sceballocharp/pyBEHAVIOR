@@ -1961,6 +1961,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "dmts_light_trial_id": "",
             "dmts_light_fingerprint": "",
             "dmts_light_confirmed": 0,
+            "dmts_light_timing_extension_s": 0.0,
             "dmts_light_error": "",
             "lick_count": "",
             "left_lick_count": "",
@@ -2274,13 +2275,35 @@ class BehaviorAcquisitionApp(tk.Tk):
 
     def trigger_dmts_light_phase(self, phase):
         try:
-            self.dmts_light_client.require_phase(self._dmts_light_active, 'waiting_' + phase)
+            status = self.dmts_light_client.require_phase(
+                self._dmts_light_active, 'waiting_' + phase,
+                completion_timeout=1.0 if phase == 'test' else 0)
+            if phase == 'test':
+                self.extend_dmts_light_timeline(status.get('completion_wait_s', 0), shift_test=True)
             if not self.send_light_trigger_pulse(from_worker=True):
                 raise RuntimeError('NI light trigger failed')
             return True
         except Exception as exc:
             self.fail_dmts_light_trial(exc)
             return False
+
+    def extend_dmts_light_timeline(self, extension_s, shift_test=False):
+        if extension_s <= 0:
+            return
+        names = ['active_dmts_response_start_s', 'active_dmts_response_end_s',
+                 'active_dmts_reward_start_s', 'active_trial_end_s']
+        if shift_test:
+            names.append('active_dmts_test_sound_time_s')
+        for name in names:
+            value = getattr(self, name, None)
+            if value is not None:
+                setattr(self, name, value + extension_s)
+        if getattr(self, 'dmts_plot_windows', None):
+            self.dmts_plot_windows[-1] = tuple(value + extension_s for value in self.dmts_plot_windows[-1])
+        row = self.get_active_trial_row()
+        if row is not None:
+            row['dmts_light_timing_extension_s'] = row.get('dmts_light_timing_extension_s', 0) + extension_s
+        self.plot_queue.put(('log', f'DMTS LED completion wait: {extension_s * 1000:.0f} ms; response window moved later.'))
 
     def is_tac_task(self):
         value = self.task_type.get().strip().lower()
@@ -2665,12 +2688,16 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         if getattr(self, 'dmts_light_client', None) is not None and not getattr(self, '_dmts_light_test_confirmed', False):
             try:
-                self.dmts_light_client.require_phase(self._dmts_light_active, 'idle')
+                status = self.dmts_light_client.require_phase(self._dmts_light_active, 'idle', completion_timeout=1.0)
+                self.extend_dmts_light_timeline(status.get('completion_wait_s', 0))
                 self._dmts_light_test_confirmed = True
                 row = self.get_active_trial_row()
                 if row is not None:
                     row['dmts_light_confirmed'] = 1
                     self.write_trial_log()
+                response_start_s = self.active_dmts_response_start_s
+                if sample_time_s < response_start_s:
+                    return
             except Exception as exc:
                 self.fail_dmts_light_trial(exc)
                 return
@@ -4133,6 +4160,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.replace_hdf5_dataset(trials, "test_sound_ids", test_sound_ids)
             for column in ('sample_light_id', 'test_light_id', 'dmts_light_confirmed'):
                 self.replace_hdf5_dataset(trials, column, [int(row.get(column, 0) or 0) for row in trial_rows])
+            self.replace_hdf5_dataset(trials, 'dmts_light_timing_extension_s',
+                                      [float(row.get('dmts_light_timing_extension_s', 0) or 0) for row in trial_rows])
             for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error'):
                 self.replace_hdf5_dataset(trials, column, [str(row.get(column, '')) for row in trial_rows], dtype=utf8)
             self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)

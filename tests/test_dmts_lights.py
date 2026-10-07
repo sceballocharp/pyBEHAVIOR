@@ -136,6 +136,45 @@ class HTTPTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.client.require_phase(pair, 'waiting_sample')
 
+    def test_late_test_completion_across_multiple_trials(self):
+        for _ in range(12):
+            pair = self.client.prepare(2)
+            self.protocol.complete(self.protocol.claim_trigger())
+            test = self.protocol.claim_trigger()
+            timer = threading.Timer(0.04, self.protocol.complete, args=(test,))
+            timer.start()
+            try:
+                status = self.client.require_phase(pair, 'idle', completion_timeout=0.5)
+                self.assertEqual(status['phase'], 'idle')
+                self.assertGreater(status['completion_wait_s'], 0)
+            finally:
+                timer.join()
+
+    def test_stuck_test_has_bounded_timeout(self):
+        pair = self.client.prepare(1)
+        self.protocol.complete(self.protocol.claim_trigger())
+        self.protocol.claim_trigger()
+        with self.assertRaisesRegex(RuntimeError, 'timed out completing presenting_test'):
+            self.client.require_phase(pair, 'idle', completion_timeout=0.05)
+
+    def test_missing_test_trigger_still_fails_without_waiting(self):
+        pair = self.client.prepare(2)
+        self.protocol.complete(self.protocol.claim_trigger())
+        with self.assertRaisesRegex(RuntimeError, 'got waiting_test'):
+            self.client.require_phase(pair, 'idle', completion_timeout=0.5)
+
+    def test_reset_during_completion_wait_still_fails(self):
+        pair = self.client.prepare(2)
+        self.protocol.complete(self.protocol.claim_trigger())
+        self.protocol.claim_trigger()
+        timer = threading.Timer(0.04, self.protocol.reset)
+        timer.start()
+        try:
+            with self.assertRaisesRegex(RuntimeError, 'pair identity changed'):
+                self.client.require_phase(pair, 'idle', completion_timeout=0.5)
+        finally:
+            timer.join()
+
 
 class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
     async def test_held_high_is_one_trigger_and_stop_clears_pair(self):
@@ -182,7 +221,8 @@ class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
 
 class BehaviorTests(unittest.TestCase):
     def attach(self, app):
-        names = {'prepare_next_dmts_light_trial', 'trigger_dmts_light_phase', 'fail_dmts_light_trial'}
+        names = {'prepare_next_dmts_light_trial', 'trigger_dmts_light_phase', 'fail_dmts_light_trial',
+                 'extend_dmts_light_timeline'}
         for name, method in load_methods('pyBEHAVIOR_v7.py', names).items():
             if name in names:
                 setattr(app, name, MethodType(method, app))
@@ -224,6 +264,25 @@ class BehaviorTests(unittest.TestCase):
         app.maybe_send_go_reward.assert_not_called()
         app.maybe_send_pavlov_reward.assert_not_called()
         self.assertEqual(row['ResultType'], 'ERROR')
+
+    def test_late_completion_shifts_full_response_window_and_ignores_early_lick(self):
+        from test_dmts_choices import harness as choices_harness
+        app, row = choices_harness(minimum=1)
+        app = self.attach(app)
+        app.dmts_plot_windows = [(1.4, 2.4, 2.5)]
+        app._dmts_light_test_confirmed = False
+        app.dmts_light_client.require_phase.return_value = {'completion_wait_s': 0.1}
+        app.update_active_dmts_trial(1.4, False, False, False, ('left',))
+        self.assertEqual(app.active_left_lick_count, 0)
+        app.maybe_send_go_reward.assert_not_called()
+        self.assertAlmostEqual(app.active_dmts_response_start_s, 1.5)
+        self.assertAlmostEqual(app.active_dmts_response_end_s, 2.5)
+        self.assertAlmostEqual(app.active_dmts_reward_start_s, 2.6)
+        self.assertAlmostEqual(app.active_trial_end_s, 2.64)
+        self.assertAlmostEqual(row['dmts_light_timing_extension_s'], 0.1)
+        self.assertEqual(row['dmts_light_confirmed'], 1)
+        app.update_active_dmts_trial(1.51, False, False, False, ('left',))
+        self.assertEqual(app.active_left_lick_count, 1)
 
     def test_generator_yaml_loads_without_pyyaml(self):
         import json
