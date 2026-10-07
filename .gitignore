@@ -5,3 +5,4 @@ Sounds/AllSounds_from_wav.mat
 *.pyc
 *.pyc
 /Sounds
+/braincodec/__pycache__
