@@ -877,7 +877,14 @@ class BraincodecTkPanel(ttk.Frame):
     def _is_waiting_for_trigger(state: str, message: str) -> bool:
         normalized_state = str(state or "").strip().lower()
         normalized_message = str(message or "").strip().lower()
-        return normalized_state == "running" and normalized_message == "waiting for trigger"
+        waiting_messages = {
+            'waiting for trigger',
+            'dmts ready; waiting for pair',
+            'dmts waiting_sample',
+            'dmts waiting_test',
+            'dmts idle',
+        }
+        return normalized_state == "running" and normalized_message in waiting_messages
 
     @staticmethod
     def _remote_status_text(state: str, message: str) -> str:

@@ -239,6 +239,50 @@ class BehaviorTests(unittest.TestCase):
 
 
 class GUITests(unittest.TestCase):
+    def panel_harness(self, stop_pending=False):
+        from braincodec.tk_panel import BraincodecTkPanel
+        panel = SimpleNamespace(_remote_stop_pending=stop_pending,
+            _is_waiting_for_trigger=BraincodecTkPanel._is_waiting_for_trigger,
+            _remote_status_text=BraincodecTkPanel._remote_status_text)
+        for name in ('set_status', 'set_progress', 'set_info', 'add_log_line',
+                     '_stop_remote_status_polling', '_schedule_remote_status_poll',
+                     '_download_remote_log_if_available', '_download_health_scan_files_if_available'):
+            setattr(panel, name, Mock())
+        return panel
+
+    def test_ready_states_stop_background_polling(self):
+        from braincodec.tk_panel import BraincodecTkPanel
+        for message in ('Waiting for trigger', 'DMTS ready; waiting for pair',
+                        'DMTS waiting_sample', 'DMTS waiting_test', 'DMTS idle'):
+            panel = self.panel_harness()
+            BraincodecTkPanel._handle_remote_response(panel,
+                {'status': {'state': 'running', 'last_message': message}}, log_response=False)
+            panel._stop_remote_status_polling.assert_called_once()
+            panel._schedule_remote_status_poll.assert_not_called()
+
+    def test_loading_and_stop_request_continue_polling(self):
+        from braincodec.tk_panel import BraincodecTkPanel
+        for state, message, stop_pending in (
+                ('loading', 'Loading hardware and driver', False),
+                ('running', 'DMTS ready; waiting for pair', True),
+                ('stopping', 'Stop requested', True)):
+            panel = self.panel_harness(stop_pending)
+            BraincodecTkPanel._handle_remote_response(panel,
+                {'status': {'state': state, 'last_message': message}}, log_response=False)
+            panel._schedule_remote_status_poll.assert_called_once()
+            panel._stop_remote_status_polling.assert_not_called()
+
+    def test_automatic_status_reports_error_and_traceback_once(self):
+        from braincodec.tk_panel import BraincodecTkPanel
+        panel = self.panel_harness()
+        body = {'status': {'state': 'error', 'last_message': 'Experiment failed',
+                          'error': 'ModuleNotFoundError: dmts_driver',
+                          'traceback': 'Traceback: missing driver', 'started_at': 'one'}}
+        for _ in range(2):
+            BraincodecTkPanel._handle_remote_response(panel, body, log_response=False)
+        self.assertEqual(panel.add_log_line.call_count, 2)
+        panel.set_info.assert_called_with('ModuleNotFoundError: dmts_driver')
+
     def test_dmts_panel_config_upload_and_mode_switch(self):
         import tkinter as tk
         from braincodec.tk_panel import BraincodecTkPanel, MODE_DMTS, MODE_SIMPLE
