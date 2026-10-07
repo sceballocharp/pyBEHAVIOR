@@ -1,0 +1,9 @@
+# config_2
+# 30/04/2026
+
+mouse_id: 284
+device_id: 'H2-031'
+
+patterns_file: 'M284_codes_4904be24_500-to-2000_clamped-0-10_left-rot90.npy'
+patterns_max: 10 # The maximum value the patterns are scaled to. They will be scaled down to a maximum of 1 mW/mm^2.
+catch_trials: True # If true, catch trials (2-15) will be included, otherwise they will be ignored and the LEDs will not light

@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 MODE_SIMPLE = "simple_patterns"
 MODE_BRAINCODEC = "braincodec_patterns"
+MODE_DMTS = "dmts_patterns"
 
 
 class BraincodecRunnerState:
@@ -48,6 +49,23 @@ class BraincodecRunnerState:
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
             return dict(self.status)
+
+    def dmts_request(self, action, payload=None):
+        with self.lock:
+            experiment = self.experiment
+        if experiment is None or not hasattr(experiment, 'protocol') or getattr(experiment, 'stopped', False):
+            return 409, {"ok": False, "error": "DMTS driver is not running"}
+        try:
+            if action == 'prepare':
+                result = experiment.prepare_pair(payload)
+            elif action == 'reset':
+                experiment.reset_pair()
+                result = experiment.protocol.snapshot()
+            else:
+                result = experiment.protocol.snapshot()
+            return 200, {"ok": True, "dmts": result}
+        except (KeyError, ValueError, TypeError) as exc:
+            return 409, {"ok": False, "error": str(exc)}
 
     def update(self, **values: Any) -> None:
         with self.lock:
@@ -191,6 +209,9 @@ class BraincodecRunnerState:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
+            _append_dmts_startup_log(payload, {'event': 'startup_started',
+                                     'working_directory': os.getcwd(),
+                                     'config_file': payload.get('config_file')})
             self.update(state="loading", last_message="Loading hardware and driver")
             total_trials = _count_trials_if_available(payload.get("trials_file", ""))
             if total_trials:
@@ -212,15 +233,26 @@ class BraincodecRunnerState:
                 finished_at=datetime.now().isoformat(timespec="seconds"),
             )
         except Exception as exc:
+            failure_traceback = traceback.format_exc()
             self.update(
                 state="error",
                 error=f"{type(exc).__name__}: {exc}",
                 last_message="Experiment failed",
                 finished_at=datetime.now().isoformat(timespec="seconds"),
-                traceback=traceback.format_exc(),
+                traceback=failure_traceback,
             )
+            print(f"Experiment failed: {type(exc).__name__}: {exc}\n{failure_traceback}", flush=True)
+            try:
+                _append_dmts_startup_log(payload, {'event': 'startup_failed',
+                                        'error': f'{type(exc).__name__}: {exc}',
+                                        'traceback': failure_traceback})
+            except OSError:
+                # Preserve the experiment exception even if logging is unavailable.
+                pass
         finally:
             with self.lock:
+                if self.experiment is not None and hasattr(self.experiment, 'protocol'):
+                    self._request_experiment_stop(self.experiment)
                 self.experiment = None
             asyncio.set_event_loop(None)
             loop.close()
@@ -278,9 +310,17 @@ class BraincodecRunnerState:
         _patch_driver_log_file((ExpSimplePatterns, ExpBraincodecPatterns), payload.get("log_file"))
         mode = payload.get("mode", MODE_SIMPLE)
         config_file = _required(payload, "config_file")
-        trials_file = _required(payload, "trials_file")
+        trials_file = "" if mode == MODE_DMTS else _required(payload, "trials_file")
         wait_for_trigger = bool(payload.get("wait_for_trigger", True))
         ext_cables_used = bool(payload.get("ext_cables_used", True))
+
+        if mode == MODE_DMTS:
+            try:
+                from dmts_driver import ExpDMTSPatterns
+            except ImportError:
+                from .dmts_driver import ExpDMTSPatterns
+            return ExpDMTSPatterns(overlay, config_file, ExpSimplePatterns,
+                                   payload['log_file'], wait_for_trigger, ext_cables_used)
 
         if mode == MODE_SIMPLE:
             return ExpSimplePatterns(
@@ -338,6 +378,10 @@ class BraincodecRequestHandler(BaseHTTPRequestHandler):
         if path == "/status":
             self._send_json(200, {"ok": True, "status": self.runner_state.snapshot()})
             return
+        if path == "/dmts/status":
+            status, body = self.runner_state.dmts_request('status')
+            self._send_json(status, body)
+            return
         if path == "/download":
             query = parse_qs(parsed.query)
             requested_path = query.get("path", [""])[0]
@@ -347,6 +391,10 @@ class BraincodecRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
+        if path in ("/dmts/prepare", "/dmts/reset"):
+            status, body = self.runner_state.dmts_request(path.rsplit('/', 1)[1], self._read_json())
+            self._send_json(status, body)
+            return
         if path == "/start":
             payload = self._read_json()
             status, body = self.runner_state.start(payload)
@@ -454,7 +502,18 @@ def _build_session_log_file(payload: dict[str, Any]) -> str:
     project = _safe_component(str(metadata.get("project", "project")))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     os.makedirs("logs", exist_ok=True)
-    return os.path.join("logs", f"{mouse}_{project}_{timestamp}.csv")
+    extension = 'jsonl' if payload.get('mode') == MODE_DMTS else 'csv'
+    return os.path.join("logs", f"{mouse}_{project}_{timestamp}.{extension}")
+
+
+def _append_dmts_startup_log(payload, event):
+    if payload.get('mode') != MODE_DMTS or not payload.get('log_file'):
+        return
+    path = payload['log_file']
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    event = dict(event, timestamp=datetime.now().isoformat(timespec='milliseconds'))
+    with open(path, 'a', encoding='utf-8') as handle:
+        handle.write(json.dumps(event) + '\n')
 
 
 def _default_health_scan_folder(payload: dict[str, Any]) -> str:

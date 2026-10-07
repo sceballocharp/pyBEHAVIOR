@@ -1,0 +1,32 @@
+# Multiple GO patches require the updated ExpSimplePatterns driver on PYNQ.
+mouse_id: "332"
+device_id: "H2-190"
+GO: "P1N8 P2N8 P3N8 P1N9 P2N9 P3N9 P1N10 P2N10 P3N10"
+GO irradiance (mW/mm2): 2.0
+GO stimuli: ["STIM1", "STIM2", "STIM3", "STIM4", "STIM5", "STIM6", "STIM7", "STIM8", "STIM9", "STIM10"]
+GO stimulus selection: "cycle"
+STIM1: "P1N8 P2N8 P3N8 P1N9 P2N9 P3N9 P1N10 P2N10 P3N10"
+STIM1 irradiance (mW/mm2): 2.0
+STIM2: "P3N7 P4N7 P5N7 P3N8 P4N8 P5N8 P3N9 P4N9 P5N9"
+STIM2 irradiance (mW/mm2): 2.0
+STIM3: "P2N5 P3N5 P4N5 P2N6 P3N6 P4N6 P2N7 P3N7 P4N7"
+STIM3 irradiance (mW/mm2): 2.0
+STIM4: "P4N3 P5N3 P6N3 P4N4 P5N4 P6N4 P4N5 P5N5 P6N5"
+STIM4 irradiance (mW/mm2): 2.0
+STIM5: "P4N6 P5N6 P6N6 P4N7 P5N7 P6N7 P4N8 P5N8 P6N8"
+STIM5 irradiance (mW/mm2): 2.0
+STIM6: "P6N6 P7N6 P8N6 P6N7 P7N7 P8N7 P6N8 P7N8 P8N8"
+STIM6 irradiance (mW/mm2): 2.0
+STIM7: "P6N4 P7N4 P8N4 P6N5 P7N5 P8N5 P6N6 P7N6 P8N6"
+STIM7 irradiance (mW/mm2): 2.0
+STIM8: "P7N2 P8N2 P9N2 P7N3 P8N3 P9N3 P7N4 P8N4 P9N4"
+STIM8 irradiance (mW/mm2): 2.0
+STIM9: "P5N2 P6N2 P7N2 P5N3 P6N3 P7N3 P5N4 P6N4 P7N4"
+STIM9 irradiance (mW/mm2): 2.0
+STIM10: "P8N1 P9N1 P10N1 P8N2 P9N2 P10N2 P8N3 P9N3 P10N3"
+STIM10 irradiance (mW/mm2): 2.0
+NOGO: "P8N1 P9N1 P10N1 P8N2 P9N2 P10N2 P8N3 P9N3 P10N3"
+NOGO irradiance (mW/mm2): 2.0
+Pulse duration (ms): 25.0
+Pulse frequency (Hz): 20.0
+Number of pulses: 10

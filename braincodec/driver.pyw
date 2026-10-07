@@ -8,6 +8,7 @@ import yaml
 from time import sleep
 import ipywidgets as widgets
 import asyncio
+import random
 from datetime import datetime
 
 import led_driver
@@ -391,7 +392,33 @@ class ExpSimplePatterns():
         for led_matrix_location in [np.where(np.array(LED_LABELS).reshape(10,10) == led_label) for led_label in config['NOGO'].split(' ')]:
             nogo_pattern[led_matrix_location[0][0], led_matrix_location[1][0]] = config['NOGO irradiance (mW/mm2)']
             
-        # TODO store intermediate patterns if applicable
+        # Optional named GO variants; legacy configs continue using GO only.
+        go_names = config.get('GO stimuli', ['GO'])
+        if not isinstance(go_names, list) or not go_names:
+            raise ValueError('GO stimuli must be a nonempty list of pattern names')
+        go_selection = config.get('GO stimulus selection', 'cycle')
+        if go_selection not in ('cycle', 'random'):
+            raise ValueError('GO stimulus selection must be cycle or random')
+        go_rng = random.Random()
+        go_patterns = []
+        for name in go_names:
+            variant = np.zeros((10,10), dtype=float)
+            irradiance = float(config.get(f'{name} irradiance (mW/mm2)',
+                                         config['GO irradiance (mW/mm2)']))
+            if not np.isfinite(irradiance) or irradiance <= 0:
+                raise ValueError(f'Invalid irradiance for {name}')
+            for label in config[name].split():
+                locations = np.where(np.array(LED_LABELS).reshape(10,10) == label)
+                if not len(locations[0]):
+                    raise ValueError(f'Invalid LED label: {label}')
+                variant[locations[0][0], locations[1][0]] = irradiance
+            go_patterns.append(variant)
+        go_index = 0
+        append_to_log(self.log_file, ['GO stimuli:', ' '.join(go_names)])
+        append_to_log(self.log_file, ['GO stimulus selection:', go_selection])
+        for name in go_names:
+            append_to_log(self.log_file, [name, config[name],
+                          config.get(f'{name} irradiance (mW/mm2)', config['GO irradiance (mW/mm2)'])])
             
         pulse_on_secs = config['Pulse duration (ms)']/1000
         pulse_off_secs = 1/config['Pulse frequency (Hz)'] - pulse_on_secs
@@ -409,7 +436,11 @@ class ExpSimplePatterns():
             
             self.control_panel.error_box.add_line(f"\nTrial {trial_idx+1}")
             if trial == 1:
-                pattern = go_pattern
+                variant_index = (go_rng.randrange(len(go_patterns)) if go_selection == 'random'
+                                 else go_index % len(go_patterns))
+                pattern = go_patterns[variant_index]
+                go_index += 1
+                append_to_log(self.log_file, ['GO stimulus:', go_names[variant_index]])
                 self.control_panel.set_info(f"Trial {trial_idx+1} of {len(trials)} (GO)")
                 self.control_panel.set_indicator("green")
                 append_to_log(self.log_file, [f"Trial type: GO"])
@@ -830,4 +861,3 @@ def device_health_scan(led_driver_programme, folder_name, ext_cables_used=False)
         for led_idx, (led_label, voltage_measurements) in enumerate(zip(LED_LABELS, voltage_measurements_all)):
             csv_writer.writerow([led_label])
             csv_writer.writerow(voltage_measurements_all[led_idx])
-    
