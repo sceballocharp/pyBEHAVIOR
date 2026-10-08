@@ -9,6 +9,7 @@ import threading
 import time
 import tkinter as tk
 import csv
+import json
 import math
 import statistics
 from datetime import datetime, timezone
@@ -100,6 +101,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.trigger_pulses = []
         self.sound_outputs = []
         self.trial_state_intervals = []
+        self.dmts_plot_windows = []
         self.full_trigger_pulses = []
         self.full_sound_outputs = []
         self.behavior_signal_file = None
@@ -429,6 +431,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.tac_right_threshold = tk.StringVar(value="1")
         self.tac_min_lick_count = tk.StringVar(value="1")
         self.lever_hold_time_s = tk.StringVar(value="1")
+        self.lever_go_sound_id = tk.StringVar(value="1")
+        self.lever_test_sound_id = tk.StringVar(value="10")
+        self.lever_go_weight = tk.StringVar(value="1")
+        self.lever_test_weight = tk.StringVar(value="0")
         self.lever_start_debounce_s = tk.StringVar(value="0.1")
         self.lever_release_debounce_s = tk.StringVar(value="0.05")
         self.lever_release_window_s = tk.StringVar(value="0.25")
@@ -456,6 +462,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.lick_threshold_widgets = self._entry(trial, 2, "Lick thresh", self.lick_threshold, width=6, row=6)
         self.hit_threshold_widgets = self._entry(trial, 2, "Resp. hold %", self.hit_threshold_s, width=6, row=6)
         self.lever_hold_widgets = self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=6, row=7)
+        self.lever_go_sound_widgets = self._entry(trial, 0, "GO start ID", self.lever_go_sound_id, width=6, row=4)
+        self.lever_test_sound_widgets = self._entry(trial, 2, "Test start ID", self.lever_test_sound_id, width=6, row=4)
+        self.lever_go_weight_widgets = self._entry(trial, 0, "GO weight", self.lever_go_weight, width=6, row=5)
+        self.lever_test_weight_widgets = self._entry(trial, 2, "Test weight", self.lever_test_weight, width=6, row=5)
         self.lever_start_debounce_widgets = self._entry(trial, 2, "Start debounce s", self.lever_start_debounce_s, width=6, row=7)
         self.lever_release_window_widgets = self._entry(trial, 0, "Release window s", self.lever_release_window_s, width=6, row=8)
         self.lever_release_debounce_widgets = self._entry(trial, 2, "Release debounce s", self.lever_release_debounce_s, width=6, row=8)
@@ -656,6 +666,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.lick_threshold_widgets, not is_lever and not is_dmts and not is_tac_family and is_lick, row=6, col=2)
         self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever and not is_tac_family and not is_lick, row=6, col=2)
         self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=7, col=0)
+        self.set_widget_pair_visible(self.lever_go_sound_widgets, is_lever, row=4, col=0)
+        self.set_widget_pair_visible(self.lever_test_sound_widgets, is_lever, row=4, col=2)
+        self.set_widget_pair_visible(self.lever_go_weight_widgets, is_lever, row=5, col=0)
+        self.set_widget_pair_visible(self.lever_test_weight_widgets, is_lever, row=5, col=2)
         self.set_widget_pair_visible(self.lever_start_debounce_widgets, is_lever, row=7, col=2)
         self.set_widget_pair_visible(self.lever_release_window_widgets, is_lever, row=8, col=0)
         self.set_widget_pair_visible(self.lever_release_debounce_widgets, is_lever, row=8, col=2)
@@ -1019,6 +1033,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             params["LeverReqRelBonus"] = params["LeverRequireRelease"]
         # Old protocols must not inherit window mode from the previous session.
         params.setdefault("LeverReqRelWindow", "0")
+        params.setdefault("LeverGoWeight", "1")
+        params.setdefault("LeverTestWeight", "0")
+        params.setdefault("LeverTestSoundId", "10")
         if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
             if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
                 self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
@@ -1036,6 +1053,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             "OuputformatDropDown": self.output_format,
             "OutputformatDropDown": self.output_format,
             "TaskType": self.task_type,
+            "GoSoundId": self.lever_go_sound_id,
+            "LeverTestSoundId": self.lever_test_sound_id,
+            "LeverGoWeight": self.lever_go_weight,
+            "LeverTestWeight": self.lever_test_weight,
             "MaxTrials": self.max_trials,
             "SoundLevel": self.sound_level,
             "RandomSeed": self.random_seed,
@@ -1241,6 +1262,8 @@ class BehaviorAcquisitionApp(tk.Tk):
     def start_live(self):
         if self.running:
             return
+        if not self.configure_dmts_light_session():
+            return
         if self.is_dmts_task() and self.is_lick_trigger():
             left = self.get_tac_left_channel_name()
             right = self.get_tac_right_channel_name()
@@ -1250,6 +1273,11 @@ class BehaviorAcquisitionApp(tk.Tk):
                 return
         self.clear_buffers()
         self.running = True
+        self.dmts_match_miss_streak = 0
+        self.dmts_reminder_remaining = 0
+        self.dmts_reminder_engaged = False
+        self.dmts_lapse_stop_requested = False
+        self.active_dmts_reminder = False
         self.irfork_was_high = False
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
@@ -1347,9 +1375,27 @@ class BehaviorAcquisitionApp(tk.Tk):
     def stop_live(self):
         self.cancel_reward_train(log_message=False)
         self.running = False
+        client = getattr(self, 'dmts_light_client', None)
+        if client is not None:
+            try:
+                client.reset()
+            except Exception as exc:
+                self.log(f'DMTS LED reset failed: {exc}')
+        self._dmts_light_pending = None
         if self.active_trial_index is not None and self.time_buffer:
             trial_end_s = min(self.time_buffer[-1], self.active_trial_end_s or self.time_buffer[-1])
-            if self.is_lever_task():
+            row = self.get_active_trial_row()
+            if row is not None and (row.get('dmts_light_error') or
+                    (row.get('dmts_light_trial_id') and not self.active_dmts_scored)):
+                if not row.get('dmts_light_error'):
+                    row['ResultType'] = 'ABORTED'
+                    for key in ('HIT', 'MISS', 'CR', 'FA'):
+                        row[key] = 0
+                self.set_trial_end_time(row, trial_end_s)
+                self.end_trial_state_interval(trial_end_s)
+                self.clear_active_trial()
+                self.write_trial_log()
+            elif self.is_lever_task():
                 self.finish_active_lever_trial(trial_end_s, success=False)
             else:
                 self.finish_active_trial(trial_end_s)
@@ -1372,6 +1418,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.trigger_pulses.clear()
         self.sound_outputs.clear()
         self.trial_state_intervals.clear()
+        self.dmts_plot_windows.clear()
         self.full_trigger_pulses.clear()
         self.full_sound_outputs.clear()
         self.current_behavior_baseline = 0.0
@@ -1550,6 +1597,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         threshold = self.get_current_trigger_threshold()
 
         for sample_index, (sample_time_s, value) in enumerate(zip(times, ir_values)):
+            if getattr(self, "dmts_lapse_stop_requested", False):
+                break
             if self.is_lever_task():
                 self.check_lever_trigger_sample(sample_time_s, value, threshold)
                 continue
@@ -1575,6 +1624,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                     self.finish_active_dmts_timeline(self.active_trial_end_s)
                 else:
                     self.finish_active_trial(self.active_trial_end_s)
+                if getattr(self, "dmts_lapse_stop_requested", False):
+                    break
 
             is_high = value >= threshold
             crossed_up = is_high and not self.irfork_was_high
@@ -1595,6 +1646,12 @@ class BehaviorAcquisitionApp(tk.Tk):
                 if not self.is_dmts_task():
                     self.evaluate_active_trial(sample_time_s)
                 continue
+
+            if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
+                max_trials = max(0, self.parse_int(self.max_trials, 0))
+                if not max_trials or self.trial_index < max_trials or getattr(self, 'dmts_reminder_remaining', 0):
+                    if not self.prepare_next_dmts_light_trial():
+                        break
 
             if sample_time_s < self.next_trial_allowed_time_s:
                 self.trigger_reset_seen_for_new_trial = False
@@ -1619,13 +1676,15 @@ class BehaviorAcquisitionApp(tk.Tk):
                     continue
 
             max_trials = max(0, self.parse_int(self.max_trials, 0))
-            if max_trials and self.trial_index >= max_trials:
+            if max_trials and self.trial_index >= max_trials and not (auto_start_dmts and getattr(self, "dmts_reminder_remaining", 0)):
                 if not auto_start_dmts:
                     self.plot_queue.put(("log", f"Accepted crossing ignored: max trials {max_trials} reached."))
                 continue
 
-            dmts_trial_type_id = self.consume_next_dmts_trial_type() if self.is_dmts_task() else None
-            dmts_sample_id, dmts_test_id = self.choose_dmts_trial_sound_ids(dmts_trial_type_id) if self.is_dmts_task() else (None, None)
+            light_pair = getattr(self, '_dmts_light_pending', None) if self.is_dmts_task() else None
+            dmts_trial_type_id = light_pair['trial_type'] if light_pair else (self.consume_next_dmts_trial_type() if self.is_dmts_task() else None)
+            dmts_sample_id, dmts_test_id = ((light_pair['sample_id'], light_pair['test_id']) if light_pair
+                else (self.choose_dmts_trial_sound_ids(dmts_trial_type_id) if self.is_dmts_task() else (None, None)))
             iti = self.draw_trial_iti_s()
             if self.is_dmts_task():
                 sound_id = dmts_sample_id
@@ -1643,6 +1702,9 @@ class BehaviorAcquisitionApp(tk.Tk):
                 self.start_classic_trial(sample_time_s, threshold, f"{self.trigger_type.get().strip() or 'Trigger'} crossed {threshold:g} V")
                 continue
             if self.is_dmts_task():
+                if light_pair:
+                    self._dmts_light_active = light_pair
+                    self._dmts_light_pending = None
                 self.start_active_dmts_trial(sample_time_s, iti, dmts_sample_id, dmts_test_id)
             self.last_trigger_time = sample_time_s
             trial_type_id, trial_type = self.classify_trial_sound(sound_id, dmts_test_id)
@@ -1741,7 +1803,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             "GoWeight": sequence_weights[0] if len(sequence_weights) > 0 else "",
             "NoGoWeight": sequence_weights[1] if len(sequence_weights) > 1 else "",
             "BlankWeight": sequence_weights[2] if self.is_dmts_task() and len(sequence_weights) > 2 else "0",
-            "GoSoundId": sequence_values[0] if len(sequence_values) > 0 else "",
+            "GoSoundId": self.lever_go_sound_id.get() if self.is_lever_task() else (sequence_values[0] if len(sequence_values) > 0 else ""),
+            "LeverTestSoundId": self.lever_test_sound_id.get(),
+            "LeverGoWeight": self.lever_go_weight.get(),
+            "LeverTestWeight": self.lever_test_weight.get(),
             "NoGoSoundId": sequence_values[1] if len(sequence_values) > 1 else "",
             "SoundLevel": self.sound_level.get(),
             "RandomSeed": self.random_seed.get(),
@@ -1787,6 +1852,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "TestSoundId": self.test_sound_id.get(),
             "DMTSRandomMatchTrials": int(self.dmts_random_match_trials.get()),
             "DMTSSoundIds": self.dmts_sound_ids.get(),
+            "DMTSStimulusSource": 'LED' if getattr(self, 'dmts_light_client', None) is not None else 'sound',
+            "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
+                if getattr(self, 'dmts_light_client', None) is not None else '',
             "DMTSForkGrace_s": self.dmts_fork_grace_s.get(),
             "PlaySound": int(self.play_sound_on_crossing.get()),
             "TriggerOutput": int(self.trigger_output_on_crossing.get()),
@@ -1814,11 +1882,16 @@ class BehaviorAcquisitionApp(tk.Tk):
             "NoGoWeight",
             "BlankWeight",
             "GoSoundId",
+            "LeverTestSoundId",
+            "LeverGoWeight",
+            "LeverTestWeight",
             "NoGoSoundId",
             "SampleSoundId",
             "TestSoundId",
             "DMTSRandomMatchTrials",
             "DMTSSoundIds",
+            "DMTSStimulusSource",
+            "DMTSLightLibrary",
             "DMTSForkGrace_s",
             "SoundLevel",
             "RandomSeed",
@@ -1902,11 +1975,19 @@ class BehaviorAcquisitionApp(tk.Tk):
             "CR": "",
             "FA": "",
             "ResultType": "",
+            "dmts_reminder": 0,
             "light_code": light_code,
             "sound_id": sound_id,
             "stimulus_mode": stimulus_mode,
             "sample_sound_id": sound_id if self.is_dmts_task() else params["SampleSoundId"],
             "test_sound_id": trial_test_sound_id if self.is_dmts_task() and trial_test_sound_id is not None else params["TestSoundId"],
+            "sample_light_id": 0,
+            "test_light_id": 0,
+            "dmts_light_trial_id": "",
+            "dmts_light_fingerprint": "",
+            "dmts_light_confirmed": 0,
+            "dmts_light_timing_extension_s": 0.0,
+            "dmts_light_error": "",
             "lick_count": "",
             "left_lick_count": "",
             "right_lick_count": "",
@@ -1971,6 +2052,16 @@ class BehaviorAcquisitionApp(tk.Tk):
             "Block": "",
         }
         parameter_row["Block"] = self.get_parameter_block_label(params=params)
+        parameter_row.update({key: params[key] for key in ("LeverGoWeight", "LeverTestWeight", "LeverTestSoundId")})
+        if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
+            pair = self._dmts_light_pending
+            trial_row.update(sample_light_id=pair['sample_id'], test_light_id=pair['test_id'],
+                             dmts_light_trial_id=pair['trial_id'], dmts_light_fingerprint=pair['fingerprint'],
+                             stimulus_mode='light_only' if pair['sample_id'] else 'blank',
+                             light_code=pair['sample_id'], sound_id=0, sample_sound_id=0, test_sound_id=0)
+            parameter_row.update(light_code=pair['sample_id'], sound_id=0,
+                                 sample_sound_id=0, test_sound_id=0,
+                                 stimulus_mode=trial_row['stimulus_mode'])
         self.trial_rows.append(trial_row)
         self.parameter_rows.append(parameter_row)
         self.write_trial_log()
@@ -2082,6 +2173,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.start_trial_state_interval(trigger_time_s)
 
     def start_active_dmts_trial(self, trigger_time_s, iti_s, sample_sound_id=None, test_sound_id=None):
+        self.active_dmts_reminder = bool(getattr(self, "dmts_reminder_remaining", 0))
+        row = self.get_active_trial_row()
+        if row is not None:
+            row["dmts_reminder"] = int(self.active_dmts_reminder)
         sound_duration_s = max(0.0, self.parse_float(self.sound_duration_s, 0))
         delay_s = max(0.0, self.parse_float(self.delay_s, 0))
         response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
@@ -2094,6 +2189,16 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_dmts_response_end_s = self.active_dmts_response_start_s + response_window_s
         self.active_dmts_reward_start_s = self.active_dmts_response_end_s + reward_delay_s
         self.active_trial_end_s = self.active_dmts_reward_start_s + reward_duration_s
+        # Keep recent timing markers after the active trial has been cleared.
+        oldest = trigger_time_s - max(1, self.parse_float(self.window_s, 10)) * 2
+        self.dmts_plot_windows = [
+            window for window in self.dmts_plot_windows if window[2] >= oldest
+        ]
+        self.dmts_plot_windows.append((
+            self.active_dmts_response_start_s,
+            self.active_dmts_response_end_s,
+            self.active_dmts_reward_start_s,
+        ))
         self.active_high_start_s = None
         self.active_crossing_total_s = 0.0
         self.active_lick_count = 0
@@ -2120,7 +2225,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_dmts_scored = False
         self.trigger_reset_seen_for_new_trial = False
         self.start_trial_state_interval(trigger_time_s)
-        if self.play_sound_on_crossing.get() and self.active_dmts_sample_sound_id > 0:
+        if getattr(self, 'dmts_light_client', None) is not None:
+            self._dmts_light_test_confirmed = False
+            self.trigger_dmts_light_phase('sample')
+        elif self.play_sound_on_crossing.get() and self.active_dmts_sample_sound_id > 0:
             self.play_loaded_sound(sound_id=self.active_dmts_sample_sound_id, from_worker=True, start_s=trigger_time_s)
 
     def is_lever_task(self):
@@ -2128,6 +2236,100 @@ class BehaviorAcquisitionApp(tk.Tk):
 
     def is_dmts_task(self):
         return self.task_type.get().strip().lower() == "dmts"
+
+    def configure_dmts_light_session(self):
+        self.dmts_light_client = None
+        self._dmts_light_pending = None
+        self._dmts_light_active = None
+        panel = getattr(self, 'braincodec_panel', None)
+        if not self.is_dmts_task() or panel is None or panel.get_mode() != 'dmts_patterns':
+            return True
+        try:
+            from braincodec.dmts_driver import DMTSLibrary
+            from braincodec.dmts_client import DMTSLightClient
+            if nidaqmx is None or self.simulation_mode.get():
+                raise ValueError('DMTS LEDs require NI hardware; simulated TTL cannot trigger PYNQ')
+            if not panel.validate_config():
+                raise ValueError('Select a valid DMTS stimulus YAML in the Braincodec tab')
+            library = DMTSLibrary(panel._read_config(), ext_cables_used=panel.ext_cables_used_var.get())
+            if len(library.ids) < 2:
+                raise ValueError('DMTS LED sessions require at least two stimuli for non-match trials')
+            client = DMTSLightClient(panel.remote_url_var.get().strip(), library)
+            client.connect()
+            # Allow a small software-timing margin before the test/response.
+            minimum_duration = library.duration_s + 0.05
+            if self.parse_float(self.sound_duration_s, 0) < minimum_duration:
+                self.sound_duration_s.set(f'{minimum_duration:.6g}')
+            pulse_s = self.parse_float(self.light_ttl_pulse_ms, 200) / 1000
+            if pulse_s <= 0 or pulse_s >= self.parse_float(self.sound_duration_s, 0):
+                raise ValueError('Light TTL duration must be positive and shorter than stimulus duration')
+            self.dmts_light_client = client
+            self.log(f'DMTS LEDs enabled: {len(library.ids)} stimuli; stimulus duration {self.sound_duration_s.get()} s.')
+            return True
+        except Exception as exc:
+            self.log(f'DMTS LEDs could not start: {exc}. Remote Start the DMTS driver first.')
+            return False
+
+    def fail_dmts_light_trial(self, exc):
+        row = self.get_active_trial_row()
+        if row is not None:
+            row['dmts_light_error'] = str(exc)
+            row['ResultType'] = 'ERROR'
+            for key in ('HIT', 'MISS', 'CR', 'FA'):
+                row[key] = 0
+            self.write_trial_log()
+        self.dmts_lapse_stop_requested = True
+        self.plot_queue.put(('log', f'DMTS LEDs stopped: {exc}'))
+        self.plot_queue.put(('stop_session', None))
+
+    def prepare_next_dmts_light_trial(self):
+        if getattr(self, '_dmts_light_pending', None) is not None:
+            return True
+        try:
+            # A fork-aborted trial can leave a prepared test on the board.
+            if getattr(self, '_dmts_light_active', None) is not None:
+                self.dmts_light_client.reset()
+                self._dmts_light_active = None
+            trial_type = self.consume_next_dmts_trial_type()
+            self._dmts_light_pending = self.dmts_light_client.prepare(trial_type)
+            pair = self._dmts_light_pending
+            self.plot_queue.put(('log', f"DMTS LEDs prepared: sample STIM{pair['sample_id']}, test STIM{pair['test_id']}"))
+            return True
+        except Exception as exc:
+            self.fail_dmts_light_trial(exc)
+            return False
+
+    def trigger_dmts_light_phase(self, phase):
+        try:
+            status = self.dmts_light_client.require_phase(
+                self._dmts_light_active, 'waiting_' + phase,
+                completion_timeout=1.0 if phase == 'test' else 0)
+            if phase == 'test':
+                self.extend_dmts_light_timeline(status.get('completion_wait_s', 0), shift_test=True)
+            if not self.send_light_trigger_pulse(from_worker=True):
+                raise RuntimeError('NI light trigger failed')
+            return True
+        except Exception as exc:
+            self.fail_dmts_light_trial(exc)
+            return False
+
+    def extend_dmts_light_timeline(self, extension_s, shift_test=False):
+        if extension_s <= 0:
+            return
+        names = ['active_dmts_response_start_s', 'active_dmts_response_end_s',
+                 'active_dmts_reward_start_s', 'active_trial_end_s']
+        if shift_test:
+            names.append('active_dmts_test_sound_time_s')
+        for name in names:
+            value = getattr(self, name, None)
+            if value is not None:
+                setattr(self, name, value + extension_s)
+        if getattr(self, 'dmts_plot_windows', None):
+            self.dmts_plot_windows[-1] = tuple(value + extension_s for value in self.dmts_plot_windows[-1])
+        row = self.get_active_trial_row()
+        if row is not None:
+            row['dmts_light_timing_extension_s'] = row.get('dmts_light_timing_extension_s', 0) + extension_s
+        self.plot_queue.put(('log', f'DMTS LED completion wait: {extension_s * 1000:.0f} ms; response window moved later.'))
 
     def is_tac_task(self):
         value = self.task_type.get().strip().lower()
@@ -2461,10 +2663,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.plot_queue.put(("log", f"Accepted lever press ignored: max trials {max_trials} reached."))
             return
 
-        sound_id = self.parse_int(self.sound_id, 1)
+        sound_id, trial_type_id, trial_type = self.choose_lever_trial()
         iti = self.draw_trial_iti_s()
         trigger_time_s = self.lever_pending_start_s
-        self.create_trial(sound_id, trigger_time_s, threshold, iti)
+        self.create_trial(sound_id, trigger_time_s, threshold, iti,
+                          trial_type_id=trial_type_id, trial_type=trial_type)
         self.start_active_lever_trial(trigger_time_s, iti)
         self.play_next_lever_sound(trigger_time_s)
         self.last_trigger_time = trigger_time_s
@@ -2495,7 +2698,10 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         if self.active_dmts_test_sound_time_s is not None and not self.active_dmts_test_sound_played:
             if sample_time_s >= self.active_dmts_test_sound_time_s:
-                if self.play_sound_on_crossing.get() and self.active_dmts_test_sound_id > 0:
+                if getattr(self, 'dmts_light_client', None) is not None:
+                    if not self.trigger_dmts_light_phase('test'):
+                        return
+                elif self.play_sound_on_crossing.get() and self.active_dmts_test_sound_id > 0:
                     self.play_loaded_sound(
                         sound_id=self.active_dmts_test_sound_id,
                         from_worker=True,
@@ -2506,6 +2712,22 @@ class BehaviorAcquisitionApp(tk.Tk):
         response_start_s = self.active_dmts_response_start_s
         if response_start_s is None or sample_time_s < response_start_s:
             return
+
+        if getattr(self, 'dmts_light_client', None) is not None and not getattr(self, '_dmts_light_test_confirmed', False):
+            try:
+                status = self.dmts_light_client.require_phase(self._dmts_light_active, 'idle', completion_timeout=1.0)
+                self.extend_dmts_light_timeline(status.get('completion_wait_s', 0))
+                self._dmts_light_test_confirmed = True
+                row = self.get_active_trial_row()
+                if row is not None:
+                    row['dmts_light_confirmed'] = 1
+                    self.write_trial_log()
+                response_start_s = self.active_dmts_response_start_s
+                if sample_time_s < response_start_s:
+                    return
+            except Exception as exc:
+                self.fail_dmts_light_trial(exc)
+                return
 
         response_end_s = self.active_dmts_response_end_s
         if response_end_s is not None and sample_time_s >= response_end_s:
@@ -2522,6 +2744,19 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         if self.is_lick_trigger():
             self.record_dmts_lick_choices(lick_crossings)
+            if (
+                is_match_trial
+                and not self.is_active_dmts_blank()
+                and self.active_choice_side == "left"
+                and not self.active_reward_decided
+            ):
+                row = self.get_active_trial_row()
+                if row is not None:
+                    # The first qualifying choice is locked, so this HIT cannot
+                    # be reversed by later licks. Keep the full response window.
+                    self.maybe_send_go_reward(
+                        row, float(self.active_left_lick_count), start_s=sample_time_s,
+                    )
         elif crossed_up:
             self.active_high_start_s = sample_time_s
         elif crossed_down:
@@ -2563,6 +2798,9 @@ class BehaviorAcquisitionApp(tk.Tk):
     def finish_active_dmts_reward_period(self, reward_start_s):
         if self.active_dmts_scored:
             return
+        if getattr(self, 'dmts_light_client', None) is not None and not getattr(self, '_dmts_light_test_confirmed', False):
+            self.fail_dmts_light_trial('LED presentations are not confirmed; reward withheld')
+            return
         row = self.get_active_trial_row()
         if row is None:
             self.clear_active_trial()
@@ -2598,9 +2836,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             for outcome in ("HIT", "MISS", "CR", "FA"):
                 row[outcome] = 0
             row["ResultType"] = "BLANK"
-        if hit or (cr and self.is_lick_trigger()):
+        if (hit or (cr and self.is_lick_trigger())) and not self.active_reward_decided:
             measure = float(row.get("lick_count") or self.active_crossing_total_s)
             self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
+        if same_sound and not self.is_active_dmts_blank():
+            self.maybe_send_pavlov_reward(row, start_s=reward_start_s)
         self.set_trial_end_time(row, self.active_trial_end_s if self.active_trial_end_s is not None else reward_start_s)
         self.write_trial_log()
         self.store_trial_crossing_duration(row)
@@ -2678,6 +2918,11 @@ class BehaviorAcquisitionApp(tk.Tk):
         return [value for value in values if value > 0]
 
     def finish_active_dmts_timeline(self, trial_end_s):
+        if getattr(self, 'dmts_light_client', None) is not None and not getattr(self, '_dmts_light_test_confirmed', False):
+            # Fork-aborted trials are already scored as MISS and may omit the test.
+            if not self.active_dmts_scored:
+                self.fail_dmts_light_trial('Trial ended before both LED presentations were confirmed')
+                return
         if not self.active_dmts_scored:
             reward_start_s = self.active_dmts_reward_start_s or trial_end_s
             self.finish_active_dmts_reward_period(reward_start_s)
@@ -2686,10 +2931,47 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.set_trial_end_time(row, trial_end_s)
             self.apply_trial_timeout(row, trial_end_s)
             self.store_trial_crossing_duration(row)
+            self.update_dmts_lapse_state(row)
         self.write_trial_log()
         self.plot_queue.put(("results", None))
         self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
+        if getattr(self, "dmts_lapse_stop_requested", False):
+            self.plot_queue.put(("stop_session", None))
+
+    def update_dmts_lapse_state(self, row):
+        if not self.is_lick_trigger():
+            return
+        if getattr(self, "active_dmts_reminder", False):
+            engaged = self.active_left_lick_count > 0 or self.active_right_lick_count > 0
+            self.dmts_reminder_engaged = self.dmts_reminder_engaged or engaged
+            self.dmts_reminder_remaining -= 1
+            self.plot_queue.put(("log", f"DMTS reminder trial {row['trial']} completed; response-window licking={int(engaged)}, remaining={self.dmts_reminder_remaining}."))
+            if not self.dmts_reminder_remaining:
+                self.dmts_match_miss_streak = 0
+                if self.dmts_reminder_engaged:
+                    self.plot_queue.put(("log", "DMTS reminder complete: licking resumed; returning to normal trials."))
+                else:
+                    self.dmts_lapse_stop_requested = True
+                    self.running = False
+                    self.plot_queue.put(("log", "DMTS stopping: no response-window licking during 3 reminder trials."))
+            return
+        if not str(row.get("TrialType", "")).endswith("DMTS-match"):
+            return
+        self.dmts_match_miss_streak = getattr(self, "dmts_match_miss_streak", 0) + 1 if row.get("ResultType") == "MISS" else 0
+        if self.dmts_match_miss_streak >= 5:
+            self.dmts_reminder_remaining = 3
+            self.dmts_reminder_engaged = False
+            self.plot_queue.put(("log", "DMTS: 5 consecutive match misses; next 3 trials are match-only with guaranteed Pavlov reward (when output is enabled)."))
+
+    def choose_lever_trial(self):
+        weights = [self.parse_float(self.lever_go_weight, 1), self.parse_float(self.lever_test_weight, 0)]
+        if any(not math.isfinite(w) or w < 0 for w in weights) or sum(weights) <= 0:
+            weights = [1, 0]
+        is_test = random.choices([False, True], weights=weights, k=1)[0]
+        sound_var = self.lever_test_sound_id if is_test else self.lever_go_sound_id
+        sound_id = max(1, self.parse_int(sound_var, 10 if is_test else 1))
+        return sound_id, 2 if is_test else 1, "Lever-Test" if is_test else "Lever-GO"
 
     def start_active_lever_trial(self, trigger_time_s, iti_s):
         self.active_trial_index = self.trial_index
@@ -2702,7 +2984,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_reward_sent = False
         self.active_trial_base_iti_s = iti_s
         self.active_trial_extra_timeout_s = 0.0
-        self.active_lever_sound_id = self.parse_int(self.sound_id, 1)
+        self.active_lever_sound_id = int(self.get_active_trial_row()["sound_id"])
+        # Freeze the GO sound boundary for this trial, like its starting sound ID.
+        self.active_lever_sound_stop_id = (
+            None if str(self.get_active_trial_row().get("TrialType", "")).endswith("Lever-Test")
+            else max(1, self.parse_int(self.lever_test_sound_id, 10))
+        )
         self.active_lever_next_sound_time_s = trigger_time_s
         self.active_lever_low_start_s = None
         self.active_lever_release_armed = False
@@ -2768,6 +3055,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         if sample_time_s < self.active_lever_next_sound_time_s:
             return
         sound_id = max(1, self.active_lever_sound_id)
+        if self.active_lever_sound_stop_id is not None and sound_id >= self.active_lever_sound_stop_id:
+            self.active_lever_next_sound_time_s = None
+            self.plot_queue.put(("log", f"GO sound sequence stopped before Test sound ID {self.active_lever_sound_stop_id}; lever trial continues."))
+            return
         duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
         if duration_s is None:
             self.active_lever_next_sound_time_s = None
@@ -3087,6 +3378,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         if self.active_reward_decided:
             return
         self.active_reward_decided = True
+        if str(row.get("TrialType", "")).endswith("Lever-Test"):
+            self.plot_queue.put(("log", f"Trial {row['trial']} is a lever Test trial; no reward."))
+            return
         reward_count = max(1, int(reward_count))
         reward_probability = min(1.0, max(0.0, self.parse_float(self.reward_go, 1.0)))
         if (
@@ -3199,7 +3493,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def maybe_send_pavlov_reward(self, row, start_s=None):
         if self.active_reward_sent or self.active_pending_reward_due_s is not None:
             return
-        pavlov_probability = self.get_pavlov_probability()
+        pavlov_probability = 1.0 if getattr(self, "active_dmts_reminder", False) and "DMTS-match" in str(row.get("TrialType", "")) else self.get_pavlov_probability()
         if pavlov_probability <= 0:
             return
         draw = random.random()
@@ -3208,12 +3502,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.active_reward_sent = True
             self.plot_queue.put((
                 "log",
-                f"Trial {row['trial']} GO Pavlov reward sent, p={pavlov_probability:.3f}, draw={draw:.3f}.",
+                f"Trial {row['trial']} {row['TrialType']} Pavlov reward sent, p={pavlov_probability:.3f}, draw={draw:.3f}.",
             ))
         else:
             self.plot_queue.put((
                 "log",
-                f"Trial {row['trial']} GO Pavlov reward skipped, p={pavlov_probability:.3f}, draw={draw:.3f}.",
+                f"Trial {row['trial']} {row['TrialType']} Pavlov reward skipped, p={pavlov_probability:.3f}, draw={draw:.3f}.",
             ))
 
     def get_active_trial_row(self):
@@ -3312,10 +3606,14 @@ class BehaviorAcquisitionApp(tk.Tk):
                     task.close()
         except Exception as exc:
             msg = f"Light trigger error on {line_name}: {exc}"
+            success = False
+        else:
+            success = True
         if from_worker:
             self.plot_queue.put(("log", msg))
         else:
             self.log(msg)
+        return success
 
     def get_reward_pulse_s(self, reward_side="left"):
         duration = self.right_pulse_ms if reward_side == "right" else self.pulse_ms
@@ -3667,6 +3965,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         return sound_id
 
     def consume_next_dmts_trial_type(self):
+        if getattr(self, "dmts_reminder_remaining", 0) and self.is_lick_trigger():
+            return 1
         trial_type_id = int(self.consume_next_sound_id())
         return trial_type_id if trial_type_id in (0, 1, 2) else 1
 
@@ -3906,6 +4206,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.replace_hdf5_dataset(trials, "sound_ids", sound_ids)
             self.replace_hdf5_dataset(trials, "sample_sound_ids", sample_sound_ids)
             self.replace_hdf5_dataset(trials, "test_sound_ids", test_sound_ids)
+            for column in ('sample_light_id', 'test_light_id', 'dmts_light_confirmed'):
+                self.replace_hdf5_dataset(trials, column, [int(row.get(column, 0) or 0) for row in trial_rows])
+            self.replace_hdf5_dataset(trials, 'dmts_light_timing_extension_s',
+                                      [float(row.get('dmts_light_timing_extension_s', 0) or 0) for row in trial_rows])
+            for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error'):
+                self.replace_hdf5_dataset(trials, column, [str(row.get(column, '')) for row in trial_rows], dtype=utf8)
             self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)
             self.replace_hdf5_dataset(trials, "trial_type", trial_types)
 
@@ -3941,6 +4247,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("TriggerType", params["TriggerTypeDropDown"]),
             ("Threshold", params["LeverThreshold"]),
             ("LeverHoldTime_s", params["LeverHoldTime_s"]),
+            ("GoSoundId", params["GoSoundId"]),
+            ("LeverTestSoundId", params["LeverTestSoundId"]),
+            ("LeverGoWeight", params["LeverGoWeight"]),
+            ("LeverTestWeight", params["LeverTestWeight"]),
             ("LeverStartDebounce_s", params["LeverStartDebounce_s"]),
             ("LeverReleaseWindow_s", params["LeverReleaseWindow_s"]),
             ("LeverReqRelBonus", params["LeverReqRelBonus"]),
@@ -3949,6 +4259,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("TestSoundId", params["TestSoundId"]),
             ("DMTSRandomMatchTrials", params["DMTSRandomMatchTrials"]),
             ("DMTSSoundIds", params["DMTSSoundIds"]),
+            ("DMTSStimulusSource", params["DMTSStimulusSource"]),
+            ("DMTSLightLibrary", params["DMTSLightLibrary"]),
             ("Delay_s", params["Delay_s"]),
             ("DMTSForkGrace_s", params["DMTSForkGrace_s"]),
             ("SoundDuration_s", params["SoundDuration_s"]),
@@ -4299,6 +4611,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                 elif kind == "health":
                     health_pending = True
                     health_payload = payload
+                elif kind == "stop_session":
+                    self.stop_live()
         except queue.Empty:
             pass
         if results_pending:
@@ -4533,7 +4847,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             conditions[key]["total"] += 1
             if trial_type.endswith("noGo"):
                 conditions[key]["correct"] += int(result == "CR")
-            elif trial_type.endswith("GO") or trial_type.endswith("Lever") or "tAC-" in trial_type:
+            elif trial_type.endswith("GO") or trial_type.endswith("Lever") or trial_type.endswith("Lever-Test") or "tAC-" in trial_type:
                 conditions[key]["correct"] += int(result == "HIT")
             else:
                 conditions[key]["correct"] += int(result in ("HIT", "CR"))
@@ -4554,6 +4868,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         colors = {
             "GO": "#2ca02c",
             "Lever": "#2ca02c",
+            "Lever-GO": "#2ca02c",
+            "Lever-Test": "#1f77b4",
             "noGo": "#1f77b4",
             "tAC-left": "#2ca02c",
             "tAC-right": "#9467bd",
@@ -4798,9 +5114,13 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.plot_canvas.create_text(width - 130, legend_y, anchor="nw", text="Trigger reward", fill="#d97904")
             self.plot_canvas.create_text(width - 130, legend_y + 16, anchor="nw", text="Sound output", fill="#2ca02c")
             self.plot_canvas.create_text(width - 130, legend_y + 32, anchor="nw", text="Trial state", fill="#6f42c1")
+            if self.is_dmts_task():
+                self.plot_canvas.create_text(width - 150, legend_y + 48, anchor="nw", text="Response window", fill="#d97904")
+                self.plot_canvas.create_text(width - 150, legend_y + 64, anchor="nw", text="Scheduled reward", fill="#d97904")
         else:
             self.plot_canvas.delete("plot_dynamic")
         self.draw_iti_shading(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
+        self.draw_dmts_window_markers(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
         self.draw_trial_state_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
         self.draw_trigger_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y)
         self.draw_sound_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
@@ -4813,6 +5133,33 @@ class BehaviorAcquisitionApp(tk.Tk):
             if len(points) >= 4:
                 self.plot_canvas.create_line(*points, fill=color, width=2, tags=("plot_dynamic",))
         self.draw_since_last_trial_timer(max_t, width)
+
+    def draw_dmts_window_markers(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
+        """Draw a few canvas shapes per visible trial, without sampled traces."""
+        if not self.is_dmts_task() or max_t <= min_t:
+            return
+        scale = plot_width / (max_t - min_t)
+        for start_s, end_s, reward_s in list(self.dmts_plot_windows):
+            if end_s > min_t and start_s < max_t:
+                x0 = left_pad + (max(start_s, min_t) - min_t) * scale
+                x1 = left_pad + (min(end_s, max_t) - min_t) * scale
+                self.plot_canvas.create_rectangle(
+                    x0, top_pad, x1, x_axis_y,
+                    fill="#fff0db", outline="", tags=("plot_dynamic",),
+                )
+                for boundary in (start_s, end_s):
+                    if min_t <= boundary <= max_t:
+                        x = left_pad + (boundary - min_t) * scale
+                        self.plot_canvas.create_line(
+                            x, top_pad, x, x_axis_y,
+                            fill="#d97904", dash=(4, 3), tags=("plot_dynamic",),
+                        )
+            if min_t <= reward_s <= max_t:
+                x = left_pad + (reward_s - min_t) * scale
+                self.plot_canvas.create_line(
+                    x, x_axis_y - 18, x, x_axis_y - 9,
+                    fill="#d97904", width=2, tags=("plot_dynamic",),
+                )
 
     def draw_iti_shading(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
         if self.last_trial_end_time_s <= -1e11 or self.next_trial_allowed_time_s <= self.last_trial_end_time_s:

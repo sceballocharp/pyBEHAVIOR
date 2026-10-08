@@ -26,6 +26,7 @@ def harness(match=True, lick=True, minimum=2):
         active_dmts_response_started=False, active_dmts_response_evaluated=False,
         active_left_lick_count=0, active_right_lick_count=0, active_lick_count=0,
         active_choice_side="", active_high_start_s=None, active_crossing_total_s=0,
+        active_reward_decided=False,
         active_trial_base_iti_s=2, plot_queue=queue.Queue(),
         is_lick_trigger=lambda: lick, get_min_lick_count=lambda: minimum,
         get_tac_left_channel_name=lambda: "ai0", get_tac_right_channel_name=lambda: "ai1",
@@ -36,8 +37,9 @@ def harness(match=True, lick=True, minimum=2):
     )
     for name in NAMES:
         setattr(app, name, MethodType(METHODS[name], app))
-    for name in ("write_trial_log", "set_trial_end_time", "store_trial_crossing_duration", "maybe_send_go_reward"):
+    for name in ("write_trial_log", "set_trial_end_time", "store_trial_crossing_duration", "maybe_send_go_reward", "maybe_send_pavlov_reward"):
         setattr(app, name, Mock())
+    app.maybe_send_go_reward.side_effect = lambda *args, **kwargs: setattr(app, "active_reward_decided", True)
     return app, row
 
 
@@ -134,6 +136,29 @@ class DMTSChoiceTests(unittest.TestCase):
                 app.finish_active_dmts_reward_period(2.5)
                 self.assertEqual(row["ResultType"], expected)
                 self.assertEqual(app.active_trial_end_s, 2.54)
+
+    def test_match_rewards_at_threshold_once_and_preserves_window(self):
+        app, row = harness(minimum=3)
+        app.update_active_dmts_trial(1.5, False, False, False, ["left", "left"])
+        app.maybe_send_go_reward.assert_not_called()
+        app.update_active_dmts_trial(1.6, False, False, False, ["left"])
+        app.maybe_send_go_reward.assert_called_once_with(row, 3.0, start_s=1.6)
+        self.assertEqual(app.active_trial_end_s, 2.54)
+        app.update_active_dmts_trial(1.7, False, False, False, ["left", "right"])
+        app.finish_active_dmts_reward_period(2.5)
+        app.maybe_send_go_reward.assert_called_once()
+        self.assertEqual(row["ResultType"], "HIT")
+
+    def test_wrong_match_choice_and_nonmatch_do_not_reward_early(self):
+        for match, sides in ((True, ["right", "right"]),
+                             (False, ["right", "right"]),
+                             (False, ["left", "left"])):
+            with self.subTest(match=match, sides=sides):
+                app, _ = harness(match=match)
+                app.update_active_dmts_trial(1.5, False, False, False, sides)
+                if match:
+                    app.update_active_dmts_trial(1.6, False, False, False, ["left", "left"])
+                app.maybe_send_go_reward.assert_not_called()
 
     def test_cr_reward_is_not_sent_twice(self):
         app, _ = harness(match=False)

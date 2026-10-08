@@ -89,7 +89,7 @@ TaskType=ClassicGoNoGo
 | --- | --- | --- | --- |
 | `Rewardduration_ms` | Reward duration ms | All response modes | Water valve/trigger pulse duration in ms. |
 | `RewardGo` | RewardGo Prob | GO HITs | Saved reward probability key for GO HITs, from `0` to `1`. `RewardGoProb` is accepted as an import alias. |
-| `Pavlov` | Pavlov | GO trials | Probability that a GO trial receives reward independent of lick count or IR crossing. `0` disables Pavlov reward; `1` rewards every GO trial. HIT/MISS scoring still reflects the animal response. |
+| `Pavlov` | Pavlov | GO and DMTS match trials | Probability of reward independent of the animal response, if no reward was already sent or scheduled. `0` disables Pavlov reward; `1` guarantees it with Trigger reward enabled. DMTS delivers this reward on the left at the reward period, only for match trials; non-match and blank trials receive no Pavlov reward. Behavioral scoring and normal response-based rewards remain unchanged. |
 | `PunishNoGoFA` | Timeout false alarms | no-go FA | Timeout duration after a no-go false alarm, in seconds. |
 | `HITThreshold_percent` | HIT threshold % | `TriggerTypeDropDown=IRFork` | Percentage of `ResponseWindow_s` that the IR beam signal must remain above threshold to count as HIT/FA. |
 | `Minlickcount` | Min lick count | `TriggerTypeDropDown=Lick` | Number of upward crossings over `Lickthreshold` required to count as HIT/FA. |
@@ -123,6 +123,12 @@ A response is scored when the signal crosses above `Lickthreshold` at least `Min
 Classic Go/No-Go starts trials differently depending on the trigger source. With `TriggerTypeDropDown=IRFork`, after the trial ends and the ITI has elapsed, the trigger signal must be observed below the active threshold before the next upward crossing can start a new trial. With `TriggerTypeDropDown=Lick`, the next trial starts as soon as the ITI has elapsed; licks are then counted during the response window.
 
 ## Lever
+
+GO sound sequences stop before `LeverTestSoundId`: with GO start `1` and Test start `10`, GO plays only IDs `1` through `9`, then remains silent while the lever trial continues. Hold/release scoring and rewards are unchanged. The limit is captured at trial start; edits apply to the next trial. If the GO start ID is at or above the Test start ID, the GO trial is silent. Test sequences are not capped by this limit.
+
+Lever trials are selected independently at each accepted press using relative **GO weight** (`LeverGoWeight`, default `1`) and **Test weight** (`LeverTestWeight`, default `0`). For example, `0.8` and `0.2` give an 80% GO / 20% Test probability, not fixed counts. The live Trial Structure controls also expose **GO start ID** (`GoSoundId`, default `1`) and **Test start ID** (`LeverTestSoundId`, default `10`). Changes affect subsequent trials. This uses weighted random selection like Classic, but draws at press acceptance rather than consuming the Classic sound sequence; Classic sequence controls and its seed do not control these draws.
+
+GO sequences start at `GoSoundId`; Test sequences start at `LeverTestSoundId`. Both advance through consecutive IDs with the same sound timing and lever scoring. Test trials never deliver automatic rewards, including bonus pulses, regardless of `RewardGo`. Trial logs label trials `1 Lever-GO` or `2 Lever-Test`, retain HIT/MISS scoring, and record the actual starting `sound_id`. Old protocols without the new settings reset to GO-only selection. Invalid live weights fall back to GO-only selection; the protocol generator rejects invalid weights.
 
 Saved with:
 
@@ -295,6 +301,14 @@ Each completed alternating sequence is logged as a `tAC-pretraining` HIT event i
 Block labels are assigned from the stable `get_current_parameters()` snapshot. Trial-specific fields such as `trial`, `timestamp`, `LightCode`, `SoundId`, per-trial sample/test IDs, `trigger_time_s`, `trigger_sample`, and the drawn per-trial `iti_s` do not split blocks. The ITI settings (`ITI_s`, `ITIrandMin_s`, and `ITIrandMax_s`) are still part of the block signature, so changing the protocol's ITI configuration starts a new block.
 
 ## Runtime Status
+
+### DMTS lick lapse recovery
+
+DMTS in Lick mode automatically detects five consecutive misses among match trials. Non-match and blank trials do not change this streak; a match HIT or FA resets it. The next three trials are forced to match, without consuming entries from the normal sequence. Each receives a left Pavlov reward with probability 1 when reward output is enabled, regardless of the normal `Pavlov` value. An existing correct-response reward is not duplicated. Normal sound selection, response windows, reward timing, and ITIs still apply.
+
+Engagement means at least one left or right lick during any reminder response window, before its scheduled Pavlov reward. All three reminder trials complete. If engagement occurred, normal sequencing resumes and the miss streak resets. Otherwise, acquisition stops after the third trial finishes and uses the normal stop/save routine. Reminder trials may extend beyond `MaxTrials` so the three-trial block can complete; the limit applies again afterward. This rule resets on each new session and does not apply to IRFork DMTS.
+
+`TrialLog.csv` marks these trials with `dmts_reminder=1` (ordinary trials use 0). Outcomes retain their normal HIT/MISS/FA scoring. Recovery and automatic-stop decisions are also written to the session log.
 
 | Protocol | Generated by `protocol_generator.py` | Imported by `pyBEHAVIOR_v7.py` | Runtime behavior in `pyBEHAVIOR_v7.py` |
 | --- | --- | --- | --- |

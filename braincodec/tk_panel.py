@@ -27,10 +27,12 @@ Callback = Callable[[], None]
 
 MODE_SIMPLE = "simple_patterns"
 MODE_BRAINCODEC = "braincodec_patterns"
+MODE_DMTS = "dmts_patterns"
 
 MODE_LABELS = {
     MODE_SIMPLE: "Simple patterns",
     MODE_BRAINCODEC: "Braincodec patterns",
+    MODE_DMTS: "DMTS patterns",
 }
 
 SIMPLE_PATTERN_KEYS = {
@@ -108,6 +110,7 @@ class BraincodecTkPanel(ttk.Frame):
         self._remote_poll_after_id = None
         self._remote_poll_interval_ms = 1000
         self._remote_stop_pending = False
+        self._last_reported_remote_failure = None
         self._downloaded_remote_logs = set()
         self._downloaded_health_scan_files = set()
         self._simulation_trials = []
@@ -186,18 +189,22 @@ class BraincodecTkPanel(ttk.Frame):
             variable=self.mode_var,
             command=self._on_mode_changed,
         ).grid(row=0, column=1, padx=6, pady=6, sticky="w")
+        ttk.Radiobutton(mode, text=MODE_LABELS[MODE_DMTS], value=MODE_DMTS,
+                        variable=self.mode_var, command=self._on_mode_changed).grid(
+            row=0, column=2, padx=6, pady=6, sticky="w")
         ttk.Checkbutton(
             mode,
             text="Wait for trigger",
             variable=self.wait_for_trigger_var,
-        ).grid(row=0, column=2, padx=6, pady=6, sticky="w")
+        ).grid(row=1, column=0, padx=6, pady=6, sticky="w")
         ttk.Checkbutton(
             mode,
             text="Extension cables used",
             variable=self.ext_cables_used_var,
-        ).grid(row=0, column=3, padx=6, pady=6, sticky="w")
+        ).grid(row=1, column=1, padx=6, pady=6, sticky="w")
 
         generator = ttk.LabelFrame(left_pane, text="4. Trial Sequence")
+        self.trial_generator = generator
         generator.grid(row=3, column=0, sticky="ew", pady=(8, 0))
         generator.columnconfigure(1, weight=1)
         generator.columnconfigure(8, weight=1)
@@ -244,7 +251,7 @@ class BraincodecTkPanel(ttk.Frame):
 
         arm = ttk.LabelFrame(left_pane, text="6. Arm Board")
         arm.grid(row=5, column=0, sticky="ew", pady=(8, 0))
-        arm.columnconfigure(5, weight=1)
+        arm.columnconfigure(3, weight=1)
         ttk.Button(arm, text="Remote Start", command=self.start_remote_experiment).grid(
             row=0, column=0, padx=6, pady=6, sticky="ew"
         )
@@ -254,12 +261,8 @@ class BraincodecTkPanel(ttk.Frame):
         ttk.Button(arm, text="Simulate", command=self.simulate_session).grid(
             row=0, column=2, padx=4, pady=6, sticky="ew"
         )
-        self.start_button = ttk.Button(arm, text="Local Start", command=self._handle_start)
-        self.start_button.grid(row=0, column=3, padx=4, pady=6, sticky="ew")
-        self.stop_button = ttk.Button(arm, text="Local Stop", command=self._handle_stop)
-        self.stop_button.grid(row=0, column=4, padx=4, pady=6, sticky="ew")
         ttk.Label(arm, text="Then go to Behavior tab and press Start.").grid(
-            row=0, column=5, padx=8, pady=6, sticky="w"
+            row=0, column=3, padx=8, pady=6, sticky="w"
         )
 
         preview = ttk.LabelFrame(self, text="Pattern Preview")
@@ -483,6 +486,9 @@ class BraincodecTkPanel(ttk.Frame):
         return f"{scheme}://{hostname}:9090/lab"
 
     def generate_trials_file(self) -> bool:
+        if self.mode_var.get() == MODE_DMTS:
+            self.set_info('DMTS pairs are chosen by Behavior during ITI; no LED trials file is needed.')
+            return False
         try:
             trial_count = int(self.generated_trial_count_var.get().strip())
             go_percent = float(self.generated_go_percent_var.get().strip())
@@ -548,6 +554,8 @@ class BraincodecTkPanel(ttk.Frame):
             self.add_log_line(f"Could not update Behavior sequence: {exc}")
 
     def _notify_trials_file_selected(self, path: Path) -> None:
+        if self.mode_var.get() == MODE_DMTS:
+            return
         trials = self._read_trials()
         if not trials:
             return
@@ -655,13 +663,14 @@ class BraincodecTkPanel(ttk.Frame):
             self.add_log_line("Select a config file before upload")
             self.set_status("No config")
             return None
-        if not trials_file:
+        if not trials_file and self.mode_var.get() != MODE_DMTS:
             self.add_log_line("Select a trials file before upload")
             self.set_status("No trials")
             return None
 
         files.append(self._upload_file_entry("config", config_file))
-        files.append(self._upload_file_entry("trials", trials_file))
+        if self.mode_var.get() != MODE_DMTS:
+            files.append(self._upload_file_entry("trials", trials_file))
 
         if self.mode_var.get() == MODE_BRAINCODEC and self.patterns_file_var.get().strip():
             files.append(self._upload_file_entry("patterns", self.patterns_file_var.get()))
@@ -707,7 +716,7 @@ class BraincodecTkPanel(ttk.Frame):
             self.add_log_line("Select a config file before remote start")
             self.set_status("No config")
             return None
-        if not trials_file:
+        if not trials_file and self.mode_var.get() != MODE_DMTS:
             self.add_log_line("Select a trials file before remote start")
             self.set_status("No trials")
             return None
@@ -715,7 +724,7 @@ class BraincodecTkPanel(ttk.Frame):
         payload = {
             "mode": self.mode_var.get(),
             "config_file": config_file,
-            "trials_file": trials_file,
+            "trials_file": "" if self.mode_var.get() == MODE_DMTS else trials_file,
             "session_metadata": self._session_metadata(),
             "wait_for_trigger": self.wait_for_trigger_var.get(),
             "ext_cables_used": self.ext_cables_used_var.get(),
@@ -835,6 +844,17 @@ class BraincodecTkPanel(ttk.Frame):
         current_trial = status.get("current_trial", 0)
         total_trials = status.get("total_trials", 0)
 
+        if state == 'error':
+            failure = (status.get('started_at'), status.get('error'), status.get('traceback'))
+            if failure != getattr(self, '_last_reported_remote_failure', None):
+                self._last_reported_remote_failure = failure
+                self.add_log_line(f"Remote experiment failed: {status.get('error') or message}")
+                if status.get('traceback'):
+                    self.add_log_line(str(status['traceback']).rstrip())
+            message = status.get('error') or message
+        else:
+            self._last_reported_remote_failure = None
+
         self.set_status(self._remote_status_text(state, message))
         if total_trials:
             self.set_progress(int(current_trial), maximum=int(total_trials))
@@ -857,7 +877,14 @@ class BraincodecTkPanel(ttk.Frame):
     def _is_waiting_for_trigger(state: str, message: str) -> bool:
         normalized_state = str(state or "").strip().lower()
         normalized_message = str(message or "").strip().lower()
-        return normalized_state == "running" and normalized_message == "waiting for trigger"
+        waiting_messages = {
+            'waiting for trigger',
+            'dmts ready; waiting for pair',
+            'dmts waiting_sample',
+            'dmts waiting_test',
+            'dmts idle',
+        }
+        return normalized_state == "running" and normalized_message in waiting_messages
 
     @staticmethod
     def _remote_status_text(state: str, message: str) -> str:
@@ -1025,6 +1052,9 @@ class BraincodecTkPanel(ttk.Frame):
             return None
 
         keys = set(config)
+        if self.mode_var.get() == MODE_DMTS or config.get('experiment_mode') == MODE_DMTS:
+            self.set_mode(MODE_DMTS)
+            return MODE_DMTS
         has_simple = SIMPLE_PATTERN_KEYS.issubset(keys)
         has_braincodec = BRAINCODEC_PATTERN_KEYS.issubset(keys)
 
@@ -1059,6 +1089,23 @@ class BraincodecTkPanel(ttk.Frame):
         config = self._read_config()
         if config is None:
             return False
+
+        if self.mode_var.get() == MODE_DMTS:
+            try:
+                try:
+                    from .dmts_driver import DMTSLibrary
+                except ImportError:
+                    from dmts_driver import DMTSLibrary
+                DMTSLibrary(config)
+                if not self.wait_for_trigger_var.get():
+                    raise ValueError('DMTS requires Wait for trigger')
+            except (ValueError, KeyError, TypeError) as exc:
+                self.add_log_line(f'DMTS config invalid: {exc}')
+                self.set_status('Config invalid')
+                return False
+            self.set_status('DMTS config valid')
+            self.clear_pattern_preview('DMTS stimulus library')
+            return True
 
         required_keys = (
             SIMPLE_PATTERN_KEYS if self.mode_var.get() == MODE_SIMPLE else BRAINCODEC_PATTERN_KEYS
@@ -1158,6 +1205,9 @@ class BraincodecTkPanel(ttk.Frame):
         self._draw_empty_pattern_preview(message)
 
     def simulate_session(self) -> None:
+        if self.mode_var.get() == MODE_DMTS:
+            self.set_info('DMTS requires the running PYNQ driver and Behavior sample/test triggers.')
+            return
         if not self.validate_config_flow():
             return
 
@@ -1385,6 +1435,15 @@ class BraincodecTkPanel(ttk.Frame):
     def _parse_scalar_value(value: str):
         if not value:
             return ""
+        if value.startswith('[') and value.endswith(']'):
+            try:
+                return json.loads(value)
+            except ValueError:
+                import ast
+                result = ast.literal_eval(value)
+                if not isinstance(result, list):
+                    raise ValueError('Expected a list of stimulus names')
+                return result
         if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
             return value[1:-1]
         if value.lower() in ("true", "false"):
@@ -1407,12 +1466,17 @@ class BraincodecTkPanel(ttk.Frame):
 
     def _on_mode_changed(self) -> None:
         mode = self.mode_var.get()
-        if mode == MODE_SIMPLE:
+        self.trial_generator.configure(text='4. Trial Sequence (set in Behavior for DMTS)'
+                                       if mode == MODE_DMTS else '4. Trial Sequence')
+        for widget in self.trial_generator.winfo_children():
+            widget.state(['disabled'] if mode == MODE_DMTS else ['!disabled'])
+        if mode in (MODE_SIMPLE, MODE_DMTS):
             for widget in self.patterns_row:
                 widget.grid_remove()
             self.generated_secondary_label.configure(text="Blank %")
             self.generated_secondary_entry.configure(textvariable=self.generated_blank_percent_var)
-            self.set_info("Simple patterns: use a YAML config plus a trials file.")
+            self.set_info("DMTS: upload YAML, then Remote Start; Behavior chooses sample/test pairs."
+                          if mode == MODE_DMTS else "Simple patterns: use a YAML config plus a trials file.")
         else:
             for widget in self.patterns_row:
                 widget.grid()

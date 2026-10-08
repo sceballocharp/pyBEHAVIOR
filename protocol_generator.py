@@ -55,6 +55,9 @@ PARAMETERS = [
     Parameter("LeverTaskType", "Task type", "Lever", "Lever"),
     Parameter("LeverThreshold", "Lever threshold V", "1", "Lever", "float"),
     Parameter("LeverGoSoundId", "GO sound ID", "1", "Lever", "int"),
+    Parameter("LeverTestSoundId", "Test start sound ID", "10", "Lever", "int"),
+    Parameter("LeverGoWeight", "GO weight", "1", "Lever", "float"),
+    Parameter("LeverTestWeight", "Test weight (unrewarded)", "0", "Lever", "float"),
     Parameter("LeverSoundLevel", "Sound level", "1", "Lever", "float"),
     Parameter("LeverReqRelBonus", "Require release + bonus", "0", "Lever", "choice", ("0", "1")),
     Parameter("LeverReqRelWindow", "Require release within window", "0", "Lever", "choice", ("0", "1")),
@@ -419,6 +422,10 @@ class ProtocolGenerator(tk.Tk):
         if values["LeverReqRelWindow"] == "1":
             values["LeverReqRelBonus"] = "0"
         is_lever = values.get("TaskType") == "Lever" or "LeverThreshold" in values
+        if is_lever:
+            values.setdefault("LeverGoWeight", "1")
+            values.setdefault("LeverTestWeight", "0")
+            values.setdefault("LeverTestSoundId", "10")
         is_dmts = values.get("TaskType") == "DMTS" or "DMTSDelay_s" in values
         if is_dmts:
             values.setdefault("BlankWeight", values.get("DMTSBlankWeight", "0"))
@@ -565,6 +572,14 @@ class ProtocolGenerator(tk.Tk):
             if parameter.kind == "int" and self.parse_int(parameter.key, None) is None:
                 errors.append(f"{parameter.label} must be an integer.")
         if self.active_behavior() == "Lever":
+            weights = [self.parse_float(key, None) for key in ("LeverGoWeight", "LeverTestWeight")]
+            if any(w is None or not math.isfinite(w) or w < 0 for w in weights):
+                errors.append("Lever GO/Test weights must be finite and nonnegative.")
+            elif sum(weights) <= 0:
+                errors.append("At least one lever GO/Test weight must be greater than zero.")
+            for key in ("LeverGoSoundId", "LeverTestSoundId"):
+                if self.parse_int(key, 0) < 1:
+                    errors.append("Lever starting sound IDs must be positive integers.")
             if self.parse_float("LeverThreshold", 0) <= 0:
                 errors.append("Lever threshold V must be greater than 0.")
             if self.parse_float("LeverHoldTime_s", 0) <= 0:
@@ -786,6 +801,7 @@ class ProtocolGenerator(tk.Tk):
             summary += ", reward on release after target hold"
         else:
             summary += " before reward"
+        summary += ". GO trials follow reward rules; Test trials start at Test sound ID and never reward."
         self.summary_var.set(summary)
 
     def draw_tac_pretraining_preview(self):

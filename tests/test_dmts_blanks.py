@@ -27,6 +27,8 @@ class DMTSBlankTests(unittest.TestCase):
         app.sound_duration_s, app.delay_s = Var("0.2"), Var("1")
         app.response_window_s, app.reward_delay_s, app.pulse_ms = Var("1"), Var("0.1"), Var("40")
         app.right_pulse_ms = Var("40")
+        app.window_s = Var("10")
+        app.dmts_plot_windows = []
         app.parse_float = lambda var, default: float(var.get())
         app.trial_index = 1
         app.start_trial_state_interval = Mock()
