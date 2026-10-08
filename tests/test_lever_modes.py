@@ -1,6 +1,8 @@
 """Hardware-free checks of the actual runtime methods, without importing NI/Tk GUI dependencies."""
 import ast
 import os
+import math
+import random
 from pathlib import Path
 from types import MethodType, SimpleNamespace
 import unittest
@@ -93,6 +95,72 @@ for name in NAMES:
 
 
 class LeverModeTests(unittest.TestCase):
+    def test_lever_weighted_selection_and_trial_sound_snapshot(self):
+        methods = load_methods("pyBEHAVIOR_v7.py", {"choose_lever_trial", "start_active_lever_trial", "play_next_lever_sound"})
+        rng = random.Random(123)
+        methods.update(math=math, random=rng)
+        app = LeverHarness("bonus")
+        app.lever_go_sound_id, app.lever_test_sound_id = Var("1"), Var("10")
+        app.lever_go_weight, app.lever_test_weight = Var("0.8"), Var("0.2")
+        app.parse_float = lambda v, default: float(v.get())
+        app.parse_int = lambda v, default: int(v.get())
+        choose = lambda: methods["choose_lever_trial"](app)
+        draws = [choose() for _ in range(10000)]
+        self.assertEqual(set(draws), {(1, 1, "Lever-GO"), (10, 2, "Lever-Test")})
+        self.assertTrue(1800 < sum(d[1] == 2 for d in draws) < 2200)
+        for go, test, expected in [(1, 0, 1), (0, 1, 10), (0, 0, 1), (-1, 1, 1), (float("nan"), 1, 1)]:
+            app.lever_go_weight.set(go)
+            app.lever_test_weight.set(test)
+            self.assertEqual(choose()[0], expected)
+        app.row["sound_id"] = 10
+        app.start_trial_state_interval = Mock()
+        methods["start_active_lever_trial"](app, 0, 1)
+        app.lever_test_sound_id.set(30)  # Active trial keeps its selected sound.
+        app.play_sound_on_crossing = Var(True)
+        app.lever_sound_gap_s = 0.5
+        app.play_loaded_sound = Mock(return_value=0.1)
+        for when in (0, 0.6, 1.2):
+            methods["play_next_lever_sound"](app, when)
+        self.assertEqual([c.kwargs["sound_id"] for c in app.play_loaded_sound.call_args_list], [10, 11, 12])
+
+    def test_test_trials_never_reward_in_any_mode(self):
+        methods = load_methods("pyBEHAVIOR_v7.py", {"maybe_send_go_reward"})
+        for mode, release in [("simple", 1.5), ("window", 1.1), ("bonus", 1.0), ("bonus", 1.5)]:
+            with self.subTest(mode=mode, release=release):
+                app = LeverHarness(mode)
+                app.row["TrialType"] = "2 Lever-Test"
+                app.active_reward_decided = False
+                app.send_reward_pulses = Mock()
+                app.maybe_send_go_reward = MethodType(methods["maybe_send_go_reward"], app)
+                app.evaluate_active_lever_trial(min(1.0, release - 0.001))
+                app.release(release)
+                self.assertEqual(app.row["HIT"], 1)
+                self.assertTrue(app.active_reward_decided)
+                app.send_reward_pulses.assert_not_called()
+
+    def test_legacy_import_clears_test_settings(self):
+        app = LeverHarness("bonus")
+        app.lever_test_weight = Var("1")
+        app.generate_sequence = Mock()
+        app.apply_imported_parameters({"TaskType": "Lever", "GoSoundId": "3"})
+        self.assertEqual(app.lever_test_weight.get(), "0")
+        self.assertEqual(app.lever_go_weight.get(), "1")
+        self.assertEqual(app.lever_test_sound_id.get(), "10")
+        self.assertEqual(app.lever_go_sound_id.get(), "3")
+        app.apply_imported_parameters({"TaskType": "Lever", "GoSoundId": "2",
+                                       "LeverTestSoundId": "12", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2"})
+        self.assertEqual(app.lever_test_weight.get(), "0.2")
+        self.assertEqual(app.lever_test_sound_id.get(), "12")
+
+    def test_generator_exports_lever_selection(self):
+        methods = load_methods("protocol_generator.py", {"write_dat"})
+        values = {"LeverGoSoundId": "1", "LeverTestSoundId": "10", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2"}
+        parameters = [SimpleNamespace(key=k, default=v) for k, v in values.items()]
+        with patch("builtins.open", mock_open()) as output, patch("os.makedirs"):
+            methods["write_dat"]("check.dat", values, parameters)
+            written = "".join(c.args[0] for c in output().write.call_args_list)
+        self.assertEqual(written, "GoSoundId=1\nLeverTestSoundId=10\nLeverGoWeight=0.8\nLeverTestWeight=0.2\n")
+
     def test_bonus_probability_and_other_modes(self):
         methods = load_methods("pyBEHAVIOR_v7.py", {
             "maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side",

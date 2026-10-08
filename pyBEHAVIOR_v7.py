@@ -431,6 +431,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.tac_right_threshold = tk.StringVar(value="1")
         self.tac_min_lick_count = tk.StringVar(value="1")
         self.lever_hold_time_s = tk.StringVar(value="1")
+        self.lever_go_sound_id = tk.StringVar(value="1")
+        self.lever_test_sound_id = tk.StringVar(value="10")
+        self.lever_go_weight = tk.StringVar(value="1")
+        self.lever_test_weight = tk.StringVar(value="0")
         self.lever_start_debounce_s = tk.StringVar(value="0.1")
         self.lever_release_debounce_s = tk.StringVar(value="0.05")
         self.lever_release_window_s = tk.StringVar(value="0.25")
@@ -458,6 +462,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.lick_threshold_widgets = self._entry(trial, 2, "Lick thresh", self.lick_threshold, width=6, row=6)
         self.hit_threshold_widgets = self._entry(trial, 2, "Resp. hold %", self.hit_threshold_s, width=6, row=6)
         self.lever_hold_widgets = self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=6, row=7)
+        self.lever_go_sound_widgets = self._entry(trial, 0, "GO start ID", self.lever_go_sound_id, width=6, row=4)
+        self.lever_test_sound_widgets = self._entry(trial, 2, "Test start ID", self.lever_test_sound_id, width=6, row=4)
+        self.lever_go_weight_widgets = self._entry(trial, 0, "GO weight", self.lever_go_weight, width=6, row=5)
+        self.lever_test_weight_widgets = self._entry(trial, 2, "Test weight", self.lever_test_weight, width=6, row=5)
         self.lever_start_debounce_widgets = self._entry(trial, 2, "Start debounce s", self.lever_start_debounce_s, width=6, row=7)
         self.lever_release_window_widgets = self._entry(trial, 0, "Release window s", self.lever_release_window_s, width=6, row=8)
         self.lever_release_debounce_widgets = self._entry(trial, 2, "Release debounce s", self.lever_release_debounce_s, width=6, row=8)
@@ -658,6 +666,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.lick_threshold_widgets, not is_lever and not is_dmts and not is_tac_family and is_lick, row=6, col=2)
         self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever and not is_tac_family and not is_lick, row=6, col=2)
         self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=7, col=0)
+        self.set_widget_pair_visible(self.lever_go_sound_widgets, is_lever, row=4, col=0)
+        self.set_widget_pair_visible(self.lever_test_sound_widgets, is_lever, row=4, col=2)
+        self.set_widget_pair_visible(self.lever_go_weight_widgets, is_lever, row=5, col=0)
+        self.set_widget_pair_visible(self.lever_test_weight_widgets, is_lever, row=5, col=2)
         self.set_widget_pair_visible(self.lever_start_debounce_widgets, is_lever, row=7, col=2)
         self.set_widget_pair_visible(self.lever_release_window_widgets, is_lever, row=8, col=0)
         self.set_widget_pair_visible(self.lever_release_debounce_widgets, is_lever, row=8, col=2)
@@ -1021,6 +1033,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             params["LeverReqRelBonus"] = params["LeverRequireRelease"]
         # Old protocols must not inherit window mode from the previous session.
         params.setdefault("LeverReqRelWindow", "0")
+        params.setdefault("LeverGoWeight", "1")
+        params.setdefault("LeverTestWeight", "0")
+        params.setdefault("LeverTestSoundId", "10")
         if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
             if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
                 self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
@@ -1038,6 +1053,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             "OuputformatDropDown": self.output_format,
             "OutputformatDropDown": self.output_format,
             "TaskType": self.task_type,
+            "GoSoundId": self.lever_go_sound_id,
+            "LeverTestSoundId": self.lever_test_sound_id,
+            "LeverGoWeight": self.lever_go_weight,
+            "LeverTestWeight": self.lever_test_weight,
             "MaxTrials": self.max_trials,
             "SoundLevel": self.sound_level,
             "RandomSeed": self.random_seed,
@@ -1784,7 +1803,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             "GoWeight": sequence_weights[0] if len(sequence_weights) > 0 else "",
             "NoGoWeight": sequence_weights[1] if len(sequence_weights) > 1 else "",
             "BlankWeight": sequence_weights[2] if self.is_dmts_task() and len(sequence_weights) > 2 else "0",
-            "GoSoundId": sequence_values[0] if len(sequence_values) > 0 else "",
+            "GoSoundId": self.lever_go_sound_id.get() if self.is_lever_task() else (sequence_values[0] if len(sequence_values) > 0 else ""),
+            "LeverTestSoundId": self.lever_test_sound_id.get(),
+            "LeverGoWeight": self.lever_go_weight.get(),
+            "LeverTestWeight": self.lever_test_weight.get(),
             "NoGoSoundId": sequence_values[1] if len(sequence_values) > 1 else "",
             "SoundLevel": self.sound_level.get(),
             "RandomSeed": self.random_seed.get(),
@@ -1860,6 +1882,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "NoGoWeight",
             "BlankWeight",
             "GoSoundId",
+            "LeverTestSoundId",
+            "LeverGoWeight",
+            "LeverTestWeight",
             "NoGoSoundId",
             "SampleSoundId",
             "TestSoundId",
@@ -2027,6 +2052,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "Block": "",
         }
         parameter_row["Block"] = self.get_parameter_block_label(params=params)
+        parameter_row.update({key: params[key] for key in ("LeverGoWeight", "LeverTestWeight", "LeverTestSoundId")})
         if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
             pair = self._dmts_light_pending
             trial_row.update(sample_light_id=pair['sample_id'], test_light_id=pair['test_id'],
@@ -2637,10 +2663,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.plot_queue.put(("log", f"Accepted lever press ignored: max trials {max_trials} reached."))
             return
 
-        sound_id = self.parse_int(self.sound_id, 1)
+        sound_id, trial_type_id, trial_type = self.choose_lever_trial()
         iti = self.draw_trial_iti_s()
         trigger_time_s = self.lever_pending_start_s
-        self.create_trial(sound_id, trigger_time_s, threshold, iti)
+        self.create_trial(sound_id, trigger_time_s, threshold, iti,
+                          trial_type_id=trial_type_id, trial_type=trial_type)
         self.start_active_lever_trial(trigger_time_s, iti)
         self.play_next_lever_sound(trigger_time_s)
         self.last_trigger_time = trigger_time_s
@@ -2937,6 +2964,15 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.dmts_reminder_engaged = False
             self.plot_queue.put(("log", "DMTS: 5 consecutive match misses; next 3 trials are match-only with guaranteed Pavlov reward (when output is enabled)."))
 
+    def choose_lever_trial(self):
+        weights = [self.parse_float(self.lever_go_weight, 1), self.parse_float(self.lever_test_weight, 0)]
+        if any(not math.isfinite(w) or w < 0 for w in weights) or sum(weights) <= 0:
+            weights = [1, 0]
+        is_test = random.choices([False, True], weights=weights, k=1)[0]
+        sound_var = self.lever_test_sound_id if is_test else self.lever_go_sound_id
+        sound_id = max(1, self.parse_int(sound_var, 10 if is_test else 1))
+        return sound_id, 2 if is_test else 1, "Lever-Test" if is_test else "Lever-GO"
+
     def start_active_lever_trial(self, trigger_time_s, iti_s):
         self.active_trial_index = self.trial_index
         self.active_trial_start_s = trigger_time_s
@@ -2948,7 +2984,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_reward_sent = False
         self.active_trial_base_iti_s = iti_s
         self.active_trial_extra_timeout_s = 0.0
-        self.active_lever_sound_id = self.parse_int(self.sound_id, 1)
+        self.active_lever_sound_id = int(self.get_active_trial_row()["sound_id"])
         self.active_lever_next_sound_time_s = trigger_time_s
         self.active_lever_low_start_s = None
         self.active_lever_release_armed = False
@@ -3333,6 +3369,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         if self.active_reward_decided:
             return
         self.active_reward_decided = True
+        if str(row.get("TrialType", "")).endswith("Lever-Test"):
+            self.plot_queue.put(("log", f"Trial {row['trial']} is a lever Test trial; no reward."))
+            return
         reward_count = max(1, int(reward_count))
         reward_probability = min(1.0, max(0.0, self.parse_float(self.reward_go, 1.0)))
         if (
@@ -4199,6 +4238,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("TriggerType", params["TriggerTypeDropDown"]),
             ("Threshold", params["LeverThreshold"]),
             ("LeverHoldTime_s", params["LeverHoldTime_s"]),
+            ("GoSoundId", params["GoSoundId"]),
+            ("LeverTestSoundId", params["LeverTestSoundId"]),
+            ("LeverGoWeight", params["LeverGoWeight"]),
+            ("LeverTestWeight", params["LeverTestWeight"]),
             ("LeverStartDebounce_s", params["LeverStartDebounce_s"]),
             ("LeverReleaseWindow_s", params["LeverReleaseWindow_s"]),
             ("LeverReqRelBonus", params["LeverReqRelBonus"]),
@@ -4795,7 +4838,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             conditions[key]["total"] += 1
             if trial_type.endswith("noGo"):
                 conditions[key]["correct"] += int(result == "CR")
-            elif trial_type.endswith("GO") or trial_type.endswith("Lever") or "tAC-" in trial_type:
+            elif trial_type.endswith("GO") or trial_type.endswith("Lever") or trial_type.endswith("Lever-Test") or "tAC-" in trial_type:
                 conditions[key]["correct"] += int(result == "HIT")
             else:
                 conditions[key]["correct"] += int(result in ("HIT", "CR"))
@@ -4816,6 +4859,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         colors = {
             "GO": "#2ca02c",
             "Lever": "#2ca02c",
+            "Lever-GO": "#2ca02c",
+            "Lever-Test": "#1f77b4",
             "noGo": "#1f77b4",
             "tAC-left": "#2ca02c",
             "tAC-right": "#9467bd",
