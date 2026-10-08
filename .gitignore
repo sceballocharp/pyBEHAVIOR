@@ -4,3 +4,8 @@ Sounds/AllSounds_from_wav.mat
 /data
 *.pyc
 *.pyc
+braincodec/__pycache__/__init__.cpython-314.pyc
+braincodec/__pycache__/control_panel.cpython-314.pyc
+braincodec/__pycache__/tk_panel.cpython-314.pyc
+/braincodec/__pycache__
+/braincodec/__pycache__
