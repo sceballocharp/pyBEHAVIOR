@@ -117,6 +117,56 @@ def time_to_seconds(time_text):
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
+def parse_dmts_log_file(path):
+    with path.open(newline="", encoding="utf-8-sig") as handle:
+        rows = list(csv.reader(handle))
+    starts = [index for index, row in enumerate(rows)
+              if row and row[0].strip() == "Trial:"]
+    trials = {}
+    for block_index, start in enumerate(starts):
+        end = starts[block_index + 1] if block_index + 1 < len(starts) else len(rows)
+        block = rows[start:end]
+        fields = {row[0].strip(): row[1].strip()
+                  for row in block if len(row) >= 2}
+        trial_number = int(fields["Trial:"])
+        trial_id = fields.get("Trial ID:") or str(trial_number)
+        trial = trials.setdefault(trial_id, {"trial": trial_number,
+                                             "trial_id": trial_id})
+        phase = fields.get("Presentation:", "").lower()
+        if phase not in ("sample", "test"):
+            raise ValueError(f"Trial {trial_number}: unknown presentation {phase!r}.")
+        if phase in trial:
+            raise ValueError(f"Trial {trial_number}: duplicate {phase} presentation.")
+        pattern = fields.get("LED pattern:", "").upper().split()
+        for position in pattern:
+            row, col = parse_position(position)
+            if not (0 <= row < 10 and 0 <= col < 10):
+                raise ValueError(f"Trial {trial_number}: invalid LED position {position}.")
+        voltages = None
+        for index, row in enumerate(block):
+            if row and row[0].strip() == "Measured voltages (V):":
+                # The driver puts a message on the header when no measurement exists.
+                if len(row) == 1 and index + 1 < len(block):
+                    try:
+                        values = [float(value) for value in block[index + 1]
+                                  if value.strip()]
+                    except ValueError:
+                        values = []
+                    if len(values) >= 10:
+                        voltages = values
+                break
+        trial[phase] = {
+            "stimulus": fields.get("Stimulus:", "Unknown"),
+            "pattern": pattern,
+            "voltages": voltages,
+            "completed": fields.get("Presentation completed:", "").lower() == "true",
+            "trigger_time": fields.get("Trigger detected, starting stimulus", ""),
+            "fault_reg_a": fields.get("Fault reg A:", "unavailable"),
+            "fault_reg_b": fields.get("Fault reg B:", "unavailable"),
+        }
+    return list(trials.values())
+
+
 def led_labels_grid(shape=(10, 10)):
     labels = np.empty(shape, dtype=object)
     for n_number in range(1, shape[0] + 1):
@@ -136,11 +186,11 @@ def pattern_indices(pattern):
     return [parse_position(position) for position in pattern]
 
 
-def voltages_to_pattern_grid(voltages, pattern):
+def voltages_to_pattern_grid(voltages, pattern, channel_order=VOLTAGE_CHANNEL_ORDER):
     if len(voltages) < 10:
         raise ValueError(f"Expected at least 10 voltage values, found {len(voltages)}.")
 
-    reordered_voltages = np.array(voltages[:10], dtype=float)[VOLTAGE_CHANNEL_ORDER]
+    reordered_voltages = np.array(voltages[:10], dtype=float)[channel_order]
     voltage_grid = np.tile(reordered_voltages, 10).reshape(10, 10)
 
     labels = led_labels_grid()
@@ -159,24 +209,25 @@ def select_pattern(metadata, trial):
 
 
 class TrialVoltageViewer:
-    def __init__(self, root):
+    def __init__(self, root, default_file=DEFAULT_LOG_FILE):
         self.root = root
-        self.root.title("Log Trial Voltage Viewer")
+        self.window = root.winfo_toplevel()
+        self.window.title("Log Trial Voltage Viewer")
         self.metadata = {}
         self.trials = []
         self.incomplete_trials = []
         self.current_index = 0
         self.colorbar = None
 
-        self.file_path = StringVar(value=str(DEFAULT_LOG_FILE))
+        self.file_path = StringVar(value=str(default_file))
         self.trial_entry = StringVar(value="")
         self.status = StringVar(value="No file loaded")
         self.summary = StringVar(value="")
 
         self.build_layout()
-        self.root.protocol("WM_DELETE_WINDOW", self.close)
-        if DEFAULT_LOG_FILE.exists():
-            self.load_file(DEFAULT_LOG_FILE)
+        self.window.protocol("WM_DELETE_WINDOW", self.close)
+        if default_file.exists():
+            self.load_file(default_file)
 
     def build_layout(self):
         root_frame = ttk.Frame(self.root, padding=10)
@@ -192,7 +243,7 @@ class TrialVoltageViewer:
         ttk.Button(file_frame, text="Save summary", command=self.save_summary).pack(
             side="left", padx=(0, 6)
         )
-        ttk.Button(file_frame, text="Quit", command=self.close).pack(side="left")
+        ttk.Button(file_frame, text="Quit", command=lambda: self.close()).pack(side="left")
 
         control_frame = ttk.Frame(root_frame)
         control_frame.pack(fill="x", pady=(8, 4))
@@ -273,8 +324,8 @@ class TrialVoltageViewer:
 
     def close(self):
         plt.close(self.figure)
-        self.root.quit()
-        self.root.destroy()
+        self.window.quit()
+        self.window.destroy()
 
     def load_file(self, path):
         try:
@@ -505,9 +556,125 @@ class TrialVoltageViewer:
         return heatmap_image
 
 
+class DMTSVoltageViewer(TrialVoltageViewer):
+    def build_layout(self):
+        root_frame = ttk.Frame(self.root, padding=10)
+        root_frame.pack(fill="both", expand=True)
+        file_frame = ttk.Frame(root_frame)
+        file_frame.pack(fill="x")
+        ttk.Button(file_frame, text="Browse file", command=self.browse_file).pack(side="left")
+        file_entry = ttk.Entry(file_frame, textvariable=self.file_path)
+        file_entry.pack(side="left", fill="x", expand=True, padx=8)
+        file_entry.bind("<Return>", lambda _event: self.load_file(Path(self.file_path.get())))
+        ttk.Button(file_frame, text="Load", command=lambda: self.load_file(
+            Path(self.file_path.get()))).pack(side="left", padx=(0, 6))
+        ttk.Button(file_frame, text="Quit", command=lambda: self.close()).pack(side="left")
+        controls = ttk.Frame(root_frame)
+        controls.pack(fill="x", pady=(8, 4))
+        self.prev_button = ttk.Button(controls, text="Previous Trial",
+                                     command=self.previous_trial, state="disabled")
+        self.prev_button.pack(side="left")
+        self.next_button = ttk.Button(controls, text="Next Trial",
+                                     command=self.next_trial, state="disabled")
+        self.next_button.pack(side="left", padx=(6, 14))
+        ttk.Label(controls, text="Trial").pack(side="left")
+        trial_entry = ttk.Entry(controls, textvariable=self.trial_entry, width=8)
+        trial_entry.pack(side="left", padx=6)
+        trial_entry.bind("<Return>", lambda _event: self.go_to_trial())
+        ttk.Button(controls, text="Go", command=self.go_to_trial).pack(side="left")
+        ttk.Label(controls, textvariable=self.summary).pack(side="left", padx=18)
+        self.figure, axes = plt.subplots(1, 2, figsize=(12, 6))
+        self.figure.subplots_adjust(left=0.06, right=0.94, bottom=0.14,
+                                    top=0.85, wspace=0.38)
+        self.phase_axes = dict(zip(("sample", "test"), axes))
+        self.phase_colorbars = {}
+        for phase, ax in self.phase_axes.items():
+            image = self.draw_voltage_grid(ax, np.full((10, 10), np.nan),
+                                           phase.title(), annotate=False)
+            colorbar = self.figure.colorbar(image, ax=ax, fraction=0.035,
+                                            pad=0.025, shrink=0.82)
+            colorbar.set_label("Measured voltage (V)")
+            self.phase_colorbars[phase] = colorbar
+        self.canvas = FigureCanvasTkAgg(self.figure, master=root_frame)
+        self.canvas.get_tk_widget().pack(fill="both", expand=True, pady=(8, 4))
+        ttk.Label(root_frame, textvariable=self.status).pack(fill="x")
+
+    def load_file(self, path):
+        try:
+            trials = parse_dmts_log_file(path)
+            if not trials:
+                raise ValueError("No DMTS trial presentations were found.")
+        except Exception as error:
+            messagebox.showerror("Could not load DMTS file", str(error))
+            return
+        self.trials = trials
+        self.current_index = 0
+        self.file_path.set(str(path))
+        self.update_plot()
+
+    def update_plot(self):
+        trial = self.trials[self.current_index]
+        notices = []
+        for phase, ax in self.phase_axes.items():
+            presentation = trial.get(phase)
+            grid = np.full((10, 10), np.nan)
+            title = f"Trial {trial['trial']} | {phase.title()}"
+            message = None
+            if presentation is None:
+                message = "Missing presentation"
+            else:
+                title += (f" | {presentation['stimulus']}\n"
+                          f"fault A={presentation['fault_reg_a']}, "
+                          f"B={presentation['fault_reg_b']}")
+                if not presentation["completed"]:
+                    notices.append(f"{phase}: presentation not completed")
+                if presentation["voltages"] is None:
+                    message = "No voltage measurement"
+                elif not presentation["pattern"]:
+                    message = "BLANK" if presentation["stimulus"].upper() == "BLANK" else "Empty LED pattern"
+                else:
+                    # DMTS diagnostics are logged in P1-P10 order, without pair swaps.
+                    grid = voltages_to_pattern_grid(presentation["voltages"],
+                                                   presentation["pattern"],
+                                                   channel_order=list(range(10)))
+            image = self.draw_voltage_grid(ax, grid, title, annotate=False)
+            self.phase_colorbars[phase].update_normal(image)
+            if message:
+                ax.text(0.5, 0.5, message, transform=ax.transAxes,
+                        ha="center", va="center")
+                if message != "BLANK":
+                    notices.append(f"{phase}: {message.lower()}")
+        self.prev_button.configure(state="normal" if self.current_index > 0 else "disabled")
+        self.next_button.configure(state="normal" if self.current_index < len(self.trials) - 1 else "disabled")
+        self.trial_entry.set(str(trial["trial"]))
+        self.summary.set(f"{self.current_index + 1}/{len(self.trials)} trials")
+        self.status.set(" | ".join(notices) if notices else f"Trial ID: {trial['trial_id']}")
+        self.canvas.draw_idle()
+
+
 def main():
     root = Tk()
-    TrialVoltageViewer(root)
+    notebook = ttk.Notebook(root)
+    notebook.pack(fill="both", expand=True)
+    go_frame = ttk.Frame(notebook)
+    dmts_frame = ttk.Frame(notebook)
+    notebook.add(go_frame, text="GO / NO-GO")
+    notebook.add(dmts_frame, text="DMTS")
+    go_viewer = TrialVoltageViewer(go_frame)
+    dmts_viewer = DMTSVoltageViewer(
+        dmts_frame,
+        default_file=Path(__file__).parent / "examples" / "M1083_DMTS_MatchOnly_20230119_162427.csv",
+    )
+
+    def close():
+        plt.close(go_viewer.figure)
+        plt.close(dmts_viewer.figure)
+        root.quit()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", close)
+    go_viewer.close = close
+    dmts_viewer.close = close
     root.mainloop()
 
 
