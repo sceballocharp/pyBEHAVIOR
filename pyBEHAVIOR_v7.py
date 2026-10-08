@@ -1262,8 +1262,25 @@ class BehaviorAcquisitionApp(tk.Tk):
     def start_live(self):
         if self.running:
             return
+        try:
+            self._start_live_session()
+        except Exception as exc:
+            self.running = False
+            self.close_tasks()
+            self.close_behavior_signal_file()
+            self.set_status('red')
+            self.startup_message(f'Session could not start: {type(exc).__name__}: {exc}')
+
+    def startup_message(self, message):
+        print(message, flush=True)
+        self.log(message)
+        self.update_idletasks()
+
+    def _start_live_session(self):
+        self.startup_message('Starting session: checking DMTS/PYNQ connection.')
         if not self.configure_dmts_light_session():
             return
+        self.startup_message('Starting session: initializing trial sequence.')
         if self.is_dmts_task() and self.is_lick_trigger():
             left = self.get_tac_left_channel_name()
             right = self.get_tac_right_channel_name()
@@ -1359,15 +1376,20 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.open_results_window()
         self.set_status("green")
         self.update_health_readouts()
+        self.startup_message('Starting session: preparing data folder and parameter files.')
         self.prepare_session_folder()
+        self.startup_message('Starting session: opening signal files.')
         self.open_behavior_signal_file()
         if self.simulation_mode.get():
             self.close_tasks()
             self.log("Simulation mode enabled: generated IR crossings will be used.")
         else:
+            self.startup_message('Starting session: initializing NI tasks.')
             self.setup_tasks()
-        if self.play_sound_on_crossing.get() and not self.is_tac_pretraining_task() and self.sequence_has_sound():
+        if self.session_requires_sound_file():
+            self.startup_message('Starting session: loading sound MAT file.')
             self.load_sound_file()
+        self.startup_message('Starting session: starting acquisition.')
         self.acq_thread = threading.Thread(target=self.acquisition_loop, daemon=True)
         self.acq_thread.start()
         self.log("Live acquisition started.")
@@ -1436,6 +1458,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         if self.trial_stimulus_sequence:
             return any(int(stimulus.get("sound_id", 0) or 0) > 0 for stimulus in self.trial_stimulus_sequence)
         return True
+
+    def session_requires_sound_file(self):
+        if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
+            return False
+        return (self.play_sound_on_crossing.get() and not self.is_tac_pretraining_task()
+                and self.sequence_has_sound())
 
     def acquisition_loop(self):
         rate = self.parse_float(self.rate_hz, 1000)

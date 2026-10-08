@@ -242,6 +242,31 @@ class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
 
 
 class BehaviorTests(unittest.TestCase):
+    def test_led_start_skips_sound_file_but_audio_start_keeps_it(self):
+        methods = load_methods('pyBEHAVIOR_v7.py', {'session_requires_sound_file'})
+        app = SimpleNamespace(is_dmts_task=lambda: True, dmts_light_client=Mock(),
+                              play_sound_on_crossing=SimpleNamespace(get=lambda: True),
+                              is_tac_pretraining_task=lambda: False,
+                              sequence_has_sound=lambda: True)
+        check = methods['session_requires_sound_file']
+        self.assertFalse(check(app))
+        app.dmts_light_client = None
+        self.assertTrue(check(app))
+        app.play_sound_on_crossing.get = lambda: False
+        self.assertFalse(check(app))
+
+    def test_start_failure_closes_files_and_ni_and_allows_retry(self):
+        methods = load_methods('pyBEHAVIOR_v7.py', {'start_live'})
+        app = SimpleNamespace(running=False,
+                              _start_live_session=Mock(side_effect=OSError('folder unavailable')),
+                              close_tasks=Mock(), close_behavior_signal_file=Mock(),
+                              set_status=Mock(), startup_message=Mock())
+        methods['start_live'](app)
+        self.assertFalse(app.running)
+        app.close_tasks.assert_called_once()
+        app.close_behavior_signal_file.assert_called_once()
+        self.assertIn('folder unavailable', app.startup_message.call_args.args[0])
+
     def attach(self, app):
         names = {'prepare_next_dmts_light_trial', 'trigger_dmts_light_phase', 'fail_dmts_light_trial',
                  'extend_dmts_light_timeline'}
