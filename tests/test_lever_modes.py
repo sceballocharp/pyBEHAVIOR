@@ -113,6 +113,7 @@ class LeverModeTests(unittest.TestCase):
             app.lever_test_weight.set(test)
             self.assertEqual(choose()[0], expected)
         app.row["sound_id"] = 10
+        app.row["TrialType"] = "2 Lever-Test"
         app.start_trial_state_interval = Mock()
         methods["start_active_lever_trial"](app, 0, 1)
         app.lever_test_sound_id.set(30)  # Active trial keeps its selected sound.
@@ -137,6 +138,32 @@ class LeverModeTests(unittest.TestCase):
                 self.assertEqual(app.row["HIT"], 1)
                 self.assertTrue(app.active_reward_decided)
                 app.send_reward_pulses.assert_not_called()
+
+    def test_go_sound_limit_preserves_trial_and_release_reward(self):
+        methods = load_methods("pyBEHAVIOR_v7.py", {"start_active_lever_trial", "play_next_lever_sound"})
+        for start_id, stop_id, expected in [(1, 10, list(range(1, 10))), (3, 5, [3, 4]), (10, 10, []), (11, 10, [])]:
+            with self.subTest(start_id=start_id, stop_id=stop_id):
+                app = LeverHarness("bonus")
+                app.row.update(sound_id=start_id, TrialType="1 Lever-GO")
+                app.lever_test_sound_id = Var(stop_id)
+                app.parse_int = lambda v, default: int(v.get())
+                app.start_trial_state_interval = Mock()
+                methods["start_active_lever_trial"](app, 0, 1)
+                app.lever_test_sound_id.set(99)  # Edits apply to the next trial.
+                app.play_sound_on_crossing = Var(True)
+                app.lever_sound_gap_s = 0.5
+                app.play_loaded_sound = Mock(return_value=0.1)
+                app.play_next_lever_sound = MethodType(methods["play_next_lever_sound"], app)
+                for when in range(20):
+                    app.evaluate_active_lever_trial(when)
+                self.assertEqual([c.kwargs["sound_id"] for c in app.play_loaded_sound.call_args_list], expected)
+                self.assertIsNone(app.active_lever_next_sound_time_s)
+                self.assertEqual(app.active_trial_index, app.trial_index)
+                self.assertEqual(app.rewards, [])
+                app.release(20)
+                self.assertEqual(app.row["HIT"], 1)
+                self.assertEqual(app.rewards, [1])
+                self.assertIsNone(app.active_trial_index)
 
     def test_legacy_import_clears_test_settings(self):
         app = LeverHarness("bonus")

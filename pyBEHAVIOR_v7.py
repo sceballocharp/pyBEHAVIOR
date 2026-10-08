@@ -2985,6 +2985,11 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_trial_base_iti_s = iti_s
         self.active_trial_extra_timeout_s = 0.0
         self.active_lever_sound_id = int(self.get_active_trial_row()["sound_id"])
+        # Freeze the GO sound boundary for this trial, like its starting sound ID.
+        self.active_lever_sound_stop_id = (
+            None if str(self.get_active_trial_row().get("TrialType", "")).endswith("Lever-Test")
+            else max(1, self.parse_int(self.lever_test_sound_id, 10))
+        )
         self.active_lever_next_sound_time_s = trigger_time_s
         self.active_lever_low_start_s = None
         self.active_lever_release_armed = False
@@ -3050,6 +3055,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         if sample_time_s < self.active_lever_next_sound_time_s:
             return
         sound_id = max(1, self.active_lever_sound_id)
+        if self.active_lever_sound_stop_id is not None and sound_id >= self.active_lever_sound_stop_id:
+            self.active_lever_next_sound_time_s = None
+            self.plot_queue.put(("log", f"GO sound sequence stopped before Test sound ID {self.active_lever_sound_stop_id}; lever trial continues."))
+            return
         duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
         if duration_s is None:
             self.active_lever_next_sound_time_s = None

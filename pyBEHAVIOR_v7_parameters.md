@@ -124,6 +124,8 @@ Classic Go/No-Go starts trials differently depending on the trigger source. With
 
 ## Lever
 
+GO sound sequences stop before `LeverTestSoundId`: with GO start `1` and Test start `10`, GO plays only IDs `1` through `9`, then remains silent while the lever trial continues. Hold/release scoring and rewards are unchanged. The limit is captured at trial start; edits apply to the next trial. If the GO start ID is at or above the Test start ID, the GO trial is silent. Test sequences are not capped by this limit.
+
 Lever trials are selected independently at each accepted press using relative **GO weight** (`LeverGoWeight`, default `1`) and **Test weight** (`LeverTestWeight`, default `0`). For example, `0.8` and `0.2` give an 80% GO / 20% Test probability, not fixed counts. The live Trial Structure controls also expose **GO start ID** (`GoSoundId`, default `1`) and **Test start ID** (`LeverTestSoundId`, default `10`). Changes affect subsequent trials. This uses weighted random selection like Classic, but draws at press acceptance rather than consuming the Classic sound sequence; Classic sequence controls and its seed do not control these draws.
 
 GO sequences start at `GoSoundId`; Test sequences start at `LeverTestSoundId`. Both advance through consecutive IDs with the same sound timing and lever scoring. Test trials never deliver automatic rewards, including bonus pulses, regardless of `RewardGo`. Trial logs label trials `1 Lever-GO` or `2 Lever-Test`, retain HIT/MISS scoring, and record the actual starting `sound_id`. Old protocols without the new settings reset to GO-only selection. Invalid live weights fall back to GO-only selection; the protocol generator rejects invalid weights.
