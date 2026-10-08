@@ -3119,6 +3119,12 @@ class BehaviorAcquisitionApp(tk.Tk):
 
     def write_trial_log(self):
         self.write_csv(self.trial_log_path, self.trial_rows)
+        if self.trial_log_path and self.trial_rows:
+            table_path = os.path.splitext(self.trial_log_path)[0] + '.tsv'
+            with open(table_path, 'w', newline='', encoding='utf-8-sig') as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(self.trial_rows[0]), delimiter='\t')
+                writer.writeheader()
+                writer.writerows(self.trial_rows)
 
     def set_trial_end_time(self, row, trial_end_s):
         if row is not None and trial_end_s is not None:

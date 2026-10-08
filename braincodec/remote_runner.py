@@ -41,6 +41,7 @@ class BraincodecRunnerState:
             "started_at": None,
             "finished_at": None,
             "log_file": None,
+            "csv_log_file": None,
             "health_scan_folder": None,
             "health_scan_files": [],
             "error": None,
@@ -88,6 +89,7 @@ class BraincodecRunnerState:
                     "started_at": datetime.now().isoformat(timespec="seconds"),
                     "finished_at": None,
                     "log_file": payload["log_file"],
+                    "csv_log_file": None,
                     "health_scan_folder": None,
                     "health_scan_files": [],
                     "error": None,
@@ -189,6 +191,7 @@ class BraincodecRunnerState:
                     "started_at": datetime.now().isoformat(timespec="seconds"),
                     "finished_at": None,
                     "log_file": None,
+                    "csv_log_file": None,
                     "health_scan_folder": os.path.join("health_scans", folder_name),
                     "health_scan_files": [],
                     "error": None,
@@ -221,6 +224,7 @@ class BraincodecRunnerState:
 
             with self.lock:
                 self.experiment = exp
+            self.update(csv_log_file=getattr(exp, 'csv_log_file', None))
 
             self._attach_status_hooks(exp)
             self.update(state="running", last_message="Running experiment")

@@ -1,6 +1,7 @@
 """DMTS pair protocol and PYNQ LED driver; protocol imports need no PYNQ hardware."""
 
 import asyncio
+import csv
 import hashlib
 import json
 import math
@@ -135,6 +136,10 @@ class ExpDMTSPatterns:
         self.library = DMTSLibrary(config, ext_cables_used=ext_cables_used)
         self.protocol = DMTSPairState(self.library)
         driver_module = importlib.import_module(simple_driver.__module__)
+        self.voltage_div = driver_module.VOLTAGE_DIV
+        self.csv_log_file = str(Path(log_file).with_suffix('.csv'))
+        self._csv_lock = threading.Lock()
+        self._trial_numbers = {}
         self.counts = {}
         for stimulus_id, item in self.library.patterns.items():
             matrix = np.zeros((10, 10), dtype=float)
@@ -158,7 +163,52 @@ class ExpDMTSPatterns:
         self._reset_requested = False
         self._reset_complete = threading.Event()
         Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        self._csv_rows([
+            [f"Log file for mouse ID: {config.get('mouse_id', '')}"],
+            [f"Device ID: {self.library.device_id}"],
+            [f"Date: {datetime.now():%Y-%m-%d}"],
+            ['Experiment mode:', 'DMTS'],
+            ['Pulse duration (ms):', config['Pulse duration (ms)']],
+            ['Pulse frequency (Hz):', self.library.frequency],
+            ['Number of pulses:', self.library.pulses],
+            ['Voltage readings:', 'Final pulse, sampled before LEDs are turned off'],
+            ['Voltage channels:', *range(1, 21)],
+            *[[item['name'], ' '.join(item['labels']), 'Irradiance (mW/mm2):',
+               item['irradiance']] for item in self.library.patterns.values()],
+            [''],
+        ])
         self._log({"event": "library", "config": config, "fingerprint": self.library.fingerprint})
+
+    def _csv_rows(self, rows):
+        with self._csv_lock:
+            with open(self.csv_log_file, 'a', newline='', encoding='utf-8') as handle:
+                csv.writer(handle).writerows(rows)
+
+    def _read_diagnostics(self):
+        h = self.hardware
+        return (int(h.fault_reg_a_buffer[0]), int(h.fault_reg_b_buffer[0]),
+                [float(value) / 65535 * 3.33 / self.voltage_div
+                 for value in h.voltages_buffer])
+
+    def _log_presentation_csv(self, claim, started_at, completed, diagnostics):
+        _, trial_id, phase, stimulus_id = claim
+        item = self.library.patterns.get(stimulus_id)
+        rows = [
+            ['Trial:', self._trial_numbers[trial_id]], ['Trial ID:', trial_id],
+            ['Presentation:', phase],
+            ['Stimulus:', item['name'] if item else 'BLANK'],
+            ['LED pattern:', ' '.join(item['labels']) if item else ''],
+            ['Irradiance (mW/mm2):', item['irradiance'] if item else 0],
+            ['Trigger detected, starting stimulus', started_at],
+            ['Presentation completed:', completed],
+        ]
+        if diagnostics is not None:
+            fault_a, fault_b, voltages = diagnostics
+            rows.extend([['Fault codes:'], ['Fault reg A:', fault_a],
+                         ['Fault reg B:', fault_b], ['Measured voltages (V):'], voltages])
+        else:
+            rows.append(['Measured voltages (V):', 'No pulse measurement available'])
+        self._csv_rows(rows + [['']])
 
     def _log(self, event):
         event["timestamp"] = datetime.now().isoformat(timespec="milliseconds")
@@ -174,6 +224,7 @@ class ExpDMTSPatterns:
                                        payload["test_id"], payload["fingerprint"])
         self._observed_generation = self.protocol.generation
         self._low_seen = True
+        self._trial_numbers[payload['trial_id']] = len(self._trial_numbers) + 1
         self._log({"event": "prepared", **result["pair"]})
         return result
 
@@ -230,6 +281,8 @@ class ExpDMTSPatterns:
                     continue
                 self._low_seen = False
                 generation, trial_id, phase, stimulus_id = claim
+                started_at = datetime.now().isoformat(timespec='milliseconds')
+                diagnostics = None
                 self.control_panel.set_status(f"DMTS {phase}: STIM{stimulus_id}")
                 self._log({"event": "presentation_started", "trial_id": trial_id,
                            "phase": phase, "stimulus_id": stimulus_id})
@@ -242,11 +295,14 @@ class ExpDMTSPatterns:
                     cycle_start = loop.time()
                     await self._apply(stimulus_id)
                     completed = await self._wait(max(0, cycle_start + self.library.on_s - loop.time()), generation)
+                    # Copy buffers while the pulse is ON; OFF updates overwrite them.
+                    diagnostics = self._read_diagnostics()
                     await self._apply(0)
                     if not completed or not await self._wait(
                             max(0, cycle_start + 1 / self.library.frequency - loop.time()), generation):
                         completed = False
                         break
+                self._log_presentation_csv(claim, started_at, completed, diagnostics)
                 if completed:
                     self.protocol.complete(claim)
                     self._log({"event": "presentation_completed", "trial_id": trial_id,

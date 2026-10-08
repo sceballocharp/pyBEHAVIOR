@@ -1,8 +1,10 @@
 import asyncio
+import csv
 import importlib.util
 from pathlib import Path
 import queue
 import threading
+import tempfile
 from types import MethodType, SimpleNamespace
 import unittest
 from unittest.mock import Mock
@@ -181,7 +183,15 @@ class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
         exp = driver.ExpDMTSPatterns.__new__(driver.ExpDMTSPatterns)
         exp.library = driver.DMTSLibrary(config())
         exp.protocol = driver.DMTSPairState(exp.library)
-        exp.hardware = SimpleNamespace(trig=[0], stop_=Mock())
+        exp.hardware = SimpleNamespace(trig=[0], stop_=Mock(),
+                                       fault_reg_a_buffer=[0], fault_reg_b_buffer=[8],
+                                       voltages_buffer=[0] * 20)
+        exp.voltage_div = 0.026
+        exp._trial_numbers = {}
+        exp._csv_lock = threading.Lock()
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        exp.csv_log_file = str(Path(temp.name) / 'session.csv')
         exp.control_panel = SimpleNamespace(set_status=Mock())
         exp._stop_requested = False
         exp.stopped = False
@@ -194,6 +204,7 @@ class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
 
         async def apply(stimulus):
             presented.append(stimulus)
+            exp.hardware.voltages_buffer[:] = [65535 if stimulus else 0] * 20
             await asyncio.sleep(0)
         exp._apply = apply
         task = asyncio.create_task(exp.run())
@@ -217,6 +228,17 @@ class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
             exp.stop_()
             await task
         exp.hardware.stop_.assert_called()
+        with open(exp.csv_log_file, newline='', encoding='utf-8') as handle:
+            rows = list(csv.reader(handle))
+        self.assertEqual([row[1] for row in rows if row and row[0] == 'Presentation:'],
+                         ['sample', 'test'])
+        self.assertEqual([row[1] for row in rows if row and row[0] == 'Stimulus:'],
+                         ['STIM7', 'STIM10'])
+        self.assertEqual([row[1] for row in rows if row and row[0] == 'Trial:'], ['1', '1'])
+        for index, row in enumerate(rows):
+            if row == ['Measured voltages (V):']:
+                self.assertEqual(len(rows[index + 1]), 20)
+                self.assertAlmostEqual(float(rows[index + 1][0]), 3.33 / 0.026)
 
 
 class BehaviorTests(unittest.TestCase):
@@ -298,6 +320,16 @@ class BehaviorTests(unittest.TestCase):
 
 
 class GUITests(unittest.TestCase):
+    def test_downloads_both_dmts_logs_once(self):
+        from braincodec.tk_panel import BraincodecTkPanel
+        panel = SimpleNamespace(_downloaded_remote_logs=set(), add_log_line=Mock(),
+                                _download_remote_log=Mock())
+        status = {'log_file': 'logs/session.jsonl', 'csv_log_file': 'logs/session.csv'}
+        BraincodecTkPanel._download_remote_log_if_available(panel, status)
+        BraincodecTkPanel._download_remote_log_if_available(panel, status)
+        self.assertEqual([call.args[0] for call in panel._download_remote_log.call_args_list],
+                         ['logs/session.jsonl', 'logs/session.csv'])
+
     def panel_harness(self, stop_pending=False):
         from braincodec.tk_panel import BraincodecTkPanel
         panel = SimpleNamespace(_remote_stop_pending=stop_pending,
@@ -350,10 +382,15 @@ class GUITests(unittest.TestCase):
         try:
             panel = BraincodecTkPanel(root)
             panel.set_mode(MODE_DMTS)
-            panel.config_file_var.set(str(ROOT / 'braincodec/configurations/config_DMTS_example.yaml'))
+            import json
+            with tempfile.TemporaryDirectory() as folder:
+                config_file = Path(folder) / 'config_DMTS_example.yaml'
+                config_file.write_text('\n'.join(f'{key}: {json.dumps(value)}'
+                                                for key, value in config().items()), encoding='utf-8')
+                panel.config_file_var.set(str(config_file))
+                self.assertTrue(panel.validate_config_flow())
+                self.assertEqual(len(panel._build_upload_payload()['files']), 1)
             panel.trials_file_var.set('')
-            self.assertTrue(panel.validate_config_flow())
-            self.assertEqual(len(panel._build_upload_payload()['files']), 1)
             self.assertEqual(panel._build_remote_payload()['trials_file'], '')
             self.assertFalse(panel.generate_trials_file())
             self.assertTrue(panel.generated_secondary_entry.instate(['disabled']))

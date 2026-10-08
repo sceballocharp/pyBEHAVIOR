@@ -902,12 +902,13 @@ class BraincodecTkPanel(ttk.Frame):
         self.add_log_line(f"Remote error: {message}")
 
     def _download_remote_log_if_available(self, status: dict) -> None:
-        log_file = str(status.get("log_file") or "").strip()
-        if not log_file or log_file in self._downloaded_remote_logs:
-            return
-        self._downloaded_remote_logs.add(log_file)
-        self.add_log_line(f"Downloading remote Braincodec log: {log_file}")
-        self._download_remote_log(log_file)
+        for key in ('log_file', 'csv_log_file'):
+            log_file = str(status.get(key) or "").strip()
+            if not log_file or log_file in self._downloaded_remote_logs:
+                continue
+            self._downloaded_remote_logs.add(log_file)
+            self.add_log_line(f"Downloading remote Braincodec log: {log_file}")
+            self._download_remote_log(log_file)
 
     def _download_health_scan_files_if_available(self, status: dict) -> None:
         files = status.get("health_scan_files") or []

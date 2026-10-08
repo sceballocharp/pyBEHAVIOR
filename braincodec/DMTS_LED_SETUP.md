@@ -107,6 +107,18 @@ with config, prepared pairs and presentation start/completion events. Early
 fork-aborted trials can have a sample only and confirmation zero, consistent
 with the existing DMTS fork rules.
 
+DMTS also writes a companion CSV with the same session filename. Each sample
+and test has a separate block containing trial number/ID, stimulus name, LED
+labels, irradiance, trigger timestamp, completion flag, fault registers A/B
+and 20 measured voltages in hardware buffer order. Readings are copied during
+the final pulse before switching the LEDs off, using the simple driver's
+voltage conversion. Interrupted presentations contain the last available
+pulse reading and completion false. These are electrical voltage readings,
+not measured optical irradiance. Both logs download to the pyBEHAVIOR session
+folder after Remote Stop (or to `braincodec/logs` when no session folder exists).
+To enable this on PYNQ, replace `dmts_driver.py` and `remote_runner.py` in the
+runner directory and restart the runner; restart the PC GUI as well.
+
 Hardware-free checks:
 
 ```powershell
