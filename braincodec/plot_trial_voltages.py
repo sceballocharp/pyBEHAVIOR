@@ -637,7 +637,7 @@ class DMTSVoltageViewer(TrialVoltageViewer):
                     grid = voltages_to_pattern_grid(presentation["voltages"],
                                                    presentation["pattern"],
                                                    channel_order=list(range(10)))
-            image = self.draw_voltage_grid(ax, grid, title, annotate=False)
+            image = self.draw_voltage_grid(ax, grid, title, annotate=True)
             self.phase_colorbars[phase].update_normal(image)
             if message:
                 ax.text(0.5, 0.5, message, transform=ax.transAxes,
