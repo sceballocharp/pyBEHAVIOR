@@ -4237,6 +4237,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             hmcf = [self.nwb_contract_hmcf(row) for row in trial_rows]
             trial_types = [self.nwb_contract_trial_type(row) for row in trial_rows]
             self.replace_hdf5_dataset(trials, "id", trial_ids)
+            for column in ("trigger_time_s", "crossing_duration_s", "trial_end_s"):
+                values = [float(row[column]) if row.get(column) not in (None, "") else float("nan")
+                          for row in trial_rows]
+                self.replace_hdf5_dataset(trials, column, values, dtype="float64")
             self.replace_hdf5_dataset(trials, "sound_ids", sound_ids)
             self.replace_hdf5_dataset(trials, "sample_sound_ids", sample_sound_ids)
             self.replace_hdf5_dataset(trials, "test_sound_ids", test_sound_ids)
@@ -4346,6 +4350,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "/acquisition/BehaviorSignal/data",
             "/acquisition/IRFork/data",
             "/intervals/trials/id",
+            "/intervals/trials/trigger_time_s",
+            "/intervals/trials/crossing_duration_s",
+            "/intervals/trials/trial_end_s",
             "/intervals/trials/sound_ids",
             "/intervals/trials/sample_sound_ids",
             "/intervals/trials/test_sound_ids",
@@ -4362,6 +4369,9 @@ class BehaviorAcquisitionApp(tk.Tk):
 
             trial_count = len(h5f["/intervals/trials/id"])
             aligned_paths = (
+                "/intervals/trials/trigger_time_s",
+                "/intervals/trials/crossing_duration_s",
+                "/intervals/trials/trial_end_s",
                 "/intervals/trials/sound_ids",
                 "/intervals/trials/sample_sound_ids",
                 "/intervals/trials/test_sound_ids",

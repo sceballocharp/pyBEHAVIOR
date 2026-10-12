@@ -73,6 +73,16 @@ so each sample in `TrialType/data` corresponds to 100 ms.
 
 ### Trial Table Datasets
 
+Current v7 exports also save these numeric, per-trial datasets in seconds:
+
+| Dataset under `/intervals/trials/` | Meaning |
+| --- | --- |
+| `trigger_time_s` | Trial trigger time on the acquisition clock. |
+| `crossing_duration_s` | Recorded response duration; for lever trials, time from the initial upward crossing to the accepted downward crossing. |
+| `trial_end_s` | Recorded trial end on the acquisition clock; for normal lever releases, this is the release debounce confirmation time. |
+
+Missing or unfinished values are stored as `NaN`, not zero. For normally completed lever trials, the downward crossing time is `trigger_time_s + crossing_duration_s`. Manually stopped trials can end without a confirmed release. Older NWB exports may lack these datasets; existing files are not updated automatically.
+
 ```text
 /intervals/trials/id
 /intervals/trials/sound_ids
