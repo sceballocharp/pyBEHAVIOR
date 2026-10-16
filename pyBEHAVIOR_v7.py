@@ -300,6 +300,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.lever_require_release = tk.BooleanVar(value=False)
         self.lever_req_rel_window = tk.BooleanVar(value=False)
         self.dmts_random_match_trials = tk.BooleanVar(value=False)
+        self.lever_reward_test_trials = tk.BooleanVar(value=False)
         self.behavior_channel_var = tk.StringVar(value="")
         self.behavior_rule_var = tk.StringVar(value="")
         self.left_valve_var = tk.StringVar(value="")
@@ -323,6 +324,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         ttk.Button(trig, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=0, column=5, padx=8, pady=4)
         self.dmts_random_match_check = ttk.Checkbutton(trig, text="Random DMTS sounds", variable=self.dmts_random_match_trials)
         self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+        self.lever_reward_test_check = ttk.Checkbutton(trig, text="Reward Test/Probe Trials", variable=self.lever_reward_test_trials)
         ttk.Label(trig, textvariable=self.behavior_channel_var).grid(row=2, column=0, columnspan=4, padx=6, pady=(2, 4), sticky="w")
         ttk.Label(trig, textvariable=self.behavior_rule_var).grid(row=2, column=4, columnspan=6, padx=6, pady=(2, 4), sticky="w")
         ttk.Label(trig, textvariable=self.left_valve_var).grid(row=3, column=0, columnspan=4, padx=6, pady=(0, 4), sticky="w")
@@ -679,6 +681,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         else:
             self.lever_release_check.grid_remove()
             self.lever_window_check.grid_remove()
+        if is_lever:
+            self.lever_reward_test_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+        else:
+            self.lever_reward_test_check.grid_remove()
         if is_dmts:
             self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
         else:
@@ -1035,6 +1041,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         params.setdefault("LeverReqRelWindow", "0")
         params.setdefault("LeverGoWeight", "1")
         params.setdefault("LeverTestWeight", "0")
+        params.setdefault("LeverRewardTestTrials", "0")
         params.setdefault("LeverTestSoundId", "10")
         if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
             if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
@@ -1057,6 +1064,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverTestSoundId": self.lever_test_sound_id,
             "LeverGoWeight": self.lever_go_weight,
             "LeverTestWeight": self.lever_test_weight,
+            "LeverRewardTestTrials": self.lever_reward_test_trials,
             "MaxTrials": self.max_trials,
             "SoundLevel": self.sound_level,
             "RandomSeed": self.random_seed,
@@ -1835,6 +1843,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverTestSoundId": self.lever_test_sound_id.get(),
             "LeverGoWeight": self.lever_go_weight.get(),
             "LeverTestWeight": self.lever_test_weight.get(),
+            "LeverRewardTestTrials": int(self.lever_reward_test_trials.get()),
             "NoGoSoundId": sequence_values[1] if len(sequence_values) > 1 else "",
             "SoundLevel": self.sound_level.get(),
             "RandomSeed": self.random_seed.get(),
@@ -1913,6 +1922,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverTestSoundId",
             "LeverGoWeight",
             "LeverTestWeight",
+            "LeverRewardTestTrials",
             "NoGoSoundId",
             "SampleSoundId",
             "TestSoundId",
@@ -2004,6 +2014,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "FA": "",
             "ResultType": "",
             "dmts_reminder": 0,
+            "lever_reward_test_trials": int(params["LeverRewardTestTrials"]),
             "light_code": light_code,
             "sound_id": sound_id,
             "stimulus_mode": stimulus_mode,
@@ -2081,6 +2092,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         }
         parameter_row["Block"] = self.get_parameter_block_label(params=params)
         parameter_row.update({key: params[key] for key in ("LeverGoWeight", "LeverTestWeight", "LeverTestSoundId")})
+        parameter_row["LeverRewardTestTrials"] = params["LeverRewardTestTrials"]
         if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
             pair = self._dmts_light_pending
             trial_row.update(sample_light_id=pair['sample_id'], test_light_id=pair['test_id'],
@@ -3412,7 +3424,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         if self.active_reward_decided:
             return
         self.active_reward_decided = True
-        if str(row.get("TrialType", "")).endswith("Lever-Test"):
+        if str(row.get("TrialType", "")).endswith("Lever-Test") and not row.get("lever_reward_test_trials", 0):
             self.plot_queue.put(("log", f"Trial {row['trial']} is a lever Test trial; no reward."))
             return
         reward_count = max(1, int(reward_count))
@@ -4289,6 +4301,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("LeverTestSoundId", params["LeverTestSoundId"]),
             ("LeverGoWeight", params["LeverGoWeight"]),
             ("LeverTestWeight", params["LeverTestWeight"]),
+            ("LeverRewardTestTrials", params["LeverRewardTestTrials"]),
             ("LeverStartDebounce_s", params["LeverStartDebounce_s"]),
             ("LeverReleaseWindow_s", params["LeverReleaseWindow_s"]),
             ("LeverReqRelBonus", params["LeverReqRelBonus"]),

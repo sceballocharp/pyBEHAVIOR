@@ -3,6 +3,8 @@ import ast
 import os
 import math
 import random
+from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from types import MethodType, SimpleNamespace
 import unittest
@@ -95,6 +97,50 @@ for name in NAMES:
 
 
 class LeverModeTests(unittest.TestCase):
+    def test_reward_test_flag_is_captured_in_trial_log(self):
+        methods = load_methods("pyBEHAVIOR_v7.py", {"create_trial"})
+        methods["datetime"] = datetime
+        app = Mock()
+        app.trial_index = 0
+        app.braincodec_sequence_loaded = False
+        app.is_dmts_task.return_value = False
+        app.is_tac_task.return_value = False
+        app.parse_float.return_value = 1000
+        app.trial_rows, app.parameter_rows = [], []
+        params = defaultdict(lambda: "0", LeverRewardTestTrials=1)
+        app.get_current_parameters.return_value = params
+        methods["create_trial"](app, 10, 0, 1, 1, trial_type_id=2, trial_type="Lever-Test")
+        params["LeverRewardTestTrials"] = 0
+        self.assertEqual(app.trial_rows[0]["lever_reward_test_trials"], 1)
+        self.assertEqual(app.parameter_rows[0]["LeverRewardTestTrials"], 1)
+        methods["create_trial"](app, 10, 2, 1, 1, trial_type_id=2, trial_type="Lever-Test")
+        self.assertEqual(app.trial_rows[1]["lever_reward_test_trials"], 0)
+
+    def test_enabled_test_trials_follow_go_reward_rules(self):
+        methods = load_methods("pyBEHAVIOR_v7.py", {"maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side"})
+        methods["random"] = SimpleNamespace(random=lambda: 0.75)
+        for mode, release, probability, output, pulses in [
+            ("simple", 1.5, 1, True, 1), ("simple", 1.5, 0.5, True, 0),
+            ("window", 1.1, 1, True, 1), ("window", 1.1, 0.5, True, 0),
+            ("window", 1.5, 1, True, 0), ("bonus", 0.74, 1, True, 0),
+            ("bonus", 1.0, 0, True, 3), ("bonus", 1.5, 0.5, True, 0),
+            ("bonus", 1.5, 1, True, 1), ("bonus", 1.0, 1, False, 0),
+        ]:
+            with self.subTest(mode=mode, release=release, probability=probability, output=output):
+                app = LeverHarness(mode)
+                app.row.update(TrialType="2 Lever-Test", lever_reward_test_trials=1)
+                app.lever_reward_test_trials = Var(False)  # Live edit cannot change this trial.
+                app.active_reward_decided = False
+                app.reward_go = Var(probability)
+                app.trigger_output_on_crossing = Var(output)
+                app.parse_float = lambda var, default: float(var.get())
+                app.send_reward_pulses = Mock()
+                for name in ("maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side"):
+                    setattr(app, name, MethodType(methods[name], app))
+                app.evaluate_active_lever_trial(min(1.0, release - 0.001))
+                app.release(release)
+                self.assertEqual([c.args[0] for c in app.send_reward_pulses.call_args_list], [pulses] if pulses else [])
+
     def test_lever_weighted_selection_and_trial_sound_snapshot(self):
         methods = load_methods("pyBEHAVIOR_v7.py", {"choose_lever_trial", "start_active_lever_trial", "play_next_lever_sound"})
         rng = random.Random(123)
@@ -140,6 +186,7 @@ class LeverModeTests(unittest.TestCase):
                 app.send_reward_pulses.assert_not_called()
 
     def test_go_sound_limit_preserves_trial_and_release_reward(self):
+        # Sound limits are independent of reward eligibility.
         methods = load_methods("pyBEHAVIOR_v7.py", {"start_active_lever_trial", "play_next_lever_sound"})
         for start_id, stop_id, expected in [(1, 10, list(range(1, 10))), (3, 5, [3, 4]), (10, 10, []), (11, 10, [])]:
             with self.subTest(start_id=start_id, stop_id=stop_id):
@@ -168,25 +215,28 @@ class LeverModeTests(unittest.TestCase):
     def test_legacy_import_clears_test_settings(self):
         app = LeverHarness("bonus")
         app.lever_test_weight = Var("1")
+        app.lever_reward_test_trials = Var("1")
         app.generate_sequence = Mock()
         app.apply_imported_parameters({"TaskType": "Lever", "GoSoundId": "3"})
         self.assertEqual(app.lever_test_weight.get(), "0")
+        self.assertEqual(app.lever_reward_test_trials.get(), "0")
         self.assertEqual(app.lever_go_weight.get(), "1")
         self.assertEqual(app.lever_test_sound_id.get(), "10")
         self.assertEqual(app.lever_go_sound_id.get(), "3")
         app.apply_imported_parameters({"TaskType": "Lever", "GoSoundId": "2",
-                                       "LeverTestSoundId": "12", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2"})
+                                       "LeverTestSoundId": "12", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2", "LeverRewardTestTrials": "1"})
+        self.assertEqual(app.lever_reward_test_trials.get(), "1")
         self.assertEqual(app.lever_test_weight.get(), "0.2")
         self.assertEqual(app.lever_test_sound_id.get(), "12")
 
     def test_generator_exports_lever_selection(self):
         methods = load_methods("protocol_generator.py", {"write_dat"})
-        values = {"LeverGoSoundId": "1", "LeverTestSoundId": "10", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2"}
+        values = {"LeverGoSoundId": "1", "LeverTestSoundId": "10", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2", "LeverRewardTestTrials": "1"}
         parameters = [SimpleNamespace(key=k, default=v) for k, v in values.items()]
         with patch("builtins.open", mock_open()) as output, patch("os.makedirs"):
             methods["write_dat"]("check.dat", values, parameters)
             written = "".join(c.args[0] for c in output().write.call_args_list)
-        self.assertEqual(written, "GoSoundId=1\nLeverTestSoundId=10\nLeverGoWeight=0.8\nLeverTestWeight=0.2\n")
+        self.assertEqual(written, "GoSoundId=1\nLeverTestSoundId=10\nLeverGoWeight=0.8\nLeverTestWeight=0.2\nLeverRewardTestTrials=1\n")
 
     def test_bonus_probability_and_other_modes(self):
         methods = load_methods("pyBEHAVIOR_v7.py", {

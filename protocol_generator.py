@@ -57,7 +57,8 @@ PARAMETERS = [
     Parameter("LeverGoSoundId", "GO sound ID", "1", "Lever", "int"),
     Parameter("LeverTestSoundId", "Test start sound ID", "10", "Lever", "int"),
     Parameter("LeverGoWeight", "GO weight", "1", "Lever", "float"),
-    Parameter("LeverTestWeight", "Test weight (unrewarded)", "0", "Lever", "float"),
+    Parameter("LeverTestWeight", "Test weight", "0", "Lever", "float"),
+    Parameter("LeverRewardTestTrials", "Reward Test/Probe Trials", "0", "Lever", "choice", ("0", "1")),
     Parameter("LeverSoundLevel", "Sound level", "1", "Lever", "float"),
     Parameter("LeverReqRelBonus", "Require release + bonus", "0", "Lever", "choice", ("0", "1")),
     Parameter("LeverReqRelWindow", "Require release within window", "0", "Lever", "choice", ("0", "1")),
@@ -425,6 +426,7 @@ class ProtocolGenerator(tk.Tk):
         if is_lever:
             values.setdefault("LeverGoWeight", "1")
             values.setdefault("LeverTestWeight", "0")
+            values.setdefault("LeverRewardTestTrials", "0")
             values.setdefault("LeverTestSoundId", "10")
         is_dmts = values.get("TaskType") == "DMTS" or "DMTSDelay_s" in values
         if is_dmts:
@@ -801,7 +803,7 @@ class ProtocolGenerator(tk.Tk):
             summary += ", reward on release after target hold"
         else:
             summary += " before reward"
-        summary += ". GO trials follow reward rules; Test trials start at Test sound ID and never reward."
+        summary += ". Test trials start at Test sound ID; rewards follow GO rules when Reward Test/Probe Trials is enabled."
         self.summary_var.set(summary)
 
     def draw_tac_pretraining_preview(self):
