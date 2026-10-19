@@ -302,11 +302,21 @@ Block labels are assigned from the stable `get_current_parameters()` snapshot. T
 
 ## Runtime Status
 
+### DMTS Trial Structure controls
+
+| Protocol key | GUI control | Default / behavior |
+| --- | --- | --- |
+| `DMTSMissesBeforeReminder` | Match misses | Positive integer, default 5. Consecutive match misses before reminders. |
+| `DMTSReminderTrials` | Reminder trials | Positive integer, default 3. Number of forced match-only reminder trials. |
+| `DMTSBlankLickTimeout` | Timeout for licking during blank response window | Unchecked (`0`) by default. Any left or right response-window lick adds `PunishNoGoFA` seconds after the blank trial, in addition to its ITI. The trial stays BLANK with FA=0. Licks outside the window do not trigger it. |
+
+These controls appear in Trial Structure for DMTS, and are saved/imported with protocols and recorded in parameter logs. Old protocols reset them to 5, 3, and off. The protocol generator exposes the same settings, plus the shared FA / blank lick timeout duration (0–10 seconds).
+
 ### DMTS lick lapse recovery
 
-DMTS in Lick mode automatically detects five consecutive misses among match trials. Non-match and blank trials do not change this streak; a match HIT or FA resets it. The next three trials are forced to match, without consuming entries from the normal sequence. Each receives a left Pavlov reward with probability 1 when reward output is enabled, regardless of the normal `Pavlov` value. An existing correct-response reward is not duplicated. Normal sound selection, response windows, reward timing, and ITIs still apply.
+DMTS in Lick mode automatically detects `DMTSMissesBeforeReminder` consecutive misses among match trials (default 5). Non-match and blank trials do not change this streak; a match HIT or FA resets it. The next `DMTSReminderTrials` trials (default 3) are forced to match, without consuming entries from the normal sequence. Each receives a left Pavlov reward with probability 1 when reward output is enabled, regardless of the normal `Pavlov` value. An existing correct-response reward is not duplicated. Normal sound selection, response windows, reward timing, and ITIs still apply.
 
-Engagement means at least one left or right lick during any reminder response window, before its scheduled Pavlov reward. All three reminder trials complete. If engagement occurred, normal sequencing resumes and the miss streak resets. Otherwise, acquisition stops after the third trial finishes and uses the normal stop/save routine. Reminder trials may extend beyond `MaxTrials` so the three-trial block can complete; the limit applies again afterward. This rule resets on each new session and does not apply to IRFork DMTS.
+Engagement means at least one left or right lick during any reminder response window, before its scheduled Pavlov reward. All configured reminder trials complete. If engagement occurred, normal sequencing resumes and the miss streak resets. Otherwise, acquisition stops after the final reminder trial finishes and uses the normal stop/save routine. Reminder trials may extend beyond `MaxTrials` so the reminder block can complete; the limit applies again afterward. This rule resets on each new session and does not apply to IRFork DMTS.
 
 `TrialLog.csv` marks these trials with `dmts_reminder=1` (ordinary trials use 0). Outcomes retain their normal HIT/MISS/FA scoring. Recovery and automatic-stop decisions are also written to the session log.
 

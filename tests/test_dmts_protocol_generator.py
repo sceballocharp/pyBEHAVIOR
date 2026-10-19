@@ -127,6 +127,35 @@ class DMTSProtocolTests(unittest.TestCase):
             self.assertNotIn("Minlickcount", values)
             self.assertNotIn("Lickthreshold", values)
 
+    def test_recovery_settings_round_trip(self):
+        app = GeneratorHarness()
+        values = {"DMTSMissesBeforeReminder": "7", "DMTSReminderTrials": "4", "DMTSBlankLickTimeout": "1", "DMTSPunishNoGoFA": "2.5"}
+        for key, value in values.items():
+            app.variables[key].set(value)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "protocol.dat"
+            app.save(path)
+            loaded = GeneratorHarness()
+            loaded.load(path)
+            for key, value in values.items():
+                self.assertEqual(loaded.variables[key].get(), value)
+            self.assertEqual(loaded.validate(), [])
+
+    def test_old_protocol_resets_recovery_settings(self):
+        app = GeneratorHarness()
+        for key in ("DMTSMissesBeforeReminder", "DMTSReminderTrials", "DMTSBlankLickTimeout"):
+            app.variables[key].set("9")
+        app.load(Path(pg.APP_DIR) / "protocols/dmts_licks_parameters_matchonly_allsounds.dat")
+        for key, value in (("DMTSMissesBeforeReminder", "5"), ("DMTSReminderTrials", "3"), ("DMTSBlankLickTimeout", "0")):
+            self.assertEqual(app.variables[key].get(), value)
+
+    def test_invalid_recovery_counts(self):
+        for key in ("DMTSMissesBeforeReminder", "DMTSReminderTrials"):
+            for value in ("0", "-1", "1.5", "bad"):
+                app = GeneratorHarness()
+                app.variables[key].set(value)
+                self.assertTrue(app.validate())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ import unittest
 from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
 
-from test_lever_modes import load_methods
+from test_lever_modes import load_methods, Var
 from test_dmts_pavlov import pavlov_harness
 
 METHODS = load_methods("pyBEHAVIOR_v7.py", {
@@ -16,6 +16,8 @@ def harness():
     app = SimpleNamespace(
         is_lick_trigger=lambda: True, plot_queue=queue.Queue(), running=True,
         dmts_match_miss_streak=0, dmts_reminder_remaining=0,
+        dmts_misses_before_reminder=Var("5"), dmts_reminder_trials=Var("3"),
+        parse_int=lambda var, default: int(var.get()),
         dmts_reminder_engaged=False, active_dmts_reminder=False,
         active_left_lick_count=0, active_right_lick_count=0,
         consume_next_sound_id=Mock(return_value=2),
@@ -92,3 +94,12 @@ class DMTSLapseTests(unittest.TestCase):
         app.trigger_output_on_crossing.set(False)
         app.finish_active_dmts_reward_period(2.5)
         app.send_output_pulse.assert_not_called()
+
+    def test_custom_threshold_and_reminder_count(self):
+        app = harness()
+        app.dmts_misses_before_reminder.set("2")
+        app.dmts_reminder_trials.set("4")
+        finish(app)
+        self.assertEqual(app.dmts_reminder_remaining, 0)
+        finish(app)
+        self.assertEqual(app.dmts_reminder_remaining, 4)

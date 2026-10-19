@@ -88,6 +88,10 @@ PARAMETERS = [
     Parameter("DMTSRewardDelay_s", "Reward delay s", "0", "DMTSTiming", "float"),
     Parameter("DMTSRewardduration_ms", "Reward duration ms", "40", "DMTSOutcome", "float"),
     Parameter("DMTSRewardProb", "Reward prob", "1", "DMTSOutcome", "float"),
+    Parameter("DMTSMissesBeforeReminder", "Match misses before reminder", "5", "DMTSTiming", "int"),
+    Parameter("DMTSReminderTrials", "Reminder match trials", "3", "DMTSTiming", "int"),
+    Parameter("DMTSBlankLickTimeout", "Timeout for blank licking", "0", "DMTSTiming", "choice", ("0", "1")),
+    Parameter("DMTSPunishNoGoFA", "FA / blank lick timeout s", "1", "DMTSOutcome", "float"),
     Parameter("DMTSHITThreshold_percent", "Threshold of RW for HIT %", "50", "DMTSOutcome", "float"),
     Parameter("DMTSMinlickcount", "Min lick count", "1", "DMTSOutcome", "int"),
     Parameter("DMTSLeftThreshold", "Left lick threshold V", "1", "DMTSOutcome", "float"),
@@ -431,6 +435,8 @@ class ProtocolGenerator(tk.Tk):
         is_dmts = values.get("TaskType") == "DMTS" or "DMTSDelay_s" in values
         if is_dmts:
             values.setdefault("BlankWeight", values.get("DMTSBlankWeight", "0"))
+            for key, default in (("DMTSMissesBeforeReminder", "5"), ("DMTSReminderTrials", "3"), ("DMTSBlankLickTimeout", "0"), ("DMTSPunishNoGoFA", "1")):
+                values.setdefault(key, values.get("PunishNoGoFA", default) if key == "DMTSPunishNoGoFA" else default)
             for key in ("Minlickcount",):
                 if key not in values and "DMTS" + key not in values:
                     values[key] = self.get_parameter("DMTS" + key).default
@@ -521,6 +527,7 @@ class ProtocolGenerator(tk.Tk):
                 "RewardDelay_s": "DMTSRewardDelay_s",
                 "Rewardduration_ms": "DMTSRewardduration_ms",
                 "RewardProb": "DMTSRewardProb",
+                "PunishNoGoFA": "DMTSPunishNoGoFA",
                 "HITThreshold_percent": "DMTSHITThreshold_percent",
                 "Minlickcount": "DMTSMinlickcount",
                 "TACLeftThreshold": "DMTSLeftThreshold",
@@ -607,6 +614,14 @@ class ProtocolGenerator(tk.Tk):
                 errors.append("Test sound ID must be a positive integer.")
             if self.variables["DMTSSoundIds"].get().strip() and not self.parse_dmts_sound_ids():
                 errors.append("Sound IDs must use entries such as 1:16 or 1,2,3,4.")
+            for key in ("DMTSMissesBeforeReminder", "DMTSReminderTrials"):
+                value = self.variables[key].get().strip()
+                if not value.isdigit() or int(value) < 1:
+                    errors.append(f"{key} must be a positive integer.")
+            if self.variables["DMTSBlankLickTimeout"].get() not in {"0", "1"}:
+                errors.append("Blank lick timeout must be 0 or 1.")
+            if not 0 <= self.parse_float("DMTSPunishNoGoFA", -1) <= 10:
+                errors.append("DMTS timeout must be between 0 and 10 seconds.")
             if self.parse_float("DMTSITI_s", -1) < 0:
                 errors.append("ITI must be positive or 0.")
             iti_min = self.parse_float("DMTSITIrandMin_s", None)
@@ -1122,6 +1137,7 @@ def write_dat(path, values, parameters):
         "DMTSRewardDelay_s": "RewardDelay_s",
         "DMTSRewardduration_ms": "Rewardduration_ms",
         "DMTSRewardProb": "RewardProb",
+        "DMTSPunishNoGoFA": "PunishNoGoFA",
         "DMTSHITThreshold_percent": "HITThreshold_percent",
         "DMTSMinlickcount": "Minlickcount",
         "DMTSLeftThreshold": "TACLeftThreshold",

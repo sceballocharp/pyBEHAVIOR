@@ -118,3 +118,39 @@ class DMTSBlankTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BlankLickTimeoutTests(unittest.TestCase):
+    def test_either_side_lick_adds_timeout_only_when_enabled(self):
+        for enabled in (False, True):
+            for side in ("left", "right"):
+                app, row = harness()
+                app.dmts_blank_lick_timeout = Var(enabled)
+                app.active_dmts_sample_sound_id = app.active_dmts_test_sound_id = 0
+                row["TrialType"] = "0 DMTS-blank"
+                app.record_dmts_lick_choices([side])
+                app.finish_active_dmts_reward_period(2.5)
+                app.apply_trial_timeout(row, 2.54)
+                self.assertEqual(row["ResultType"], "BLANK")
+                self.assertEqual(row["FA"], 0)
+                self.assertAlmostEqual(app.next_trial_allowed_time_s, 7.54 if enabled else 4.54)
+
+    def test_silent_blank_has_no_timeout(self):
+        app, row = harness()
+        app.dmts_blank_lick_timeout = Var(True)
+        app.active_dmts_sample_sound_id = app.active_dmts_test_sound_id = 0
+        row["TrialType"] = "0 DMTS-blank"
+        app.finish_active_dmts_reward_period(2.5)
+        app.apply_trial_timeout(row, 2.54)
+        self.assertAlmostEqual(app.next_trial_allowed_time_s, 4.54)
+
+    def test_licks_outside_response_window_do_not_add_timeout(self):
+        app, row = harness()
+        app.dmts_blank_lick_timeout = Var(True)
+        app.active_dmts_sample_sound_id = app.active_dmts_test_sound_id = 0
+        row["TrialType"] = "0 DMTS-blank"
+        app.update_active_dmts_trial(1.3, False, False, False, ["left"])
+        app.update_active_dmts_trial(2.4, False, False, False, ["right"])
+        app.finish_active_dmts_reward_period(2.5)
+        app.apply_trial_timeout(row, 2.54)
+        self.assertAlmostEqual(app.next_trial_allowed_time_s, 4.54)

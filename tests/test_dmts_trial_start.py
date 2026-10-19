@@ -21,6 +21,7 @@ def harness(lick=True):
         max_trials=Var("3"), trigger_type=Var("Lick" if lick else "IRFork"),
         plot_queue=queue.Queue(), active_trial_base_iti_s=2,
         active_dmts_scored=True,
+        dmts_misses_before_reminder=Var("5"), dmts_reminder_trials=Var("3"),
     )
     for name, function in METHODS.items():
         if callable(function):

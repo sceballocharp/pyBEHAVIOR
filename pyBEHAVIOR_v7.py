@@ -444,6 +444,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.test_sound_id = tk.StringVar(value="1")
         self.dmts_sound_ids = tk.StringVar(value="1:16")
         self.dmts_fork_grace_s = tk.StringVar(value="0.1")
+        self.dmts_misses_before_reminder = tk.StringVar(value="5")
+        self.dmts_reminder_trials = tk.StringVar(value="3")
+        self.dmts_blank_lick_timeout = tk.BooleanVar(value=False)
         self.current_trial_var = tk.StringVar(value="0")
         for col in (1, 3):
             trial.columnconfigure(col, weight=1)
@@ -482,6 +485,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.tac_left_threshold_widgets = self._entry(trial, 0, "Left thresh", self.tac_left_threshold, width=6, row=13)
         self.tac_right_threshold_widgets = self._entry(trial, 2, "Right thresh", self.tac_right_threshold, width=6, row=13)
         self.tac_min_lick_count_widgets = self._entry(trial, 0, "Choice licks", self.tac_min_lick_count, width=6, row=14)
+        self.dmts_misses_widgets = self._entry(trial, 0, "Match misses", self.dmts_misses_before_reminder, width=6, row=15)
+        self.dmts_reminders_widgets = self._entry(trial, 2, "Reminder trials", self.dmts_reminder_trials, width=6, row=15)
+        self.dmts_blank_timeout_check = ttk.Checkbutton(trial, text="Timeout for licking during blank response window", variable=self.dmts_blank_lick_timeout)
         for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms, self.right_pulse_ms):
             var.trace_add("write", lambda *_: self.update_trial_duration())
         self.task_type.trace_add("write", lambda *_: (self.update_task_parameter_visibility(), self.update_trial_duration(), self.update_behavior_readouts()))
@@ -698,6 +704,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.tac_left_threshold_widgets, self.uses_dual_lick_channels(), row=13, col=0)
         self.set_widget_pair_visible(self.tac_right_threshold_widgets, self.uses_dual_lick_channels(), row=13, col=2)
         self.set_widget_pair_visible(self.tac_min_lick_count_widgets, is_tac, row=14, col=0)
+        self.set_widget_pair_visible(self.dmts_misses_widgets, is_dmts, row=15, col=0)
+        self.set_widget_pair_visible(self.dmts_reminders_widgets, is_dmts, row=15, col=2)
+        if is_dmts:
+            self.dmts_blank_timeout_check.grid(row=16, column=0, columnspan=4, padx=6, pady=4, sticky="w")
+        else:
+            self.dmts_blank_timeout_check.grid_remove()
 
     def update_valve_mapping_readouts(self):
         if not hasattr(self, "left_valve_var"):
@@ -1031,6 +1043,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         if "Rewardduration_ms" in params:
             params.setdefault("RightRewardduration_ms", params["Rewardduration_ms"])
         if str(params.get("TaskType", "")).lower() == "dmts":
+            params.setdefault("DMTSMissesBeforeReminder", "5")
+            params.setdefault("DMTSReminderTrials", "3")
+            params.setdefault("DMTSBlankLickTimeout", "0")
             params.setdefault("TACLeftChannel", "ai0")
             params.setdefault("TACRightChannel", "ai1")
             params.setdefault("TACLeftThreshold", params.get("Lickthreshold", "1"))
@@ -1102,6 +1117,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "TestSoundId": self.test_sound_id,
             "DMTSRandomMatchTrials": self.dmts_random_match_trials,
             "DMTSSoundIds": self.dmts_sound_ids,
+            "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
+            "DMTSReminderTrials": self.dmts_reminder_trials,
+            "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
             "DMTSForkGrace_s": self.dmts_fork_grace_s,
             "TACLeftChannel": self.tac_left_channel,
             "TACRightChannel": self.tac_right_channel,
@@ -1285,6 +1303,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.update_idletasks()
 
     def _start_live_session(self):
+        if self.is_dmts_task():
+            for label, var in (("Match misses", self.dmts_misses_before_reminder), ("Reminder trials", self.dmts_reminder_trials)):
+                value = var.get().strip()
+                if not value.isdigit() or int(value) < 1:
+                    self.log(f"{label} must be a positive integer.")
+                    return
         self.startup_message('Starting session: checking DMTS/PYNQ connection.')
         if not self.configure_dmts_light_session():
             return
@@ -1892,6 +1916,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSStimulusSource": 'LED' if getattr(self, 'dmts_light_client', None) is not None else 'sound',
             "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
                 if getattr(self, 'dmts_light_client', None) is not None else '',
+            "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder.get(),
+            "DMTSReminderTrials": self.dmts_reminder_trials.get(),
+            "DMTSBlankLickTimeout": int(self.dmts_blank_lick_timeout.get()),
             "DMTSForkGrace_s": self.dmts_fork_grace_s.get(),
             "PlaySound": int(self.play_sound_on_crossing.get()),
             "TriggerOutput": int(self.trigger_output_on_crossing.get()),
@@ -1930,6 +1957,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSSoundIds",
             "DMTSStimulusSource",
             "DMTSLightLibrary",
+            "DMTSMissesBeforeReminder",
+            "DMTSReminderTrials",
+            "DMTSBlankLickTimeout",
             "DMTSForkGrace_s",
             "SoundLevel",
             "RandomSeed",
@@ -2050,6 +2080,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "test_sound_id": trial_test_sound_id if self.is_dmts_task() and trial_test_sound_id is not None else params["TestSoundId"],
             "dmts_random_match_trials": params["DMTSRandomMatchTrials"],
             "dmts_sound_ids": params["DMTSSoundIds"],
+            "dmts_misses_before_reminder": params["DMTSMissesBeforeReminder"],
+            "dmts_reminder_trials": params["DMTSReminderTrials"],
+            "dmts_blank_lick_timeout": params["DMTSBlankLickTimeout"],
             "dmts_fork_grace_s": params["DMTSForkGrace_s"],
             "hit_threshold_percent": self.parse_float_value(params["HIT"], 50),
             "hit_threshold_s": self.get_hit_threshold_s(),
@@ -2994,15 +3027,16 @@ class BehaviorAcquisitionApp(tk.Tk):
                 else:
                     self.dmts_lapse_stop_requested = True
                     self.running = False
-                    self.plot_queue.put(("log", "DMTS stopping: no response-window licking during 3 reminder trials."))
+                    self.plot_queue.put(("log", "DMTS stopping: no response-window licking during the reminder trials."))
             return
         if not str(row.get("TrialType", "")).endswith("DMTS-match"):
             return
         self.dmts_match_miss_streak = getattr(self, "dmts_match_miss_streak", 0) + 1 if row.get("ResultType") == "MISS" else 0
-        if self.dmts_match_miss_streak >= 5:
-            self.dmts_reminder_remaining = 3
+        threshold = max(1, self.parse_int(self.dmts_misses_before_reminder, 5))
+        if self.dmts_match_miss_streak >= threshold:
+            self.dmts_reminder_remaining = max(1, self.parse_int(self.dmts_reminder_trials, 3))
             self.dmts_reminder_engaged = False
-            self.plot_queue.put(("log", "DMTS: 5 consecutive match misses; next 3 trials are match-only with guaranteed Pavlov reward (when output is enabled)."))
+            self.plot_queue.put(("log", f"DMTS: {threshold} consecutive match misses; next {self.dmts_reminder_remaining} trials are match-only with guaranteed Pavlov reward (when output is enabled)."))
 
     def choose_lever_trial(self):
         weights = [self.parse_float(self.lever_go_weight, 1), self.parse_float(self.lever_test_weight, 0)]
@@ -3379,13 +3413,21 @@ class BehaviorAcquisitionApp(tk.Tk):
 
     def apply_trial_timeout(self, row, trial_end_s):
         trial_type = row["TrialType"]
-        if (
+        blank_lick_timeout = (
+            trial_type.endswith("DMTS-blank")
+            and row["ResultType"] == "BLANK"
+            and getattr(self, "dmts_blank_lick_timeout", None) is not None
+            and self.dmts_blank_lick_timeout.get()
+            and (float(row.get("left_lick_count") or 0) > 0 or float(row.get("right_lick_count") or 0) > 0)
+        )
+        punish_fa = (
             trial_type.endswith("noGo")
             or trial_type.endswith("DMTS-nonmatch")
             or (trial_type.endswith("DMTS-match") and row.get("choice_side") in {"left", "right"})
             or trial_type.endswith("tAC-left")
             or trial_type.endswith("tAC-right")
-        ) and row["ResultType"] == "FA":
+        ) and row["ResultType"] == "FA"
+        if punish_fa or blank_lick_timeout:
             self.active_trial_extra_timeout_s = self.get_punish_no_go_fa_s()
         else:
             self.active_trial_extra_timeout_s = 0.0
@@ -3393,7 +3435,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.last_trial_end_time_s = trial_end_s
         self.next_trial_allowed_time_s = trial_end_s + total_timeout_s
         if self.active_trial_extra_timeout_s:
-            if "DMTS-" in trial_type:
+            if blank_lick_timeout:
+                timeout_label = "DMTS blank licking"
+            elif "DMTS-" in trial_type:
                 timeout_label = "DMTS FA"
             elif trial_type.endswith("tAC-left") or trial_type.endswith("tAC-right"):
                 timeout_label = "tAC wrong choice"
@@ -4313,6 +4357,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("DMTSStimulusSource", params["DMTSStimulusSource"]),
             ("DMTSLightLibrary", params["DMTSLightLibrary"]),
             ("Delay_s", params["Delay_s"]),
+            ("DMTSMissesBeforeReminder", params["DMTSMissesBeforeReminder"]),
+            ("DMTSReminderTrials", params["DMTSReminderTrials"]),
+            ("DMTSBlankLickTimeout", params["DMTSBlankLickTimeout"]),
             ("DMTSForkGrace_s", params["DMTSForkGrace_s"]),
             ("SoundDuration_s", params["SoundDuration_s"]),
             ("ResponseWindow_s", params["ResponseWindow_s"]),
