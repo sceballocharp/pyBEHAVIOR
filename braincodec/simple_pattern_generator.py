@@ -1,4 +1,4 @@
-"""Create fixed 3x3 GO patches: python braincodec/simple_pattern_generator.py."""
+"""Create rectangular LED patches (default 3x3)."""
 
 import math
 import json
@@ -12,16 +12,20 @@ def dump_yaml(config):
     return "".join(f"{key}: {json.dumps(value)}\n" for key, value in config.items())
 
 
-def patch_labels(p, n):
-    """P and N are the lowest coordinates of a 3x3 patch."""
-    if not 1 <= p <= 8 or not 1 <= n <= 8:
-        raise ValueError("A 3x3 patch must start at P=1–8 and N=1–8.")
-    return " ".join(f"P{x}N{y}" for y in range(n, n + 3) for x in range(p, p + 3))
+def patch_labels(p, n, width=3, height=3):
+    """Width follows P; height follows N on the 10x10 grid."""
+    if any(not isinstance(v, int) for v in (p, n, width, height)):
+        raise ValueError("Patch coordinates and dimensions must be integers.")
+    if not 1 <= width <= 10 or not 1 <= height <= 10:
+        raise ValueError("Patch width and height must be between 1 and 10.")
+    if not 1 <= p <= 11 - width or not 1 <= n <= 11 - height:
+        raise ValueError(f"A {width}x{height} patch must start at P=1–{11-width} and N=1–{11-height}.")
+    return " ".join(f"P{x}N{y}" for y in range(n, n + height) for x in range(p, p + width))
 
 
 def build_config(mouse, device, patches, irradiance, nogo_p, nogo_n,
                  nogo_irradiance, duration, frequency, pulses, selection="random",
-                 mode="simple_patterns"):
+                 mode="simple_patterns", nogo_width=3, nogo_height=3):
     if not patches:
         raise ValueError("Add at least one GO stimulus.")
     if not mouse.strip() or not device.strip():
@@ -49,7 +53,7 @@ def build_config(mouse, device, patches, irradiance, nogo_p, nogo_n,
     for name, coordinates in zip(names, patches):
         config[name] = patch_labels(*coordinates)
         config[f"{name} irradiance (mW/mm2)"] = irradiance
-    config.update({"NOGO": patch_labels(nogo_p, nogo_n),
+    config.update({"NOGO": patch_labels(nogo_p, nogo_n, nogo_width, nogo_height),
                    "NOGO irradiance (mW/mm2)": nogo_irradiance,
                    "Pulse duration (ms)": duration,
                    "Pulse frequency (Hz)": frequency,
@@ -93,11 +97,23 @@ class Generator(tk.Tk):
             row=15, column=0, columnspan=2, sticky="w", pady=8)
         self.p = tk.IntVar(value=1)
         self.n = tk.IntVar(value=8)
+        self.width = tk.IntVar(value=3)
+        self.height = tk.IntVar(value=3)
+        shape_controls = ttk.Frame(form)
+        shape_controls.grid(row=16, column=0, columnspan=2, sticky="w", pady=8)
+        for label, var in (("Patch width (P)", self.width), ("Height (N)", self.height)):
+            ttk.Label(shape_controls, text=label).pack(side="left", padx=3)
+            ttk.Spinbox(shape_controls, from_=1, to=10, textvariable=var, width=4).pack(side="left")
+        for row, label in ((17, "NO-GO width (P)"), (18, "NO-GO height (N)")):
+            ttk.Label(form, text=label).grid(row=row, column=0, sticky="w", pady=3)
+            var = tk.StringVar(value="3")
+            self.fields[label] = var
+            ttk.Spinbox(form, from_=1, to=10, textvariable=var, width=5).grid(row=row, column=1)
         controls = ttk.Frame(form)
         controls.grid(row=10, column=0, columnspan=2, sticky="ew")
         for label, var in (("Start P", self.p), ("Start N", self.n)):
             ttk.Label(controls, text=label).pack(side="left", padx=3)
-            ttk.Spinbox(controls, from_=1, to=8, textvariable=var, width=4,
+            ttk.Spinbox(controls, from_=1, to=10, textvariable=var, width=4,
                         command=self.draw).pack(side="left")
         ttk.Button(controls, text="Add GO patch", command=self.add).pack(side="left", padx=8)
         self.listbox = tk.Listbox(form, height=8, width=46, exportselection=False)
@@ -110,15 +126,20 @@ class Generator(tk.Tk):
         self.canvas.bind("<Button-1>", self.click)
         self.p.trace_add("write", lambda *_: self.draw())
         self.n.trace_add("write", lambda *_: self.draw())
+        self.width.trace_add("write", lambda *_: self.draw())
+        self.height.trace_add("write", lambda *_: self.draw())
         self.add()
 
     def draw(self):
         self.canvas.delete("all")
         try:
             p, n = self.p.get(), self.n.get()
-        except tk.TclError:
+            width, height = self.width.get(), self.height.get()
+            patch_labels(p, n, width, height)
+        except (tk.TclError, ValueError):
+            self.canvas.create_text(180, 190, text="Choose a patch that fits inside the 10 × 10 grid.")
             return
-        self.canvas.create_text(180, 15, text="Click the lowest P/N corner of a 3 × 3 patch")
+        self.canvas.create_text(180, 15, text=f"Click the lowest P/N corner of a {width} × {height} patch")
         for x in range(1, 11):
             self.canvas.create_text(45 + (x - 1) * 30, 40, text=f"P{x}")
         for y in range(1, 11):
@@ -126,24 +147,29 @@ class Generator(tk.Tk):
             self.canvas.create_text(18, top + 15, text=f"N{y}")
             for x in range(1, 11):
                 left = 30 + (x - 1) * 30
-                active = p <= x < p + 3 and n <= y < n + 3
+                active = p <= x < p + width and n <= y < n + height
                 self.canvas.create_rectangle(left, top, left + 30, top + 30,
                                              fill="#34a853" if active else "#eeeeee", outline="white")
         self.canvas.create_text(180, 375, text="P increases right; N increases up. Logical coordinates.")
 
     def click(self, event):
         if 30 <= event.x < 330 and 55 <= event.y < 355:
-            self.p.set(min(8, (event.x - 30) // 30 + 1))
-            self.n.set(min(8, 10 - (event.y - 55) // 30))
+            try:
+                width, height = self.width.get(), self.height.get()
+                patch_labels(1, 1, width, height)
+            except (tk.TclError, ValueError):
+                return
+            self.p.set(min(11 - width, (event.x - 30) // 30 + 1))
+            self.n.set(min(11 - height, 10 - (event.y - 55) // 30))
 
     def refresh(self):
         self.listbox.delete(0, tk.END)
-        for i, (p, n) in enumerate(self.patches, 1):
-            self.listbox.insert(tk.END, f"STIM{i}: P{p}–P{p+2}, N{n}–N{n+2}")
+        for i, (p, n, width, height) in enumerate(self.patches, 1):
+            self.listbox.insert(tk.END, f"STIM{i}: {width}×{height}, P{p}–P{p+width-1}, N{n}–N{n+height-1}")
 
     def add(self):
         try:
-            patch = (self.p.get(), self.n.get())
+            patch = (self.p.get(), self.n.get(), self.width.get(), self.height.get())
             patch_labels(*patch)
             if patch in self.patches:
                 raise ValueError("This GO patch is already in the list.")
@@ -155,7 +181,9 @@ class Generator(tk.Tk):
     def select(self, _event):
         selection = self.listbox.curselection()
         if selection:
-            p, n = self.patches[selection[0]]
+            p, n, width, height = self.patches[selection[0]]
+            self.width.set(width)
+            self.height.set(height)
             self.p.set(p)
             self.n.set(n)
 
@@ -174,7 +202,9 @@ class Generator(tk.Tk):
                                   float(f["NO-GO irradiance (mW/mm2)"]),
                                   float(f["Pulse duration (ms)"]),
                                   float(f["Pulse frequency (Hz)"]), int(f["Number of pulses"]),
-                                  selection=self.selection.get(), mode=self.mode.get())
+                                  selection=self.selection.get(), mode=self.mode.get(),
+                                  nogo_width=int(f["NO-GO width (P)"]),
+                                  nogo_height=int(f["NO-GO height (N)"]))
         except ValueError as exc:
             messagebox.showerror("Invalid configuration", str(exc))
             return
