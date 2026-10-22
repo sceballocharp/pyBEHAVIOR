@@ -104,3 +104,23 @@ class ModalityTests(unittest.TestCase):
                 else:
                     app.play_loaded_sound.assert_not_called()
                     app.trigger_dmts_light_phase.assert_not_called()
+
+    def test_nonmatch_sound_override_does_not_change_trial_type(self):
+        for enabled in (False, True):
+            for trial_type in (0, 1, 2):
+                app = self.app('0 1', trial_type)
+                app.dmts_nonmatch_only_sounds = Var(enabled)
+                self.assertTrue(app.prepare_next_dmts_light_trial())
+                expected = 'blank' if trial_type == 0 else ('sound' if enabled and trial_type == 2 else 'light')
+                self.assertEqual(app._dmts_trial_modality, expected)
+                self.assertEqual(app._dmts_trial_pending['trial_type'], trial_type)
+                if expected != 'light':
+                    app.dmts_light_client.prepare.assert_not_called()
+
+    def test_nonmatch_override_requires_audio_even_with_light_only_probabilities(self):
+        app = self.app('0 1', 2)
+        app.dmts_nonmatch_only_sounds = Var(True)
+        app.play_sound_on_crossing = Var(True)
+        app.is_tac_pretraining_task = lambda: False
+        app.sequence_has_sound = lambda: True
+        self.assertTrue(app.session_requires_sound_file())

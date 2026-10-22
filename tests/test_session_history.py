@@ -11,21 +11,26 @@ class SessionHistoryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'session_history.json'
             history = SessionHistory(path)
-            history.start('Sebastian', '99', 'DMTS')
+            history.start('Sebastian', '99', 'DMTS', sound_ids=[3, 1, 3, 0])
             history.update(10, 4)
-            history.update(12, 5, stopped=True)
+            weights = {'sequence_values': '1 2 0', 'sequence_weights': '0.4 0.4 0.2',
+                       'sound_light_probabilities': '0.5 0.5', 'nonmatch_only_sounds': True}
+            history.update(12, 5, stopped=True, weights=weights)
             history.update(100, 100, stopped=True)
             rows = json.loads(path.read_text())
             self.assertEqual(len(rows), 1)
             self.assertEqual((rows[0]['trials'], rows[0]['rewards']), (12, 5))
             self.assertEqual((rows[0]['user'], rows[0]['animal_id'], rows[0]['project']),
                              ('Sebastian', '99', 'DMTS'))
+            self.assertEqual(rows[0]['sound_ids'], [1, 3])
+            self.assertEqual(rows[0]['weights'], weights)
             self.assertEqual(rows[0]['status'], 'stopped')
             self.assertIsNotNone(rows[0]['stopped_at'])
             history.start('Other', '100', 'Training', simulation=True)
             rows = json.loads(path.read_text())
             self.assertEqual(len(rows), 2)
             self.assertTrue(rows[1]['simulation'])
+            self.assertEqual(rows[1]['sound_ids'], [])
             self.assertEqual(rows[1]['status'], 'running')
             self.assertEqual(rows[0]['trials'], 12)
 

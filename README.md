@@ -305,4 +305,6 @@ Detailed maintainer docs live in [docs/README.md](docs/README.md):
 
 ## Session history
 
-V8 automatically maintains `session_history.json` in the main application folder. One entry per acquisition run records user, animal ID, project, start/stop times, simulation mode, trials started, and successful reward pulses (including manual pulses during the run). It writes only at session start and stop (closing the window also stops the session). A run interrupted by a crash retains its start entry with status `running` and zero counts. This local history is excluded from Git.
+V8 automatically maintains `session_history_<computer-name>.json` in the main application folder, using the hostname of the computer running pyBEHAVIOR. Each computer keeps its own history. One entry per acquisition run records user, animal ID, project, configured sound ID list, start/stop times, simulation mode, trials started, and successful reward pulses (including manual pulses during the run). It writes only at session start and stop (closing the window also stops the session). A run interrupted by a crash retains its start entry with status `running` and zero counts. This local history is excluded from Git.
+
+When a session stops, its history entry also saves the sequence values and weights as displayed at Stop, plus the DMTS Sound / Light probabilities and NonMatch Only Sounds option.

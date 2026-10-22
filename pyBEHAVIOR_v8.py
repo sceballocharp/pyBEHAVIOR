@@ -12,6 +12,7 @@ import csv
 import json
 import math
 import statistics
+import socket
 from session_history import SessionHistory
 from datetime import datetime, timezone
 from tkinter import filedialog, messagebox, ttk
@@ -354,6 +355,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.random_seed = tk.StringVar(value="")
         self.max_trials = tk.StringVar(value="0")
         self.dmts_modality_probabilities = tk.StringVar(value="1 0")
+        self.dmts_nonmatch_only_sounds = tk.BooleanVar(value=False)
         self._entry(seq, 0, "Length", self.sequence_length, width=6)
         self._entry(seq, 2, "Values", self.sequence_values, width=10)
         self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
@@ -366,6 +368,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self._entry(seq, 2, "Last type", self.last_trial_type_var, width=7, row=4, state="readonly")
 
         self.dmts_modality_widgets = self._entry(seq, 0, "Sound / Light probabilities", self.dmts_modality_probabilities, width=12, row=5)
+
+        self.dmts_nonmatch_only_sounds_check = ttk.Checkbutton(seq, text="NonMatch Only Sounds", variable=self.dmts_nonmatch_only_sounds)
+        self.dmts_nonmatch_only_sounds_check.grid(row=6, column=0, columnspan=4, sticky="w", padx=6, pady=4)
 
         acq = ttk.LabelFrame(parameter_column, text="Acquisition")
         acq.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -700,6 +705,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         else:
             self.dmts_random_match_check.grid_remove()
         self.set_widget_pair_visible(self.dmts_modality_widgets, is_dmts, row=5, col=0)
+        if is_dmts:
+            self.dmts_nonmatch_only_sounds_check.grid()
+        else:
+            self.dmts_nonmatch_only_sounds_check.grid_remove()
         self.set_widget_pair_visible(self.sample_sound_widgets, is_dmts, row=10, col=0)
         self.set_widget_pair_visible(self.test_sound_widgets, is_dmts, row=10, col=2)
         self.set_widget_pair_visible(self.dmts_fork_grace_widgets, is_dmts, row=11, col=0)
@@ -1123,6 +1132,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSRandomMatchTrials": self.dmts_random_match_trials,
             "DMTSSoundIds": self.dmts_sound_ids,
             "DMTSModalityProbabilities": self.dmts_modality_probabilities,
+            "DMTSNonMatchOnlySounds": self.dmts_nonmatch_only_sounds,
             "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
             "DMTSReminderTrials": self.dmts_reminder_trials,
             "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
@@ -1472,10 +1482,16 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.log("Live acquisition stopped.")
 
     def begin_session_history(self):
-        self.session_history = SessionHistory(os.path.join(APP_DIR, 'session_history.json'))
+        self.session_history = SessionHistory(os.path.join(APP_DIR, f'session_history_{socket.gethostname()}.json'))
         try:
+            if self.is_dmts_task():
+                sound_ids = (self.parse_dmts_sound_ids() if self.dmts_random_match_trials.get()
+                             else [self.parse_int(self.sample_sound_id, 1), self.parse_int(self.test_sound_id, 1)])
+            else:
+                sound_ids = list(self.sound_sequence)
+                sound_ids.extend(stimulus.get('sound_id', 0) for stimulus in self.trial_stimulus_sequence)
             self.session_history.start(self.user_name.get(), self.mouse_id.get(),
-                                       self.project_name.get(), self.simulation_mode.get())
+                                       self.project_name.get(), self.simulation_mode.get(), sound_ids=sound_ids)
         except Exception as exc:
             self.log(f'Session history could not be started: {exc}')
             self.session_history = None
@@ -1486,9 +1502,20 @@ class BehaviorAcquisitionApp(tk.Tk):
         if history is None or history.session_id is None:
             return
         try:
-            history.update(self.trial_index, self.reward_pulse_count, stopped=stopped)
+            weights = None
+            if stopped:
+                # Preserve the fields exactly as displayed at Stop.
+                weights = {
+                    'sequence_values': self.sequence_values.get(),
+                    'sequence_weights': self.sequence_weights.get(),
+                }
+                if self.is_dmts_task():
+                    weights['sound_light_probabilities'] = self.dmts_modality_probabilities.get()
+                    weights['nonmatch_only_sounds'] = bool(self.dmts_nonmatch_only_sounds.get())
+            history.update(self.trial_index, self.reward_pulse_count, stopped=stopped, weights=weights)
         except Exception as exc:
             self.log(f'Session history could not be saved: {exc}')
+
     def clear_buffers(self):
         self.time_buffer.clear()
         self.data_buffer.clear()
@@ -1522,8 +1549,10 @@ class BehaviorAcquisitionApp(tk.Tk):
     def session_requires_sound_file(self):
         if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
             var = getattr(self, 'dmts_modality_probabilities', None)
+            override = getattr(self, 'dmts_nonmatch_only_sounds', None)
             if var is None or self.get_dmts_modality_probabilities()[0] == 0:
-                return False
+                if override is None or not override.get():
+                    return False
         return (self.play_sound_on_crossing.get() and not self.is_tac_pretraining_task()
                 and self.sequence_has_sound())
 
@@ -1946,6 +1975,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSRandomMatchTrials": int(self.dmts_random_match_trials.get()),
             "DMTSSoundIds": self.dmts_sound_ids.get(),
             "DMTSModalityProbabilities": self.dmts_modality_probabilities.get(),
+            "DMTSNonMatchOnlySounds": int(self.dmts_nonmatch_only_sounds.get()),
             "DMTSStimulusSource": ("mixed" if self.get_dmts_modality_probabilities()[0] > 0 else "LED") if getattr(self, "dmts_light_client", None) is not None else "sound",
             "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
                 if getattr(self, 'dmts_light_client', None) is not None else '',
@@ -2422,6 +2452,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             probabilities = self.get_dmts_modality_probabilities()
             self._dmts_trial_modality = (random.choices(['sound', 'light'], weights=probabilities, k=1)[0]
                                          if trial_type != 0 else 'blank')
+            sound_only = getattr(self, 'dmts_nonmatch_only_sounds', None)
+            if trial_type == 2 and sound_only is not None and sound_only.get():
+                self._dmts_trial_modality = 'sound'
             self._dmts_trial_pending = {'trial_type': trial_type}
             self._dmts_light_pending = None
             if self._dmts_trial_modality != 'light':
