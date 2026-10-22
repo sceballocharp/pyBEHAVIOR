@@ -1,0 +1,94 @@
+# Named patterns require the corresponding updated driver on PYNQ.
+mouse_id: "332"
+device_id: "H2-190"
+GO: "P1N8 P2N8 P3N8 P1N9 P2N9 P3N9 P1N10 P2N10 P3N10"
+GO irradiance (mW/mm2): 2.0
+GO stimuli: ["STIM1", "STIM2", "STIM3", "STIM4", "STIM5", "STIM6", "STIM7", "STIM8", "STIM9", "STIM10", "STIM11", "STIM12", "STIM13", "STIM14", "STIM15", "STIM16", "STIM17", "STIM18", "STIM19", "STIM20", "STIM21", "STIM22", "STIM23", "STIM24", "STIM25", "STIM26", "STIM27", "STIM28", "STIM29", "STIM30", "STIM31", "STIM32", "STIM33", "STIM34", "STIM35", "STIM36", "STIM37", "STIM38", "STIM39", "STIM40", "STIM41"]
+GO stimulus selection: "random"
+STIM1: "P1N8 P2N8 P3N8 P1N9 P2N9 P3N9 P1N10 P2N10 P3N10"
+STIM1 irradiance (mW/mm2): 2.0
+STIM2: "P1N4"
+STIM2 irradiance (mW/mm2): 2.0
+STIM3: "P2N4"
+STIM3 irradiance (mW/mm2): 2.0
+STIM4: "P3N4"
+STIM4 irradiance (mW/mm2): 2.0
+STIM5: "P4N4"
+STIM5 irradiance (mW/mm2): 2.0
+STIM6: "P5N4"
+STIM6 irradiance (mW/mm2): 2.0
+STIM7: "P6N4"
+STIM7 irradiance (mW/mm2): 2.0
+STIM8: "P7N4"
+STIM8 irradiance (mW/mm2): 2.0
+STIM9: "P8N4"
+STIM9 irradiance (mW/mm2): 2.0
+STIM10: "P9N4"
+STIM10 irradiance (mW/mm2): 2.0
+STIM11: "P10N4"
+STIM11 irradiance (mW/mm2): 2.0
+STIM12: "P1N3"
+STIM12 irradiance (mW/mm2): 2.0
+STIM13: "P2N3"
+STIM13 irradiance (mW/mm2): 2.0
+STIM14: "P3N3"
+STIM14 irradiance (mW/mm2): 2.0
+STIM15: "P4N3"
+STIM15 irradiance (mW/mm2): 2.0
+STIM16: "P5N3"
+STIM16 irradiance (mW/mm2): 2.0
+STIM17: "P6N3"
+STIM17 irradiance (mW/mm2): 2.0
+STIM18: "P7N3"
+STIM18 irradiance (mW/mm2): 2.0
+STIM19: "P8N3"
+STIM19 irradiance (mW/mm2): 2.0
+STIM20: "P9N3"
+STIM20 irradiance (mW/mm2): 2.0
+STIM21: "P10N3"
+STIM21 irradiance (mW/mm2): 2.0
+STIM22: "P1N2"
+STIM22 irradiance (mW/mm2): 2.0
+STIM23: "P2N2"
+STIM23 irradiance (mW/mm2): 2.0
+STIM24: "P3N2"
+STIM24 irradiance (mW/mm2): 2.0
+STIM25: "P4N2"
+STIM25 irradiance (mW/mm2): 2.0
+STIM26: "P5N2"
+STIM26 irradiance (mW/mm2): 2.0
+STIM27: "P6N2"
+STIM27 irradiance (mW/mm2): 2.0
+STIM28: "P7N2"
+STIM28 irradiance (mW/mm2): 2.0
+STIM29: "P8N2"
+STIM29 irradiance (mW/mm2): 2.0
+STIM30: "P9N2"
+STIM30 irradiance (mW/mm2): 2.0
+STIM31: "P10N2"
+STIM31 irradiance (mW/mm2): 2.0
+STIM32: "P1N1"
+STIM32 irradiance (mW/mm2): 2.0
+STIM33: "P2N1"
+STIM33 irradiance (mW/mm2): 2.0
+STIM34: "P3N1"
+STIM34 irradiance (mW/mm2): 2.0
+STIM35: "P4N1"
+STIM35 irradiance (mW/mm2): 2.0
+STIM36: "P5N1"
+STIM36 irradiance (mW/mm2): 2.0
+STIM37: "P6N1"
+STIM37 irradiance (mW/mm2): 2.0
+STIM38: "P8N1"
+STIM38 irradiance (mW/mm2): 2.0
+STIM39: "P9N1"
+STIM39 irradiance (mW/mm2): 2.0
+STIM40: "P10N1"
+STIM40 irradiance (mW/mm2): 2.0
+STIM41: "P7N1"
+STIM41 irradiance (mW/mm2): 2.0
+NOGO: "P8N1 P9N1 P10N1 P8N2 P9N2 P10N2 P8N3 P9N3 P10N3"
+NOGO irradiance (mW/mm2): 2.0
+Pulse duration (ms): 25.0
+Pulse frequency (Hz): 20.0
+Number of pulses: 10

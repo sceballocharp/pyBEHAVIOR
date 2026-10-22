@@ -1,0 +1,72 @@
+# Named patterns require the corresponding updated driver on PYNQ.
+mouse_id: "332"
+device_id: "H2-190"
+GO: "P1N10"
+GO irradiance (mW/mm2): 1.0
+GO stimuli: ["STIM1", "STIM2", "STIM3", "STIM4", "STIM5", "STIM6", "STIM7", "STIM8", "STIM9", "STIM10", "STIM11", "STIM12", "STIM13", "STIM14", "STIM15", "STIM16", "STIM17", "STIM18", "STIM19", "STIM20", "STIM21", "STIM22", "STIM23", "STIM24", "STIM25", "STIM26", "STIM27", "STIM28", "STIM29", "STIM30"]
+GO stimulus selection: "random"
+STIM1: "P1N10"
+STIM1 irradiance (mW/mm2): 1.0
+STIM2: "P2N10"
+STIM2 irradiance (mW/mm2): 1.0
+STIM3: "P3N10"
+STIM3 irradiance (mW/mm2): 1.0
+STIM4: "P4N10"
+STIM4 irradiance (mW/mm2): 1.0
+STIM5: "P5N10"
+STIM5 irradiance (mW/mm2): 1.0
+STIM6: "P6N10"
+STIM6 irradiance (mW/mm2): 1.0
+STIM7: "P7N10"
+STIM7 irradiance (mW/mm2): 1.0
+STIM8: "P8N10"
+STIM8 irradiance (mW/mm2): 1.0
+STIM9: "P9N10"
+STIM9 irradiance (mW/mm2): 1.0
+STIM10: "P10N10"
+STIM10 irradiance (mW/mm2): 1.0
+STIM11: "P10N9"
+STIM11 irradiance (mW/mm2): 1.0
+STIM12: "P9N9"
+STIM12 irradiance (mW/mm2): 1.0
+STIM13: "P8N9"
+STIM13 irradiance (mW/mm2): 1.0
+STIM14: "P7N9"
+STIM14 irradiance (mW/mm2): 1.0
+STIM15: "P6N9"
+STIM15 irradiance (mW/mm2): 1.0
+STIM16: "P5N9"
+STIM16 irradiance (mW/mm2): 1.0
+STIM17: "P4N9"
+STIM17 irradiance (mW/mm2): 1.0
+STIM18: "P3N9"
+STIM18 irradiance (mW/mm2): 1.0
+STIM19: "P2N9"
+STIM19 irradiance (mW/mm2): 1.0
+STIM20: "P1N9"
+STIM20 irradiance (mW/mm2): 1.0
+STIM21: "P1N8"
+STIM21 irradiance (mW/mm2): 1.0
+STIM22: "P2N8"
+STIM22 irradiance (mW/mm2): 1.0
+STIM23: "P3N8"
+STIM23 irradiance (mW/mm2): 1.0
+STIM24: "P4N8"
+STIM24 irradiance (mW/mm2): 1.0
+STIM25: "P5N8"
+STIM25 irradiance (mW/mm2): 1.0
+STIM26: "P6N8"
+STIM26 irradiance (mW/mm2): 1.0
+STIM27: "P7N8"
+STIM27 irradiance (mW/mm2): 1.0
+STIM28: "P8N8"
+STIM28 irradiance (mW/mm2): 1.0
+STIM29: "P9N8"
+STIM29 irradiance (mW/mm2): 1.0
+STIM30: "P10N8"
+STIM30 irradiance (mW/mm2): 1.0
+NOGO: "P8N1"
+NOGO irradiance (mW/mm2): 2.0
+Pulse duration (ms): 25.0
+Pulse frequency (Hz): 20.0
+Number of pulses: 10

@@ -1,0 +1,72 @@
+# Named patterns require the corresponding updated driver on PYNQ.
+mouse_id: "332"
+device_id: "H2-190"
+GO: "P1N7"
+GO irradiance (mW/mm2): 2.0
+GO stimuli: ["STIM1", "STIM2", "STIM3", "STIM4", "STIM5", "STIM6", "STIM7", "STIM8", "STIM9", "STIM10", "STIM11", "STIM12", "STIM13", "STIM14", "STIM15", "STIM16", "STIM17", "STIM18", "STIM19", "STIM20", "STIM21", "STIM22", "STIM23", "STIM24", "STIM25", "STIM26", "STIM27", "STIM28", "STIM29", "STIM30"]
+GO stimulus selection: "random"
+STIM1: "P1N7"
+STIM1 irradiance (mW/mm2): 2.0
+STIM2: "P2N7"
+STIM2 irradiance (mW/mm2): 2.0
+STIM3: "P3N7"
+STIM3 irradiance (mW/mm2): 2.0
+STIM4: "P4N7"
+STIM4 irradiance (mW/mm2): 2.0
+STIM5: "P5N7"
+STIM5 irradiance (mW/mm2): 2.0
+STIM6: "P6N7"
+STIM6 irradiance (mW/mm2): 2.0
+STIM7: "P7N7"
+STIM7 irradiance (mW/mm2): 2.0
+STIM8: "P8N7"
+STIM8 irradiance (mW/mm2): 2.0
+STIM9: "P9N7"
+STIM9 irradiance (mW/mm2): 2.0
+STIM10: "P10N7"
+STIM10 irradiance (mW/mm2): 2.0
+STIM11: "P1N6"
+STIM11 irradiance (mW/mm2): 2.0
+STIM12: "P2N6"
+STIM12 irradiance (mW/mm2): 2.0
+STIM13: "P3N6"
+STIM13 irradiance (mW/mm2): 2.0
+STIM14: "P4N6"
+STIM14 irradiance (mW/mm2): 2.0
+STIM15: "P5N6"
+STIM15 irradiance (mW/mm2): 2.0
+STIM16: "P6N6"
+STIM16 irradiance (mW/mm2): 2.0
+STIM17: "P7N6"
+STIM17 irradiance (mW/mm2): 2.0
+STIM18: "P8N6"
+STIM18 irradiance (mW/mm2): 2.0
+STIM19: "P9N6"
+STIM19 irradiance (mW/mm2): 2.0
+STIM20: "P10N6"
+STIM20 irradiance (mW/mm2): 2.0
+STIM21: "P1N5"
+STIM21 irradiance (mW/mm2): 2.0
+STIM22: "P2N5"
+STIM22 irradiance (mW/mm2): 2.0
+STIM23: "P3N5"
+STIM23 irradiance (mW/mm2): 2.0
+STIM24: "P4N5"
+STIM24 irradiance (mW/mm2): 2.0
+STIM25: "P5N5"
+STIM25 irradiance (mW/mm2): 2.0
+STIM26: "P6N5"
+STIM26 irradiance (mW/mm2): 2.0
+STIM27: "P7N5"
+STIM27 irradiance (mW/mm2): 2.0
+STIM28: "P8N5"
+STIM28 irradiance (mW/mm2): 2.0
+STIM29: "P9N5"
+STIM29 irradiance (mW/mm2): 2.0
+STIM30: "P10N5"
+STIM30 irradiance (mW/mm2): 2.0
+NOGO: "P8N1 P9N1 P10N1 P8N2 P9N2 P10N2 P8N3 P9N3 P10N3"
+NOGO irradiance (mW/mm2): 2.0
+Pulse duration (ms): 25.0
+Pulse frequency (Hz): 20.0
+Number of pulses: 10
