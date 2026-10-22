@@ -1,6 +1,6 @@
 # Acquisition
 
-This document describes the live acquisition path in `pyBEHAVIOR_v7.py`.
+This document describes the live acquisition path in `pyBEHAVIOR_v8.py`.
 
 ## Responsibilities
 

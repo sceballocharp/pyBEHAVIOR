@@ -9,7 +9,7 @@ from test_lever_modes import load_methods
 
 class TrialLogColumnsTests(unittest.TestCase):
     def test_csv_and_excel_table_preserve_fields_and_values(self):
-        methods = load_methods('pyBEHAVIOR_v7.py', {'write_trial_log', 'write_csv'})
+        methods = load_methods('pyBEHAVIOR_v8.py', {'write_trial_log', 'write_csv'})
         methods['csv'] = csv
         with tempfile.TemporaryDirectory() as folder:
             app = SimpleNamespace(trial_log_path=str(Path(folder) / 'TrialLog.csv'),

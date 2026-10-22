@@ -1,8 +1,10 @@
-# pyBEHAVIOR v7
+# pyBEHAVIOR v8
 
-`pyBEHAVIOR_v7.py` is a Python/Tkinter acquisition interface for closed-loop behavioral experiments. It runs NI-DAQ acquisition, sound playback, reward outputs, live plotting, trial logging, protocol import, and NWB export from one GUI.
+V8 development continues on `main`. Launch it with `run_pyBEHAVIOR_v8.bat`. The v7 application, launcher, and parameter reference are retained unchanged as the v7 baseline. Shared modules continue to evolve with v8.
 
-The current v7 runtime supports four behavior families:
+`pyBEHAVIOR_v8.py` is a Python/Tkinter acquisition interface for closed-loop behavioral experiments. It runs NI-DAQ acquisition, sound playback, reward outputs, live plotting, trial logging, protocol import, and NWB export from one GUI.
+
+The current v8 runtime supports four behavior families:
 
 - Classic Go/No-Go
 - Lever
@@ -29,14 +31,14 @@ The current v7 runtime supports four behavior families:
 
 | File | Purpose |
 | --- | --- |
-| `pyBEHAVIOR_v7.py` | Main acquisition GUI and runtime logic. |
-| `pyBEHAVIOR_v7_parameters.md` | Compact user-facing parameter reference. |
+| `pyBEHAVIOR_v8.py` | Main acquisition GUI and runtime logic. |
+| `pyBEHAVIOR_v8_parameters.md` | Compact user-facing parameter reference. |
 | `protocol_generator.py` | GUI tool for creating parameter `.dat` files. |
-| `braincodec/tk_panel.py` | Reusable Braincodec tab/panel used by `pyBEHAVIOR_v7.py`. |
+| `braincodec/tk_panel.py` | Reusable Braincodec tab/panel used by `pyBEHAVIOR_v8.py`. |
 | `braincodec/remote_runner.py` | Small HTTP runner intended to run on the PYNQ/Braincodec machine. |
 | `docs/` | Maintainer documentation split by subsystem. |
 | `protocols/` | Example/generated protocol files. |
-| `run_pyBEHAVIOR_v7.bat` | Windows launcher for the main app using the local `.venv`. |
+| `run_pyBEHAVIOR_v8.bat` | Windows launcher for the main app using the local `.venv`. |
 | `run_protocol_generator.bat` | Windows launcher for the protocol generator. |
 | `requirements.txt` | Python dependencies. |
 
@@ -45,13 +47,13 @@ The current v7 runtime supports four behavior families:
 On a Windows acquisition computer:
 
 ```bat
-run_pyBEHAVIOR_v7.bat
+run_pyBEHAVIOR_v8.bat
 ```
 
 Or launch directly:
 
 ```bat
-.venv\Scripts\python.exe pyBEHAVIOR_v7.py
+.venv\Scripts\python.exe pyBEHAVIOR_v8.py
 ```
 
 To create or edit a protocol file:
@@ -62,7 +64,7 @@ run_protocol_generator.bat
 
 ## Typical Session Workflow
 
-1. Launch `pyBEHAVIOR_v7`.
+1. Launch `pyBEHAVIOR_v8`.
 2. Set user, mouse, project, save root, NI device, channels, acquisition rate, and output format.
 3. Import a protocol `.dat` file or edit the GUI parameters.
 4. Choose the NI setup script and sound file.
@@ -93,7 +95,7 @@ On the Windows acquisition computer:
 
 ```bat
 cd C:\Users\Behaviour_2\Documents\GitHub\pyBEHAVIOR
-.venv\Scripts\python.exe pyBEHAVIOR_v7.py
+.venv\Scripts\python.exe pyBEHAVIOR_v8.py
 ```
 
 The GUI has two top-level tabs:
@@ -300,3 +302,7 @@ Detailed maintainer docs live in [docs/README.md](docs/README.md):
 - Keep large raw data folders out of version control unless they are deliberate examples.
 - Check hardware channel names before running on a new rig.
 - If the app opens but hardware controls do not work, verify the NI-DAQmx driver, the `nidaqmx` Python package, and the selected device name.
+
+## Session history
+
+V8 automatically maintains `session_history.json` in the main application folder. One entry per acquisition run records user, animal ID, project, start/stop times, simulation mode, trials started, and successful reward pulses (including manual pulses during the run). It writes only at session start and stop (closing the window also stops the session). A run interrupted by a crash retains its start entry with status `running` and zero counts. This local history is excluded from Git.

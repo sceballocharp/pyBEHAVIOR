@@ -1,0 +1,5459 @@
+#Sebastian June 2026
+
+import os
+import queue
+import random
+import re
+import struct
+import threading
+import time
+import tkinter as tk
+import csv
+import json
+import math
+import statistics
+from session_history import SessionHistory
+from datetime import datetime, timezone
+from tkinter import filedialog, messagebox, ttk
+
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    from scipy.io import loadmat, savemat, wavfile
+    from scipy.signal import resample_poly
+except Exception:
+    loadmat = None
+    savemat = None
+    wavfile = None
+    resample_poly = None
+
+try:
+    import nidaqmx
+    from nidaqmx.constants import AcquisitionType, LineGrouping, TerminalConfiguration
+except Exception:
+    nidaqmx = None
+    AcquisitionType = None
+    LineGrouping = None
+    TerminalConfiguration = None
+
+try:
+    import sounddevice as sd
+except Exception:
+    sd = None
+
+try:
+    import h5py
+except Exception:
+    h5py = None
+
+try:
+    from pynwb import NWBFile, NWBHDF5IO, TimeSeries
+except Exception:
+    NWBFile = None
+    NWBHDF5IO = None
+    TimeSeries = None
+
+
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_SAVE_ROOT = r"\\helix.pasteur.fr\projects\Bathellierlab\User_folders"
+DEFAULT_NI_SCRIPT = os.path.join(APP_DIR, "setup_valves_IRFork.m")
+DEFAULT_SOUND_FILE = (
+    r"\\helix.pasteur.fr\projects\Bathellierlab\User_folders\Sebastian"
+    r"\Sounds\FM_GoNoGo\12-Jan-2026\AllSounds_Corrected.mat"
+)
+
+try:
+    from braincodec.tk_panel import BraincodecTkPanel
+except Exception as exc:
+    try:
+        from tk_panel import BraincodecTkPanel
+    except Exception as fallback_exc:
+        BraincodecTkPanel = None
+        BRAINCODEC_IMPORT_ERROR = fallback_exc
+    else:
+        BRAINCODEC_IMPORT_ERROR = None
+else:
+    BRAINCODEC_IMPORT_ERROR = None
+
+
+class BehaviorAcquisitionApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("pyBEHAVIOR_v8")
+        screen_height = self.winfo_screenheight()
+        self.geometry(f"1120x{int(screen_height * 0.90)}+0+0")
+
+        self.acq_thread = None
+        self.running = False
+        self.plot_queue = queue.Queue()
+        self.plot_static_signature = None
+        self.plot_fast_frame_count = 0
+        self.plot_full_redraw_interval = 10
+        self.time_buffer = []
+        self.data_buffer = []
+        self.lever_lick_buffer = []
+        self.tac_left_buffer = []
+        self.tac_right_buffer = []
+        self.soundcopy_buffer = []
+        self.full_soundcopy_buffer = []
+        self.trigger_pulses = []
+        self.sound_outputs = []
+        self.trial_state_intervals = []
+        self.dmts_plot_windows = []
+        self.full_trigger_pulses = []
+        self.full_sound_outputs = []
+        self.behavior_signal_file = None
+        self.left_lick_file = None
+        self.right_lick_file = None
+        self.soundcopy_file = None
+        self.trial_state_file = None
+        self.exp_folder = ""
+        self.irfork_was_high = False
+        self.last_trigger_time = -1e12
+        self.last_trial_end_time_s = -1e12
+        self.next_trial_allowed_time_s = -1e12
+        self.current_behavior_baseline = 0.0
+        self.sound_data = None
+        self.sound_loaded = False
+        self.sound_sequence = []
+        self.sound_sequence_index = 0
+        self.light_sequence = []
+        self.light_sequence_index = 0
+        self.trial_stimulus_sequence = []
+        self.trial_stimulus_index = 0
+        self.current_trial_stimulus = None
+        self.braincodec_sequence_loaded = False
+        self.trial_index = 0
+        self.acq_start_perf = None
+        self.acq_sample_index = 0
+        self.last_behavior_channel_warning = ""
+        self.trial_log_path = ""
+        self.parameters_log_path = ""
+        self.trial_rows = []
+        self.parameter_rows = []
+        self.dict_across_trials = {}
+        self.trial_crossing_duration_stored = set()
+        self.current_parameter_signature = None
+        self.parameter_block_index = 0
+        self.active_trial_index = None
+        self.active_trial_start_s = None
+        self.active_trial_end_s = None
+        self.active_response_end_s = None
+        self.active_high_start_s = None
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_left_lick_count = 0
+        self.active_right_lick_count = 0
+        self.active_choice_side = ""
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_pending_reward_due_s = None
+        self.active_pending_reward_row = None
+        self.active_pending_reward_measure = ""
+        self.active_pending_reward_probability = 0.0
+        self.active_pending_reward_draw = 0.0
+        self.active_pending_reward_side = "left"
+        self.active_trial_base_iti_s = 0.0
+        self.active_trial_extra_timeout_s = 0.0
+        self.active_lever_sound_id = 1
+        self.active_lever_next_sound_time_s = None
+        self.active_lever_low_start_s = None
+        self.active_lever_release_armed = False
+        self.lever_reset_seen_for_new_trial = False
+        self.trigger_reset_seen_for_new_trial = False
+        self.lever_pending_start_s = None
+        self.lever_sound_gap_s = 0.5
+        self.active_dmts_sample_sound_id = 1
+        self.active_dmts_test_sound_id = 1
+        self.active_dmts_test_sound_time_s = None
+        self.active_dmts_response_start_s = None
+        self.active_dmts_response_end_s = None
+        self.active_dmts_reward_start_s = None
+        self.active_dmts_response_evaluated = False
+        self.active_dmts_response_met = False
+        self.active_dmts_low_start_s = None
+        self.active_dmts_test_sound_played = False
+        self.active_dmts_response_started = False
+        self.active_dmts_scored = False
+        self.tac_pretraining_first_side = ""
+        self.tac_pretraining_first_time_s = None
+        self.sim_next_pulse_start_s = 0.0
+        self.sim_pulse_end_s = -1.0
+        self.results_window = None
+        self.results_canvas = None
+        self.nwb_saving = False
+
+        self.ai_task = None
+        self.reward_task = None
+        self.right_reward_task = None
+        self.reward_pulse_count = 0
+        self.dropped_plot_frame_count = 0
+        self.last_callback_duration_s = 0.0
+        self.last_observed_rate_hz = 0.0
+        self.reward_train_after_id = None
+        self.reward_train_remaining = 0
+        self.reward_train_total = 0
+        self.reward_train_interval_ms = 1000
+        self.reward_train_side = "left"
+
+        self._build_ui()
+        self.generate_sequence(log=False)
+        self.after(50, self._drain_plot_queue)
+        self.log("pyBEHAVIOR_v8 ready.")
+        if nidaqmx is None:
+            self.log("nidaqmx not available: hardware acquisition/output will use simulation or be disabled.")
+        if loadmat is None:
+            self.log("scipy not available: MATLAB .mat sound loading is disabled.")
+        if NWBFile is None:
+            self.log("pynwb not available: NWB export is disabled until pynwb is installed.")
+
+    def _build_ui(self):
+        notebook = ttk.Notebook(self)
+        notebook.pack(fill=tk.BOTH, expand=True)
+
+        behavior_tab = ttk.Frame(notebook)
+        braincodec_tab = ttk.Frame(notebook)
+        notebook.add(behavior_tab, text="Behavior")
+        notebook.add(braincodec_tab, text="Braincodec")
+
+        root = ttk.Frame(behavior_tab, padding=10)
+        root.pack(fill=tk.BOTH, expand=True)
+        root.columnconfigure(0, weight=3)
+        root.columnconfigure(1, weight=2)
+        root.rowconfigure(4, weight=3)
+        root.rowconfigure(5, weight=1)
+
+        self._build_braincodec_tab(braincodec_tab)
+
+        parameter_column = ttk.Frame(root)
+        parameter_column.grid(row=0, column=1, rowspan=6, sticky="nsew", padx=(8, 0))
+        parameter_column.columnconfigure(0, weight=1)
+        parameter_column.rowconfigure(0, weight=0)
+        parameter_column.rowconfigure(1, weight=0)
+        parameter_column.rowconfigure(2, weight=0)
+        parameter_column.rowconfigure(3, weight=1)
+
+        run_setup = ttk.LabelFrame(root, text="Control And Files")
+        run_setup.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        run_setup.columnconfigure(0, weight=1)
+        run_setup.columnconfigure(1, weight=1)
+        run_setup_left = ttk.Frame(run_setup)
+        run_setup_left.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        run_setup_left.columnconfigure(1, weight=1)
+        for col in range(3):
+            run_setup_left.columnconfigure(col, weight=1, uniform="main_buttons")
+        run_setup_right = ttk.Frame(run_setup)
+        run_setup_right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
+        self.ni_script = tk.StringVar(value=DEFAULT_NI_SCRIPT)
+        self.sound_file = tk.StringVar(value=DEFAULT_SOUND_FILE)
+        self.simulation_mode = tk.BooleanVar(value=False)
+        self.big_button_style = "Big.TButton"
+        ttk.Style().configure(self.big_button_style, font=("Segoe UI", 12, "bold"), padding=(12, 8))
+        ttk.Button(run_setup_left, text="Start Live", command=self.start_live, style=self.big_button_style).grid(row=0, column=0, padx=4, pady=6, sticky="ew")
+        ttk.Button(run_setup_left, text="Stop", command=self.stop_live, style=self.big_button_style).grid(row=0, column=1, padx=4, pady=6, sticky="ew")
+        ttk.Button(run_setup_left, text="Clear", command=self.clear_plot, style=self.big_button_style).grid(row=0, column=2, padx=4, pady=6, sticky="ew")
+        ttk.Label(run_setup_left, text="Status").grid(row=0, column=3, padx=(20, 4))
+        self.status_canvas = tk.Canvas(run_setup_left, width=18, height=18, highlightthickness=0)
+        self.status_canvas.grid(row=0, column=4)
+        self.status_dot = self.status_canvas.create_oval(2, 2, 16, 16, fill="gray", outline="")
+        ttk.Button(run_setup_left, text="Import parameters", command=self.import_parameters_file).grid(row=1, column=0, padx=4, pady=4, sticky="ew")
+        ttk.Button(run_setup_left, text="Save NWB", command=self.save_nwb_placeholder).grid(row=1, column=1, padx=4, pady=4, sticky="ew")
+        ttk.Button(run_setup_left, text="Open .bin", command=self.open_bin).grid(row=1, column=2, padx=4, pady=4, sticky="ew")
+        ttk.Button(run_setup_left, text="Results Figure", command=self.open_results_window).grid(row=1, column=3, padx=4, pady=4, sticky="ew")
+        ttk.Checkbutton(run_setup_left, text="Simulation", variable=self.simulation_mode).grid(row=1, column=4, padx=4, pady=4, sticky="w")
+        ttk.Button(run_setup_left, text="stim_generator", command=self.open_stim_generator_window).grid(row=2, column=3, columnspan=2, padx=4, pady=4, sticky="ew")
+        self._file_row(run_setup_left, 2, "NI script", self.ni_script, self.choose_ni_script)
+        self._file_row(run_setup_left, 3, "Sound .mat", self.sound_file, self.choose_sound_file)
+        self.reward_train_left_button = ttk.Button(run_setup_left, text="100 Left", command=lambda: self.toggle_reward_train("left"))
+        self.reward_train_left_button.grid(row=3, column=3, padx=4, pady=4, sticky="ew")
+        self.reward_train_right_button = ttk.Button(run_setup_left, text="100 Right", command=lambda: self.toggle_reward_train("right"))
+        self.reward_train_right_button.grid(row=3, column=4, padx=4, pady=4, sticky="ew")
+
+        session = ttk.LabelFrame(root, text="Session")
+        session.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        self.user_name = tk.StringVar(value="username")
+        self.mouse_id = tk.StringVar(value="1")
+        self.project_name = tk.StringVar(value="ProjectName")
+        self.output_format = tk.StringVar(value="NWB")
+        self.save_root = tk.StringVar(value=DEFAULT_SAVE_ROOT)
+        self._entry(session, 0, "User", self.user_name, width=14)
+        self._entry(session, 2, "Mouse", self.mouse_id, width=8)
+        self._entry(session, 4, "Project", self.project_name, width=18)
+        ttk.Label(session, text="Output").grid(row=0, column=6, padx=(14, 4))
+        ttk.Combobox(session, textvariable=self.output_format, values=("NWB", "BIDS", "No standard"), width=12).grid(row=0, column=7)
+        self._entry(session, 8, "Save root", self.save_root, width=32)
+
+        trig = ttk.LabelFrame(root, text="Trigger And Sound")
+        trig.grid(row=3, column=0, sticky="ew", pady=(0, 6))
+        self.trigger_type = tk.StringVar(value="IRFork")
+        self.write_behavior_signal_bin = tk.BooleanVar(value=True)
+        self.trigger_output_on_crossing = tk.BooleanVar(value=True)
+        self.play_sound_on_crossing = tk.BooleanVar(value=True)
+        self.threshold_v = tk.StringVar(value="1")
+        self.pulse_ms = tk.StringVar(value="50")
+        self.right_pulse_ms = tk.StringVar(value="50")
+        self.light_ttl_pulse_ms = tk.StringVar(value="200")
+        self.sound_id = tk.StringVar(value="1")
+        self.sound_level = tk.StringVar(value="1")
+        self.lever_require_release = tk.BooleanVar(value=False)
+        self.lever_req_rel_window = tk.BooleanVar(value=False)
+        self.dmts_random_match_trials = tk.BooleanVar(value=False)
+        self.lever_reward_test_trials = tk.BooleanVar(value=False)
+        self.behavior_channel_var = tk.StringVar(value="")
+        self.behavior_rule_var = tk.StringVar(value="")
+        self.left_valve_var = tk.StringVar(value="")
+        self.right_valve_var = tk.StringVar(value="")
+        self.light_ttl_var = tk.StringVar(value="")
+        ttk.Label(trig, text="Trigger").grid(row=0, column=0, padx=(4, 4))
+        ttk.Combobox(trig, textvariable=self.trigger_type, values=("IRFork", "Lick", "None"), width=9).grid(row=0, column=1)
+        ttk.Checkbutton(trig, text="Write BehaviorSignal.bin", variable=self.write_behavior_signal_bin).grid(row=0, column=2, padx=8)
+        ttk.Checkbutton(trig, text="Trigger reward", variable=self.trigger_output_on_crossing).grid(row=0, column=3, padx=8)
+        rewards = ttk.Frame(trig)
+        rewards.grid(row=0, column=4, rowspan=2, padx=4)
+        ttk.Button(rewards, text="Left Reward", command=lambda: self.send_output_pulse(reward_side="left")).grid(row=0, column=0, pady=4, sticky="ew")
+        ttk.Button(rewards, text="Right Reward", command=lambda: self.send_output_pulse(reward_side="right")).grid(row=1, column=0, pady=4, sticky="ew")
+        self._entry(rewards, 1, "Pulse ms", self.pulse_ms, width=6, row=0)
+        self._entry(rewards, 1, "Pulse ms", self.right_pulse_ms, width=6, row=1)
+        ttk.Checkbutton(trig, text="Play sound", variable=self.play_sound_on_crossing).grid(row=0, column=6, padx=8)
+        self._entry(trig, 7, "Threshold V", self.threshold_v, width=6)
+        self._entry(trig, 0, "Sound id", self.sound_id, width=6, row=1)
+        self._entry(trig, 2, "Level", self.sound_level, width=6, row=1)
+        self._entry(trig, 7, "Light TTL ms", self.light_ttl_pulse_ms, width=6, row=1)
+        ttk.Button(trig, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=0, column=5, padx=8, pady=4)
+        self.dmts_random_match_check = ttk.Checkbutton(trig, text="Random DMTS sounds", variable=self.dmts_random_match_trials)
+        self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+        self.lever_reward_test_check = ttk.Checkbutton(trig, text="Reward Test/Probe Trials", variable=self.lever_reward_test_trials)
+        ttk.Label(trig, textvariable=self.behavior_channel_var).grid(row=2, column=0, columnspan=4, padx=6, pady=(2, 4), sticky="w")
+        ttk.Label(trig, textvariable=self.behavior_rule_var).grid(row=2, column=4, columnspan=6, padx=6, pady=(2, 4), sticky="w")
+        ttk.Label(trig, textvariable=self.left_valve_var).grid(row=3, column=0, columnspan=4, padx=6, pady=(0, 4), sticky="w")
+        ttk.Label(trig, textvariable=self.right_valve_var).grid(row=3, column=4, columnspan=6, padx=6, pady=(0, 4), sticky="w")
+        ttk.Label(trig, textvariable=self.light_ttl_var).grid(row=4, column=0, columnspan=6, padx=6, pady=(0, 4), sticky="w")
+
+        body = ttk.Frame(root)
+        body.grid(row=4, column=0, sticky="nsew")
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+
+        plot_frame = ttk.LabelFrame(body, text="Live Acquisition")
+        plot_frame.grid(row=0, column=0, sticky="nsew")
+        self.plot_canvas = tk.Canvas(plot_frame, height=190, bg="white")
+        self.plot_canvas.pack(fill=tk.BOTH, expand=True, padx=6, pady=6)
+
+        seq = ttk.LabelFrame(parameter_column, text="Closed Loop Sequence")
+        seq.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        self.sequence_length = tk.StringVar(value="300")
+        self.sequence_values = tk.StringVar(value="1 10")
+        self.sequence_weights = tk.StringVar(value="0.5 0.5")
+        self.sequence_index_var = tk.StringVar(value="0")
+        self.sequence_next_var = tk.StringVar(value="1")
+        self.last_trial_sound_var = tk.StringVar(value="")
+        self.last_trial_type_var = tk.StringVar(value="")
+        self.random_seed = tk.StringVar(value="")
+        self.max_trials = tk.StringVar(value="0")
+        self.dmts_modality_probabilities = tk.StringVar(value="1 0")
+        self._entry(seq, 0, "Length", self.sequence_length, width=6)
+        self._entry(seq, 2, "Values", self.sequence_values, width=10)
+        self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
+        self._entry(seq, 2, "Seed", self.random_seed, width=6, row=1)
+        self._entry(seq, 0, "Max trials", self.max_trials, width=6, row=2)
+        ttk.Button(seq, text="ReGenerate Sequence", command=self.generate_sequence).grid(row=2, column=2, columnspan=2, sticky="ew", padx=6, pady=6)
+        self._entry(seq, 0, "Index", self.sequence_index_var, width=6, row=3, state="readonly")
+        self._entry(seq, 2, "Next", self.sequence_next_var, width=6, row=3, state="readonly")
+        self._entry(seq, 0, "Last sound", self.last_trial_sound_var, width=7, row=4, state="readonly")
+        self._entry(seq, 2, "Last type", self.last_trial_type_var, width=7, row=4, state="readonly")
+
+        self.dmts_modality_widgets = self._entry(seq, 0, "Sound / Light probabilities", self.dmts_modality_probabilities, width=12, row=5)
+
+        acq = ttk.LabelFrame(parameter_column, text="Acquisition")
+        acq.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        self.device = tk.StringVar(value="Dev1")
+        self.channels = tk.StringVar(value="ai6,ai5,ai1,ai0")
+        self.rate_hz = tk.StringVar(value="1000")
+        self.window_s = tk.StringVar(value="10")
+        self.callback_s = tk.StringVar(value="0.1")
+        self.auto_scale = tk.BooleanVar(value=False)
+        self.ai_terminal_config = tk.StringVar(value="RSE")
+        self.subtract_baseline = tk.BooleanVar(value=False)
+        self.left_y_min = tk.StringVar(value="-1")
+        self.left_y_max = tk.StringVar(value="5")
+        self.right_y_min = tk.StringVar(value="-1")
+        self.right_y_max = tk.StringVar(value="5")
+        self._entry(acq, 0, "Device", self.device, width=8)
+        self._entry(acq, 2, "Channels", self.channels, width=14)
+        self._entry(acq, 0, "Rate Hz", self.rate_hz, width=8, row=1)
+        self._entry(acq, 2, "Window s", self.window_s, width=8, row=1)
+        self._entry(acq, 0, "Callback s", self.callback_s, width=8, row=2)
+        self._entry(acq, 2, "Left ymin", self.left_y_min, width=7, row=2)
+        self._entry(acq, 0, "Left ymax", self.left_y_max, width=7, row=3)
+        self._entry(acq, 2, "Right ymin", self.right_y_min, width=7, row=3)
+        self._entry(acq, 0, "Right ymax", self.right_y_max, width=7, row=4)
+        ttk.Checkbutton(acq, text="Auto scale", variable=self.auto_scale).grid(row=4, column=2, columnspan=2, padx=(6, 4), pady=4, sticky="w")
+        ttk.Checkbutton(acq, text="Subtract baseline", variable=self.subtract_baseline).grid(row=5, column=0, columnspan=4, padx=(6, 4), pady=4, sticky="w")
+
+        health = ttk.LabelFrame(parameter_column, text="Session Health")
+        health.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        self.health_rate_var = tk.StringVar(value="Rate: - Hz")
+        self.health_callback_var = tk.StringVar(value="Callback: - ms")
+        self.health_dropped_plot_var = tk.StringVar(value="Dropped plots: 0")
+        self.health_reward_var = tk.StringVar(value="Rewards: 0")
+        self.health_trial_var = tk.StringVar(value="Trials: 0")
+        self.health_state_var = tk.StringVar(value="State: idle")
+        health_vars = (
+            self.health_rate_var,
+            self.health_callback_var,
+            self.health_dropped_plot_var,
+            self.health_reward_var,
+            self.health_trial_var,
+            self.health_state_var,
+        )
+        for index, var in enumerate(health_vars):
+            ttk.Label(health, textvariable=var).grid(row=index // 2, column=index % 2, padx=8, pady=3, sticky="w")
+            health.columnconfigure(index % 2, weight=1)
+
+        trial = ttk.LabelFrame(parameter_column, text="Trial Structure")
+        trial.grid(row=3, column=0, sticky="nsew")
+        self.task_type = tk.StringVar(value="")
+        self.iti_s = tk.StringVar(value="1")
+        self.iti_rand_min_s = tk.StringVar(value="")
+        self.iti_rand_max_s = tk.StringVar(value="")
+        self.sound_delay_s = tk.StringVar(value="0")
+        self.delay_s = tk.StringVar(value="0")
+        self.sound_duration_s = tk.StringVar(value="0")
+        self.trial_duration_s = tk.StringVar(value="2")
+        self.response_window_s = tk.StringVar(value="2")
+        self.reward_delay_s = tk.StringVar(value="0")
+        self.hit_threshold_s = tk.StringVar(value="50")
+        self.reward_go = tk.StringVar(value="")
+        self.pavlov = tk.StringVar(value="0")
+        self.punish_no_go_fa = tk.StringVar(value="")
+        self.min_lick_count = tk.StringVar(value="")
+        self.lick_threshold = tk.StringVar(value="")
+        self.tac_left_channel = tk.StringVar(value="ai0")
+        self.tac_right_channel = tk.StringVar(value="ai1")
+        self.tac_left_threshold = tk.StringVar(value="1")
+        self.tac_right_threshold = tk.StringVar(value="1")
+        self.tac_min_lick_count = tk.StringVar(value="1")
+        self.lever_hold_time_s = tk.StringVar(value="1")
+        self.lever_go_sound_id = tk.StringVar(value="1")
+        self.lever_test_sound_id = tk.StringVar(value="10")
+        self.lever_go_weight = tk.StringVar(value="1")
+        self.lever_test_weight = tk.StringVar(value="0")
+        self.lever_start_debounce_s = tk.StringVar(value="0.1")
+        self.lever_release_debounce_s = tk.StringVar(value="0.05")
+        self.lever_release_window_s = tk.StringVar(value="0.25")
+        self.sample_sound_id = tk.StringVar(value="1")
+        self.test_sound_id = tk.StringVar(value="1")
+        self.dmts_sound_ids = tk.StringVar(value="1:16")
+        self.dmts_fork_grace_s = tk.StringVar(value="0.1")
+        self.dmts_misses_before_reminder = tk.StringVar(value="5")
+        self.dmts_reminder_trials = tk.StringVar(value="3")
+        self.dmts_blank_lick_timeout = tk.BooleanVar(value=False)
+        self.current_trial_var = tk.StringVar(value="0")
+        for col in (1, 3):
+            trial.columnconfigure(col, weight=1)
+        self._entry(trial, 0, "Task type", self.task_type, width=6, row=0)
+        self._entry(trial, 2, "Current trial", self.current_trial_var, width=6, row=0, state="readonly")
+        self.reward_go_widgets = self._entry(trial, 0, "RewardGo", self.reward_go, width=6, row=1)
+        self.pavlov_widgets = self._entry(trial, 2, "Pavlov", self.pavlov, width=6, row=1)
+        self.iti_widgets = self._entry(trial, 0, "ITI s", self.iti_s, width=6, row=2)
+        self.iti_rand_min_widgets = self._entry(trial, 2, "ITI min", self.iti_rand_min_s, width=6, row=2)
+        self.iti_rand_max_widgets = self._entry(trial, 0, "ITI max", self.iti_rand_max_s, width=6, row=3)
+        self.trial_duration_widgets = self._entry(trial, 2, "Trial s", self.trial_duration_s, width=6, row=3, state="readonly")
+        self.response_window_widgets = self._entry(trial, 0, "Response s", self.response_window_s, width=6, row=4)
+        self.reward_delay_widgets = self._entry(trial, 2, "Reward delay s", self.reward_delay_s, width=6, row=4)
+        self.sound_delay_widgets = self._entry(trial, 0, "Sound delay s", self.sound_delay_s, width=6, row=5)
+        self.delay_widgets = self._entry(trial, 0, "Delay s", self.delay_s, width=6, row=5)
+        self.punish_no_go_fa_widgets = self._entry(trial, 2, "Punish FA", self.punish_no_go_fa, width=6, row=5)
+        self.min_lick_count_widgets = self._entry(trial, 0, "Min licks", self.min_lick_count, width=6, row=6)
+        self.lick_threshold_widgets = self._entry(trial, 2, "Lick thresh", self.lick_threshold, width=6, row=6)
+        self.hit_threshold_widgets = self._entry(trial, 2, "Resp. hold %", self.hit_threshold_s, width=6, row=6)
+        self.lever_hold_widgets = self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=6, row=7)
+        self.lever_go_sound_widgets = self._entry(trial, 0, "GO start ID", self.lever_go_sound_id, width=6, row=4)
+        self.lever_test_sound_widgets = self._entry(trial, 2, "Test start ID", self.lever_test_sound_id, width=6, row=4)
+        self.lever_go_weight_widgets = self._entry(trial, 0, "GO weight", self.lever_go_weight, width=6, row=5)
+        self.lever_test_weight_widgets = self._entry(trial, 2, "Test weight", self.lever_test_weight, width=6, row=5)
+        self.lever_start_debounce_widgets = self._entry(trial, 2, "Start debounce s", self.lever_start_debounce_s, width=6, row=7)
+        self.lever_release_window_widgets = self._entry(trial, 0, "Release window s", self.lever_release_window_s, width=6, row=8)
+        self.lever_release_debounce_widgets = self._entry(trial, 2, "Release debounce s", self.lever_release_debounce_s, width=6, row=8)
+        self.lever_release_check = ttk.Checkbutton(trial, text="Require release + bonus", variable=self.lever_require_release, command=lambda: self.select_lever_release_mode("bonus"))
+        self.lever_window_check = ttk.Checkbutton(trial, text="Require release within window", variable=self.lever_req_rel_window, command=lambda: self.select_lever_release_mode("window"))
+        self.sample_sound_widgets = self._entry(trial, 0, "Sample ID", self.sample_sound_id, width=6, row=10)
+        self.test_sound_widgets = self._entry(trial, 2, "Test ID", self.test_sound_id, width=6, row=10)
+        self.dmts_fork_grace_widgets = self._entry(trial, 0, "Fork grace s", self.dmts_fork_grace_s, width=6, row=11)
+        self.dmts_sound_ids_widgets = self._entry(trial, 2, "Sound IDs", self.dmts_sound_ids, width=16, row=11)
+        self.tac_left_channel_widgets = self._entry(trial, 0, "Left chan", self.tac_left_channel, width=6, row=12)
+        self.tac_right_channel_widgets = self._entry(trial, 2, "Right chan", self.tac_right_channel, width=6, row=12)
+        self.tac_left_threshold_widgets = self._entry(trial, 0, "Left thresh", self.tac_left_threshold, width=6, row=13)
+        self.tac_right_threshold_widgets = self._entry(trial, 2, "Right thresh", self.tac_right_threshold, width=6, row=13)
+        self.tac_min_lick_count_widgets = self._entry(trial, 0, "Choice licks", self.tac_min_lick_count, width=6, row=14)
+        self.dmts_misses_widgets = self._entry(trial, 0, "Match misses", self.dmts_misses_before_reminder, width=6, row=15)
+        self.dmts_reminders_widgets = self._entry(trial, 2, "Reminder trials", self.dmts_reminder_trials, width=6, row=15)
+        self.dmts_blank_timeout_check = ttk.Checkbutton(trial, text="Timeout for licking during blank response window", variable=self.dmts_blank_lick_timeout)
+        for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms, self.right_pulse_ms):
+            var.trace_add("write", lambda *_: self.update_trial_duration())
+        self.task_type.trace_add("write", lambda *_: (self.update_task_parameter_visibility(), self.update_trial_duration(), self.update_behavior_readouts()))
+        self.trigger_type.trace_add("write", lambda *_: (self.update_task_parameter_visibility(), self.update_behavior_readouts()))
+        self.channels.trace_add("write", lambda *_: self.update_behavior_readouts())
+        self.device.trace_add("write", lambda *_: self.update_valve_mapping_readouts())
+        for var in (
+            self.min_lick_count,
+            self.lick_threshold,
+            self.hit_threshold_s,
+            self.lever_hold_time_s,
+            self.lever_require_release,
+            self.lever_req_rel_window,
+            self.tac_left_channel,
+            self.tac_right_channel,
+            self.tac_min_lick_count,
+        ):
+            var.trace_add("write", lambda *_: self.update_behavior_readouts())
+        self.update_trial_duration()
+        self.update_task_parameter_visibility()
+        self.update_behavior_readouts()
+        self.update_valve_mapping_readouts()
+        self.update_health_readouts()
+
+        log_frame = ttk.LabelFrame(root, text="Output")
+        log_frame.grid(row=5, column=0, sticky="nsew", pady=(8, 0))
+        root.rowconfigure(5, weight=1)
+        self.log_text = tk.Text(log_frame, height=7, wrap=tk.WORD)
+        self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    def _build_braincodec_tab(self, parent):
+        parent.columnconfigure(0, weight=1)
+        parent.rowconfigure(0, weight=1)
+        if BraincodecTkPanel is None:
+            message = (
+                "Braincodec module could not be imported.\n\n"
+                f"{BRAINCODEC_IMPORT_ERROR}"
+            )
+            ttk.Label(parent, text=message, justify=tk.LEFT).grid(row=0, column=0, padx=12, pady=12, sticky="nw")
+            return
+
+        self.braincodec_panel = BraincodecTkPanel(
+            parent,
+            padding=10,
+            session_metadata_provider=self.get_braincodec_session_metadata,
+            on_trials_generated=self.use_braincodec_trials,
+            local_log_dir_provider=self.get_braincodec_log_download_dir,
+            local_health_scan_dir_provider=self.get_braincodec_health_scan_download_dir,
+        )
+        self.braincodec_panel.grid(row=0, column=0, sticky="nsew")
+
+    def get_braincodec_session_metadata(self):
+        return {
+            "user": self.user_name.get(),
+            "mouse": self.mouse_id.get(),
+            "project": self.project_name.get(),
+        }
+
+    def get_braincodec_log_download_dir(self):
+        try:
+            return self.ensure_session_folder(write_parameters=False, log_message=False)
+        except Exception as exc:
+            self.log(f"Braincodec session folder error: {exc}")
+        return ""
+
+    def get_braincodec_health_scan_download_dir(self):
+        try:
+            date_folder = datetime.now().strftime("%Y%m%d")
+            user_folder = os.path.join(self.save_root.get(), self.user_name.get())
+            behavior_folder = os.path.join(user_folder, "behavior_data")
+            mouse_folder = os.path.join(behavior_folder, "M" + self.mouse_id.get())
+            health_scan_folder = os.path.join(mouse_folder, "health_scans", date_folder)
+            os.makedirs(health_scan_folder, exist_ok=True)
+            return health_scan_folder
+        except Exception as exc:
+            self.log(f"Braincodec health scan folder error: {exc}")
+        return ""
+
+    def use_braincodec_trials(self, codes, path):
+        stimuli = self.parse_trial_stimuli(codes)
+        self.trial_stimulus_sequence = stimuli
+        self.trial_stimulus_index = 0
+        self.light_sequence = [stimulus["light_code"] for stimulus in stimuli]
+        self.light_sequence_index = 0
+        self.sound_sequence = [stimulus["sound_id"] for stimulus in stimuli]
+        self.sound_sequence_index = 0
+        self.braincodec_sequence_loaded = True
+        self.sequence_length.set(str(len(stimuli)))
+        self.sequence_values.set("1 2 0")
+        total = max(1, len(stimuli))
+        go_count = sum(1 for stimulus in stimuli if stimulus["light_code"] == 1)
+        blank_count = sum(1 for stimulus in stimuli if stimulus["light_code"] == 0)
+        nogo_count = len(stimuli) - go_count - blank_count
+        self.sequence_weights.set(
+            f"{go_count / total:.4g} {nogo_count / total:.4g} {blank_count / total:.4g}"
+        )
+        self.max_trials.set(str(len(stimuli)))
+        if stimuli:
+            self.sound_id.set(str(stimuli[0]["sound_id"]))
+        self.update_sequence_display()
+        self.log(
+            "Behavior stimulus sequence updated from Braincodec trials file: "
+            f"{path} ({len(stimuli)} trials; "
+            f"LightCode 1 GO={go_count}, other nonzero noGo={nogo_count}, "
+            f"LightCode 0 blank={blank_count}; SoundId is independent)."
+        )
+        if getattr(self, "braincodec_panel", None) is not None:
+            self.braincodec_panel.add_log_line(
+                f"Behavior tab stimulus sequence updated ({len(stimuli)} trials; LightCode and SoundId are independent)"
+            )
+
+    def parse_trial_stimuli(self, rows):
+        stimuli = []
+        for row in rows:
+            if isinstance(row, dict):
+                light_code = row.get("light_code", row.get("LightCode", row.get("code", 0)))
+                sound_id = row.get("sound_id", row.get("SoundId", 0))
+            elif isinstance(row, (list, tuple)):
+                light_code = row[0] if len(row) > 0 else 0
+                sound_id = row[1] if len(row) > 1 else 0
+            else:
+                light_code = row
+                sound_id = 0
+            stimuli.append(self.make_trial_stimulus(light_code, sound_id))
+        return stimuli
+
+    def make_trial_stimulus(self, light_code=0, sound_id=0):
+        light_code = int(float(light_code or 0))
+        sound_id = int(float(sound_id or 0))
+        trial_type_id, trial_type = self.classify_light_code(light_code)
+        if light_code and sound_id:
+            stimulus_mode = "light_sound"
+        elif light_code:
+            stimulus_mode = "light_only"
+        elif sound_id:
+            stimulus_mode = "sound_only"
+        else:
+            stimulus_mode = "blank"
+        return {
+            "light_code": light_code,
+            "sound_id": sound_id,
+            "trial_type_id": trial_type_id,
+            "trial_type": trial_type,
+            "stimulus_mode": stimulus_mode,
+        }
+
+    def _file_row(self, parent, row, label, var, command):
+        line = ttk.Frame(parent)
+        line.grid(row=row, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
+        line.columnconfigure(1, weight=1)
+        ttk.Label(line, text=label, width=11).grid(row=0, column=0, sticky="w", padx=(0, 6))
+        ttk.Entry(line, textvariable=var).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        ttk.Button(line, text="Browse", command=command).grid(row=0, column=2)
+
+    def _entry(self, parent, col, label, var, width=10, row=0, state="normal"):
+        label_widget = ttk.Label(parent, text=label)
+        entry_widget = ttk.Entry(parent, textvariable=var, width=width, state=state)
+        label_widget.grid(row=row, column=col, padx=(6, 4), pady=4, sticky="w")
+        entry_widget.grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
+        return label_widget, entry_widget
+
+    def update_task_parameter_visibility(self):
+        if not hasattr(self, "lever_hold_widgets"):
+            return
+        is_lever = self.is_lever_task()
+        is_dmts = self.is_dmts_task()
+        is_tac = self.is_tac_task()
+        is_tac_pretraining = self.is_tac_pretraining_task()
+        is_tac_family = self.is_tac_family_task()
+        is_lick = self.is_lick_trigger()
+        is_classic = not is_lever and not is_dmts and not is_tac_family
+        self.set_widget_pair_visible(self.reward_go_widgets, not is_tac_pretraining, row=1, col=0)
+        self.set_widget_pair_visible(self.pavlov_widgets, is_classic or is_dmts or is_tac, row=1, col=2)
+        self.set_widget_pair_visible(self.iti_widgets, not is_tac_pretraining, row=2, col=0)
+        self.set_widget_pair_visible(self.iti_rand_min_widgets, not is_tac_pretraining, row=2, col=2)
+        self.set_widget_pair_visible(self.iti_rand_max_widgets, not is_tac_pretraining, row=3, col=0)
+        self.set_widget_pair_visible(self.trial_duration_widgets, not is_tac_pretraining, row=3, col=2)
+        self.set_widget_pair_visible(self.response_window_widgets, not is_lever and not is_tac_pretraining, row=4, col=0)
+        self.set_widget_pair_visible(self.reward_delay_widgets, not is_lever and not is_tac_pretraining, row=4, col=2)
+        self.set_widget_pair_visible(self.sound_delay_widgets, is_classic, row=5, col=0)
+        self.set_widget_pair_visible(self.delay_widgets, is_dmts, row=5, col=0)
+        self.set_widget_pair_visible(self.punish_no_go_fa_widgets, is_classic or is_dmts or is_tac, row=5, col=2)
+        self.set_widget_pair_visible(self.min_lick_count_widgets, not is_lever and not is_tac_family, row=6, col=0)
+        self.set_widget_pair_visible(self.lick_threshold_widgets, not is_lever and not is_dmts and not is_tac_family and is_lick, row=6, col=2)
+        self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever and not is_tac_family and not is_lick, row=6, col=2)
+        self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=7, col=0)
+        self.set_widget_pair_visible(self.lever_go_sound_widgets, is_lever, row=4, col=0)
+        self.set_widget_pair_visible(self.lever_test_sound_widgets, is_lever, row=4, col=2)
+        self.set_widget_pair_visible(self.lever_go_weight_widgets, is_lever, row=5, col=0)
+        self.set_widget_pair_visible(self.lever_test_weight_widgets, is_lever, row=5, col=2)
+        self.set_widget_pair_visible(self.lever_start_debounce_widgets, is_lever, row=7, col=2)
+        self.set_widget_pair_visible(self.lever_release_window_widgets, is_lever, row=8, col=0)
+        self.set_widget_pair_visible(self.lever_release_debounce_widgets, is_lever, row=8, col=2)
+        if is_lever:
+            self.lever_release_check.grid(row=9, column=0, columnspan=2, padx=4, pady=4, sticky="w")
+            self.lever_window_check.grid(row=9, column=2, columnspan=2, padx=4, pady=4, sticky="w")
+        else:
+            self.lever_release_check.grid_remove()
+            self.lever_window_check.grid_remove()
+        if is_lever:
+            self.lever_reward_test_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+        else:
+            self.lever_reward_test_check.grid_remove()
+        if is_dmts:
+            self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+        else:
+            self.dmts_random_match_check.grid_remove()
+        self.set_widget_pair_visible(self.dmts_modality_widgets, is_dmts, row=5, col=0)
+        self.set_widget_pair_visible(self.sample_sound_widgets, is_dmts, row=10, col=0)
+        self.set_widget_pair_visible(self.test_sound_widgets, is_dmts, row=10, col=2)
+        self.set_widget_pair_visible(self.dmts_fork_grace_widgets, is_dmts, row=11, col=0)
+        self.set_widget_pair_visible(self.dmts_sound_ids_widgets, is_dmts, row=11, col=2)
+        self.set_widget_pair_visible(self.tac_left_channel_widgets, self.uses_dual_lick_channels(), row=12, col=0)
+        self.set_widget_pair_visible(self.tac_right_channel_widgets, self.uses_dual_lick_channels(), row=12, col=2)
+        self.set_widget_pair_visible(self.tac_left_threshold_widgets, self.uses_dual_lick_channels(), row=13, col=0)
+        self.set_widget_pair_visible(self.tac_right_threshold_widgets, self.uses_dual_lick_channels(), row=13, col=2)
+        self.set_widget_pair_visible(self.tac_min_lick_count_widgets, is_tac, row=14, col=0)
+        self.set_widget_pair_visible(self.dmts_misses_widgets, is_dmts, row=15, col=0)
+        self.set_widget_pair_visible(self.dmts_reminders_widgets, is_dmts, row=15, col=2)
+        if is_dmts:
+            self.dmts_blank_timeout_check.grid(row=16, column=0, columnspan=4, padx=6, pady=4, sticky="w")
+        else:
+            self.dmts_blank_timeout_check.grid_remove()
+
+    def update_valve_mapping_readouts(self):
+        if not hasattr(self, "left_valve_var"):
+            return
+        device = self.device.get().strip() or "Dev1"
+        self.left_valve_var.set(f"Left valve: {device}/port2/line6")
+        self.right_valve_var.set(f"Right valve: {device}/port2/line7")
+        self.light_ttl_var.set(f"Light trigger TTL: {self.get_light_ttl_line()}")
+
+    def update_health_readouts(self, payload=None):
+        if not hasattr(self, "health_rate_var"):
+            return
+        if payload:
+            self.last_observed_rate_hz = payload.get("rate_hz", self.last_observed_rate_hz)
+            self.last_callback_duration_s = payload.get("callback_s", self.last_callback_duration_s)
+        state = self.get_session_health_state()
+        self.health_rate_var.set(f"Rate: {self.last_observed_rate_hz:.0f} Hz" if self.last_observed_rate_hz else "Rate: - Hz")
+        self.health_callback_var.set(f"Callback: {self.last_callback_duration_s * 1000:.1f} ms" if self.last_callback_duration_s else "Callback: - ms")
+        self.health_dropped_plot_var.set(f"Dropped plots: {self.dropped_plot_frame_count}")
+        self.health_reward_var.set(f"Rewards: {self.reward_pulse_count}")
+        self.health_trial_var.set(f"Trials: {self.trial_index}")
+        self.health_state_var.set(f"State: {state}")
+
+    def get_session_health_state(self):
+        if not self.running:
+            return "idle"
+        if self.active_trial_index is not None:
+            return f"trial {self.active_trial_index}"
+        if self.time_buffer and self.time_buffer[-1] < self.next_trial_allowed_time_s:
+            return "ITI"
+        return "waiting"
+
+    def set_widget_pair_visible(self, widgets, visible, row, col):
+        label_widget, entry_widget = widgets
+        if visible:
+            label_widget.grid(row=row, column=col, padx=(6, 4), pady=4, sticky="w")
+            entry_widget.grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
+        else:
+            label_widget.grid_remove()
+            entry_widget.grid_remove()
+
+    def update_behavior_readouts(self):
+        if not hasattr(self, "behavior_channel_var"):
+            return
+        channel = self.get_behavior_signal_channel_name()
+        if self.uses_dual_lick_channels():
+            self.behavior_channel_var.set(
+                f"Behavior signal: left {self.get_tac_left_channel_name()}, right {self.get_tac_right_channel_name()}; SoundCopy ai5"
+            )
+        else:
+            self.behavior_channel_var.set(f"Behavior signal: {channel} (IRFork/Lever ai6, Lick ai0; SoundCopy ai5)")
+        if self.is_tac_pretraining_task():
+            rule = (
+                "tAC pretraining: left->right gives left reward, "
+                "right->left gives right reward; no sound or ITI"
+            )
+        elif self.is_tac_task():
+            values = self._parse_number_list(self.sequence_values.get(), default=[1, 10], cast=int)
+            left_sound = values[0] if values else 1
+            right_sound = values[1] if len(values) > 1 else left_sound
+            rule = (
+                f"tAC: auto-start after ITI; sound {left_sound}=left, "
+                f"{right_sound}=right; first side to {self.get_tac_min_lick_count()} licks chooses"
+            )
+        elif self.is_lever_task():
+            release = "release within target to target + window" if self.lever_req_rel_window.get() else ("release with bonus" if self.lever_require_release.get() else "reward at hold")
+            rule = f"Lever: start on ai6 crossing; hold {self.get_lever_hold_time_s():g} s, {release}"
+        elif self.is_dmts_task():
+            if self.is_lick_trigger():
+                rule = f"DMTS: match first side locks; non-match left < {self.get_min_lick_count()} licks rewards right"
+            else:
+                rule = f"DMTS IRFork: response >= {self.parse_float(self.hit_threshold_s, 50):g}% RW on ai6"
+        elif self.is_lick_trigger():
+            rule = f"Classic lick: trial starts after ITI; GO HIT >= {self.get_min_lick_count()} licks on ai0"
+        else:
+            rule = f"Classic IRFork: trial starts on ai6 crossing; GO HIT >= {self.parse_float(self.hit_threshold_s, 50):g}% RW"
+        self.behavior_rule_var.set(rule)
+
+    def update_trial_duration(self):
+        sound_duration_s = self.parse_float(self.sound_duration_s, 0)
+        if self.is_dmts_task():
+            total = (
+                sound_duration_s
+                + self.parse_float(self.delay_s, 0)
+                + sound_duration_s
+                + self.parse_float(self.response_window_s, 0)
+                + self.parse_float(self.reward_delay_s, 0)
+            )
+        else:
+            sound_end_s = self.parse_float(self.sound_delay_s, 0) + sound_duration_s
+            reward_end_s = (
+                self.parse_float(self.response_window_s, 0)
+                + self.parse_float(self.reward_delay_s, 0)
+                + max(self.get_reward_pulse_s("left"), self.get_reward_pulse_s("right"))
+            )
+            total = max(sound_end_s, reward_end_s)
+        self.trial_duration_s.set(f"{total:g}")
+
+    def log(self, message):
+        stamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.insert("1.0", f"{stamp}  {message}\n")
+
+    def set_status(self, color):
+        self.status_canvas.itemconfig(self.status_dot, fill=color)
+
+    def choose_ni_script(self):
+        path = filedialog.askopenfilename(initialdir=APP_DIR, filetypes=[("MATLAB files", "*.m"), ("All files", "*.*")])
+        if path:
+            self.ni_script.set(path)
+
+    def choose_sound_file(self):
+        path = filedialog.askopenfilename(initialdir=APP_DIR, filetypes=[("MAT files", "*.mat"), ("All files", "*.*")])
+        if path:
+            self.sound_file.set(path)
+            self.sound_loaded = False
+
+    def open_stim_generator_window(self):
+        if hasattr(self, "stim_generator_window") and self.stim_generator_window is not None:
+            try:
+                if self.stim_generator_window.winfo_exists():
+                    self.stim_generator_window.lift()
+                    return
+            except tk.TclError:
+                pass
+        window = tk.Toplevel(self)
+        window.title("stim_generator")
+        window.geometry("760x420")
+        window.minsize(620, 320)
+        self.stim_generator_window = window
+        folder_var = tk.StringVar(value="")
+        output_var = tk.StringVar(value="")
+        status_var = tk.StringVar(value="Select a folder containing .wav files.")
+
+        body = ttk.Frame(window, padding=10)
+        body.pack(fill=tk.BOTH, expand=True)
+        body.columnconfigure(1, weight=1)
+        body.rowconfigure(4, weight=1)
+
+        ttk.Label(body, text="WAV folder").grid(row=0, column=0, sticky="w", padx=(0, 6), pady=4)
+        ttk.Entry(body, textvariable=folder_var).grid(row=0, column=1, sticky="ew", pady=4)
+        ttk.Button(body, text="Select folder", command=lambda: self.choose_stim_wav_folder(folder_var, output_var, log_text, status_var)).grid(row=0, column=2, padx=(6, 0), pady=4)
+
+        ttk.Label(body, text="Output MAT").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=4)
+        ttk.Entry(body, textvariable=output_var).grid(row=1, column=1, sticky="ew", pady=4)
+        ttk.Button(body, text="Save as", command=lambda: self.choose_stim_mat_output(output_var)).grid(row=1, column=2, padx=(6, 0), pady=4)
+
+        ttk.Button(body, text="Build MAT", command=lambda: self.build_stim_mat_from_wavs(folder_var.get(), output_var.get(), log_text, status_var)).grid(row=2, column=1, sticky="ew", pady=(8, 4))
+        ttk.Label(body, textvariable=status_var).grid(row=3, column=0, columnspan=3, sticky="w", pady=(4, 4))
+
+        log_text = tk.Text(body, height=10, wrap=tk.WORD)
+        log_text.grid(row=4, column=0, columnspan=3, sticky="nsew", pady=(6, 0))
+        scrollbar = ttk.Scrollbar(body, orient=tk.VERTICAL, command=log_text.yview)
+        scrollbar.grid(row=4, column=3, sticky="ns", pady=(6, 0))
+        log_text.configure(yscrollcommand=scrollbar.set)
+
+        def on_close():
+            self.stim_generator_window = None
+            window.destroy()
+
+        window.protocol("WM_DELETE_WINDOW", on_close)
+
+    def choose_stim_wav_folder(self, folder_var, output_var, log_text, status_var):
+        folder = filedialog.askdirectory(initialdir=APP_DIR)
+        if not folder:
+            return
+        folder_var.set(folder)
+        if not output_var.get().strip():
+            output_var.set(os.path.join(folder, "AllSounds_from_wav.mat"))
+        wav_paths = self.find_wav_files(folder)
+        self.stim_log(log_text, f"Selected folder: {folder}")
+        self.stim_log(log_text, f"Found {len(wav_paths)} .wav files.")
+        status_var.set(f"Found {len(wav_paths)} .wav files.")
+
+    def choose_stim_mat_output(self, output_var):
+        path = filedialog.asksaveasfilename(
+            initialdir=APP_DIR,
+            initialfile="AllSounds_from_wav.mat",
+            defaultextension=".mat",
+            filetypes=[("MAT files", "*.mat"), ("All files", "*.*")],
+        )
+        if path:
+            output_var.set(path)
+
+    def build_stim_mat_from_wavs(self, folder, output_path, log_text, status_var):
+        if np is None or savemat is None or wavfile is None or resample_poly is None:
+            message = "Cannot build MAT: numpy and scipy.io/scipy.signal are required."
+            self.stim_log(log_text, message)
+            status_var.set(message)
+            return
+        folder = folder.strip()
+        output_path = output_path.strip()
+        if not folder or not os.path.isdir(folder):
+            message = "Select a valid WAV folder first."
+            self.stim_log(log_text, message)
+            status_var.set(message)
+            return
+        if not output_path:
+            output_path = os.path.join(folder, "AllSounds_from_wav.mat")
+        wav_paths = self.find_wav_files(folder)
+        if not wav_paths:
+            message = "No .wav files found."
+            self.stim_log(log_text, message)
+            status_var.set(message)
+            return
+        target_fs = 192000
+        sounds = np.empty((1, len(wav_paths)), dtype=object)
+        manifest_rows = []
+        self.stim_log(log_text, f"Building MAT from {len(wav_paths)} WAV files.")
+        for index, path in enumerate(wav_paths, start=1):
+            try:
+                fs, data = wavfile.read(path)
+                signal = self.prepare_wav_signal_for_mat(data, fs, target_fs)
+                sounds[0, index - 1] = signal
+                peak = float(np.max(np.abs(signal))) if len(signal) else 0.0
+                rel_name = os.path.relpath(path, folder)
+                manifest_rows.append((index, rel_name, fs, len(signal), peak))
+                self.stim_log(log_text, f"{index}: {rel_name} -> {len(signal)} samples at {target_fs} Hz, peak {peak:.3g}")
+            except Exception as exc:
+                message = f"Could not process {path}: {exc}"
+                self.stim_log(log_text, message)
+                status_var.set(message)
+                return
+        try:
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            savemat(output_path, {"Sound": sounds})
+            manifest_path = self.stim_manifest_path(output_path)
+            self.write_stim_manifest(manifest_path, manifest_rows, target_fs)
+        except Exception as exc:
+            message = f"Could not save MAT or manifest file: {exc}"
+            self.stim_log(log_text, message)
+            status_var.set(message)
+            return
+        self.sound_file.set(output_path)
+        self.sound_loaded = False
+        message = f"Saved {len(wav_paths)} sounds to {output_path} and {manifest_path}"
+        self.stim_log(log_text, message)
+        status_var.set(message)
+        self.log(f"stim_generator saved MAT file: {output_path}")
+
+    def stim_manifest_path(self, mat_path):
+        root, _ext = os.path.splitext(mat_path)
+        return root + "_soundID_map.txt"
+
+    def write_stim_manifest(self, path, rows, target_fs):
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write("sound_id\twav_file\toriginal_fs_hz\ttarget_fs_hz\tsamples\tpeak\n")
+            for sound_id, rel_name, original_fs, sample_count, peak in rows:
+                handle.write(
+                    f"{sound_id}\t{rel_name}\t{original_fs}\t"
+                    f"{target_fs}\t{sample_count}\t{peak:.9g}\n"
+                )
+
+    def find_wav_files(self, folder):
+        paths = []
+        for root, _dirs, files in os.walk(folder):
+            for filename in files:
+                if filename.lower().endswith(".wav"):
+                    paths.append(os.path.join(root, filename))
+        return sorted(paths, key=self.stim_wav_sort_key)
+
+    def stim_wav_sort_key(self, path):
+        stem = os.path.splitext(os.path.basename(path))[0]
+        match = re.search(r"\d+", stem)
+        if match:
+            return (0, int(match.group(0)), stem.lower(), path.lower())
+        return (1, stem.lower(), path.lower())
+
+    def prepare_wav_signal_for_mat(self, data, fs, target_fs):
+        arr = np.asarray(data)
+        if arr.ndim > 1:
+            arr = arr.mean(axis=1)
+        if np.issubdtype(arr.dtype, np.integer):
+            max_value = max(abs(np.iinfo(arr.dtype).min), np.iinfo(arr.dtype).max)
+            arr = arr.astype(float) / float(max_value)
+        else:
+            arr = arr.astype(float)
+        if fs != target_fs:
+            divisor = math.gcd(int(fs), int(target_fs))
+            up = int(target_fs // divisor)
+            down = int(fs // divisor)
+            arr = resample_poly(arr, up, down)
+        return np.asarray(arr, dtype=float).reshape(-1)
+
+    def stim_log(self, log_text, message):
+        log_text.insert(tk.END, message + "\n")
+        log_text.see(tk.END)
+
+    def import_parameters_file(self):
+        path = filedialog.askopenfilename(
+            initialdir=os.path.join(APP_DIR, "protocols") if os.path.isdir(os.path.join(APP_DIR, "protocols")) else self.save_root.get(),
+            filetypes=[("DAT files", "*.dat"), ("Text files", "*.txt"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            params = self.read_parameters_file(path)
+            applied = self.apply_imported_parameters(params)
+            self.log(f"Imported {applied} parameters from {os.path.basename(path)}.")
+        except Exception as exc:
+            messagebox.showerror("Import parameters", f"Could not import parameters:\n{exc}")
+
+    def read_parameters_file(self, path):
+        params = {}
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or line.startswith("%"):
+                    continue
+                if "=" in line:
+                    key, value = line.split("=", 1)
+                elif "\t" in line:
+                    key, value = line.split("\t", 1)
+                else:
+                    parts = line.split(None, 1)
+                    if len(parts) != 2:
+                        continue
+                    key, value = parts
+                params[key.strip()] = value.strip()
+        return params
+
+    def select_lever_release_mode(self, mode):
+        if mode == "window" and self.lever_req_rel_window.get():
+            self.lever_require_release.set(False)
+        elif mode == "bonus" and self.lever_require_release.get():
+            self.lever_req_rel_window.set(False)
+
+    def apply_imported_parameters(self, params):
+        # Prefer the canonical key when both old and new names are present.
+        params = dict(params)
+        # Legacy protocols specify one duration for both valves.
+        if "Rewardduration_ms" in params:
+            params.setdefault("RightRewardduration_ms", params["Rewardduration_ms"])
+        if str(params.get("TaskType", "")).lower() == "dmts":
+            params.setdefault("DMTSMissesBeforeReminder", "5")
+            params.setdefault("DMTSReminderTrials", "3")
+            params.setdefault("DMTSBlankLickTimeout", "0")
+            params.setdefault("TACLeftChannel", "ai0")
+            params.setdefault("TACRightChannel", "ai1")
+            params.setdefault("TACLeftThreshold", params.get("Lickthreshold", "1"))
+            params.setdefault("TACRightThreshold", params.get("Lickthreshold", "1"))
+        if "LeverReqRelBonus" not in params and "LeverRequireRelease" in params:
+            params["LeverReqRelBonus"] = params["LeverRequireRelease"]
+        # Old protocols must not inherit window mode from the previous session.
+        params.setdefault("LeverReqRelWindow", "0")
+        params.setdefault("LeverGoWeight", "1")
+        params.setdefault("LeverTestWeight", "0")
+        params.setdefault("LeverRewardTestTrials", "0")
+        params.setdefault("LeverTestSoundId", "10")
+        if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
+            if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
+                self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
+            params["LeverReqRelBonus"] = "0"
+        mapping = {
+            "UserName": self.user_name,
+            "MouseId": self.mouse_id,
+            "ProjectName": self.project_name,
+            "NICard_filename": self.ni_script,
+            "Sound_filename": self.sound_file,
+            "frec": self.rate_hz,
+            "bin": self.callback_s,
+            "Channels": self.channels,
+        "TriggerTypeDropDown": self.trigger_type,
+            "OuputformatDropDown": self.output_format,
+            "OutputformatDropDown": self.output_format,
+            "TaskType": self.task_type,
+            "GoSoundId": self.lever_go_sound_id,
+            "LeverTestSoundId": self.lever_test_sound_id,
+            "LeverGoWeight": self.lever_go_weight,
+            "LeverTestWeight": self.lever_test_weight,
+            "LeverRewardTestTrials": self.lever_reward_test_trials,
+            "MaxTrials": self.max_trials,
+            "SoundLevel": self.sound_level,
+            "RandomSeed": self.random_seed,
+            "ITI_s": self.iti_s,
+            "ITIrandMin_s": self.iti_rand_min_s,
+            "ITIrandMax_s": self.iti_rand_max_s,
+            "Sounddelay_s": self.sound_delay_s,
+            "SoundDuration_s": self.sound_duration_s,
+            "Delay_s": self.delay_s,
+            "TrialDuration_s": self.trial_duration_s,
+            "ResponseWindow_s": self.response_window_s,
+            "RewardDelay_s": self.reward_delay_s,
+            "Rewardduration_ms": self.pulse_ms,
+            "RightRewardduration_ms": self.right_pulse_ms,
+            "LightTTLPulse_ms": self.light_ttl_pulse_ms,
+            "RewardProb": self.reward_go,
+            "HIT": self.hit_threshold_s,
+            "HITThreshold_percent": self.hit_threshold_s,
+            "HITThreshold_s": self.hit_threshold_s,
+            "HIT_s": self.hit_threshold_s,
+            "RewardGo": self.reward_go,
+            "RewardGoProb": self.reward_go,
+            "Pavlov": self.pavlov,
+            "PunishNoGoFA": self.punish_no_go_fa,
+            "Minlickcount": self.min_lick_count,
+            "Lickthreshold": self.lick_threshold,
+            "LeverThreshold": self.threshold_v,
+            "LeverHoldTime_s": self.lever_hold_time_s,
+            "LeverStartDebounce_s": self.lever_start_debounce_s,
+            "LeverReleaseDebounce_s": self.lever_release_debounce_s,
+            "LeverReleaseWindow_s": self.lever_release_window_s,
+            "LeverReqRelBonus": self.lever_require_release,
+            "LeverReqRelWindow": self.lever_req_rel_window,
+            "SampleSoundId": self.sample_sound_id,
+            "TestSoundId": self.test_sound_id,
+            "DMTSRandomMatchTrials": self.dmts_random_match_trials,
+            "DMTSSoundIds": self.dmts_sound_ids,
+            "DMTSModalityProbabilities": self.dmts_modality_probabilities,
+            "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
+            "DMTSReminderTrials": self.dmts_reminder_trials,
+            "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
+            "DMTSForkGrace_s": self.dmts_fork_grace_s,
+            "TACLeftChannel": self.tac_left_channel,
+            "TACRightChannel": self.tac_right_channel,
+            "TACLeftThreshold": self.tac_left_threshold,
+            "TACRightThreshold": self.tac_right_threshold,
+            "TACMinlickcount": self.tac_min_lick_count,
+            "PlaySound": self.play_sound_on_crossing,
+            "TriggerOutput": self.trigger_output_on_crossing,
+        }
+        applied = 0
+        for key, var in mapping.items():
+            if key in params:
+                var.set(params[key])
+                applied += 1
+        if "Sound_filename" in params:
+            self.sound_loaded = False
+        if self.is_lever_task() and not self.lever_hold_time_s.get().strip():
+            self.lever_hold_time_s.set("1")
+        self.update_task_parameter_visibility()
+
+        sequence_changed = False
+        if "GoSoundId" in params or "NoGoSoundId" in params:
+            go_id = params.get("GoSoundId", self.sequence_values.get().split()[0] if self.sequence_values.get().split() else "1")
+            no_go_id = params.get("NoGoSoundId", "10")
+            self.sequence_values.set(f"{go_id} {no_go_id}")
+            self.sound_id.set(go_id)
+            applied += int("GoSoundId" in params) + int("NoGoSoundId" in params)
+            sequence_changed = True
+        if "GoWeight" in params or "NoGoWeight" in params:
+            go_weight = params.get("GoWeight", self.sequence_weights.get().split()[0] if self.sequence_weights.get().split() else "0.5")
+            no_go_weight = params.get("NoGoWeight", "0.5")
+            self.sequence_weights.set(f"{go_weight} {no_go_weight}")
+            applied += int("GoWeight" in params) + int("NoGoWeight" in params)
+            sequence_changed = True
+        if sequence_changed:
+            self.generate_sequence(log=False)
+            self.log("Closed-loop sequence updated from imported Go/NoGo parameters.")
+        if self.is_dmts_task():
+            self.sound_id.set(self.sample_sound_id.get())
+            weights = self._parse_number_list(self.sequence_weights.get(), [0.5, 0.5], float)
+            self.sequence_values.set("1 2 0")
+            self.sequence_weights.set(f"{weights[0]} {weights[1] if len(weights) > 1 else 0.5} {params.get('BlankWeight', '0')}")
+            self.generate_sequence(log=False)
+            self.update_trial_duration()
+        if self.is_tac_task():
+            self.trigger_type.set("Lick")
+            self.generate_sequence(log=False)
+            self.update_trial_duration()
+        if self.is_tac_pretraining_task():
+            self.trigger_type.set("Lick")
+            self.play_sound_on_crossing.set(False)
+            self.update_trial_duration()
+        return applied
+
+    def parse_float(self, var, default):
+        return self.parse_float_value(var.get(), default)
+
+    def parse_float_value(self, value, default):
+        try:
+            return float(value)
+        except Exception:
+            return default
+
+    def parse_int(self, var, default):
+        try:
+            return int(float(var.get()))
+        except Exception:
+            return default
+
+    def parse_channels(self):
+        text = self.channels.get().replace(" ", "")
+        if ":" in text:
+            start, end = text.split(":", 1)
+            prefix = "".join(ch for ch in start if not ch.isdigit())
+            first = int("".join(ch for ch in start if ch.isdigit()))
+            last = int("".join(ch for ch in end if ch.isdigit()))
+            return [f"{prefix}{i}" for i in range(first, last + 1)]
+        return [item for item in text.replace(";", ",").split(",") if item]
+
+    def get_channel_index(self, channel_name):
+        target = channel_name.strip().lower()
+        for index, channel in enumerate(self.parse_channels()):
+            if channel.strip().lower() == target:
+                return index
+        return None
+
+    def get_behavior_signal_channel_name(self):
+        if self.uses_dual_lick_channels():
+            return self.get_tac_left_channel_name()
+        if self.is_lick_trigger() and not self.is_lever_task():
+            return "ai0"
+        return "ai6"
+
+    def get_lever_lick_channel_name(self):
+        return "ai0"
+
+    def get_light_ttl_line(self):
+        device = self.device.get().strip() or "Dev1"
+        return f"{device}/port0/line2"
+
+    def get_behavior_signal_column(self, rows=None):
+        channel_name = self.get_behavior_signal_channel_name()
+        channel_index = self.get_channel_index(channel_name)
+        if channel_index is not None and (rows is None or not rows or channel_index < len(rows[0])):
+            return channel_index
+        message = (
+            f"Behavior channel {channel_name} is not available in Channels={self.channels.get()!r}; "
+            "using first acquired channel instead."
+        )
+        if self.last_behavior_channel_warning != message:
+            self.last_behavior_channel_warning = message
+            self.plot_queue.put(("log", message))
+        return 0
+
+    def setup_tasks(self):
+        self.close_tasks()
+        if nidaqmx is None:
+            return False
+
+        device = self.device.get().strip() or "Dev1"
+        rate = self.parse_float(self.rate_hz, 1000)
+        channels = self.parse_channels()
+
+        self.ai_task = nidaqmx.Task()
+        terminal_config = self.get_ai_terminal_configuration()
+        for channel in channels:
+            physical_channel = f"{device}/{channel}"
+            if terminal_config is None:
+                self.ai_task.ai_channels.add_ai_voltage_chan(physical_channel)
+            else:
+                self.ai_task.ai_channels.add_ai_voltage_chan(physical_channel, terminal_config=terminal_config)
+        self.ai_task.timing.cfg_samp_clk_timing(rate, sample_mode=AcquisitionType.CONTINUOUS)
+
+        self.reward_task = nidaqmx.Task()
+        self.reward_task.do_channels.add_do_chan(f"{device}/port2/line6", line_grouping=LineGrouping.CHAN_PER_LINE)
+        self.reward_task.write(False)
+        self.right_reward_task = nidaqmx.Task()
+        self.right_reward_task.do_channels.add_do_chan(f"{device}/port2/line7", line_grouping=LineGrouping.CHAN_PER_LINE)
+        self.right_reward_task.write(False)
+
+        self.log("NI tasks initialized.")
+        return True
+
+    def get_ai_terminal_configuration(self):
+        if TerminalConfiguration is None:
+            return None
+        config = self.ai_terminal_config.get()
+        if config == "RSE":
+            return TerminalConfiguration.RSE
+        if config == "NRSE":
+            return TerminalConfiguration.NRSE
+        if config == "DIFF":
+            return TerminalConfiguration.DIFFERENTIAL
+        return None
+
+    def close_tasks(self):
+        for attr in ("ai_task", "reward_task", "right_reward_task"):
+            task = getattr(self, attr, None)
+            if task is not None:
+                try:
+                    task.close()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
+    def start_live(self):
+        if self.running:
+            return
+        try:
+            self._start_live_session()
+        except Exception as exc:
+            self.running = False
+            self.close_tasks()
+            self.close_behavior_signal_file()
+            self.set_status('red')
+            if getattr(self, 'session_history', None) is not None:
+                self.update_session_history(stopped=True)
+            self.startup_message(f'Session could not start: {type(exc).__name__}: {exc}')
+
+    def startup_message(self, message):
+        print(message, flush=True)
+        self.log(message)
+        self.update_idletasks()
+
+    def _start_live_session(self):
+        if self.is_dmts_task():
+            for label, var in (("Match misses", self.dmts_misses_before_reminder), ("Reminder trials", self.dmts_reminder_trials)):
+                value = var.get().strip()
+                if not value.isdigit() or int(value) < 1:
+                    self.log(f"{label} must be a positive integer.")
+                    return
+        self.startup_message('Starting session: checking DMTS/PYNQ connection.')
+        if not self.configure_dmts_light_session():
+            return
+        self.startup_message('Starting session: initializing trial sequence.')
+        if self.is_dmts_task() and self.is_lick_trigger():
+            left = self.get_tac_left_channel_name()
+            right = self.get_tac_right_channel_name()
+            left_index, right_index = self.get_channel_index(left), self.get_channel_index(right)
+            if left_index is None or right_index is None or left_index == right_index:
+                self.log("DMTS requires two different lick channels included in Channels.")
+                return
+        self.clear_buffers()
+        self.running = True
+        self.dmts_match_miss_streak = 0
+        self.dmts_reminder_remaining = 0
+        self.dmts_reminder_engaged = False
+        self.dmts_lapse_stop_requested = False
+        self.active_dmts_reminder = False
+        self.irfork_was_high = False
+        self.last_trigger_time = -1e12
+        self.last_trial_end_time_s = -1e12
+        self.next_trial_allowed_time_s = -1e12
+        self.trial_index = 0
+        self.acq_start_perf = None
+        self.acq_sample_index = 0
+        self.trial_log_path = ""
+        self.parameters_log_path = ""
+        self.trial_rows = []
+        self.parameter_rows = []
+        self.dict_across_trials = {}
+        self.trial_crossing_duration_stored = set()
+        self.current_parameter_signature = None
+        self.parameter_block_index = 0
+        self.reward_pulse_count = 0
+        self.dropped_plot_frame_count = 0
+        self.last_callback_duration_s = 0.0
+        self.last_observed_rate_hz = 0.0
+        self.ensure_sequence_controls()
+        if self.braincodec_sequence_loaded and self.trial_stimulus_sequence:
+            self.trial_stimulus_index = 0
+            self.light_sequence_index = 0
+            self.sound_sequence_index = 0
+            self.current_trial_stimulus = None
+            self.update_sequence_display()
+            self.log("Using Braincodec-generated light/sound stimulus sequence for this session.")
+        else:
+            self.generate_sequence(log=False)
+        self.active_trial_index = None
+        self.active_trial_start_s = None
+        self.active_trial_end_s = None
+        self.active_response_end_s = None
+        self.active_high_start_s = None
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_left_lick_count = 0
+        self.active_right_lick_count = 0
+        self.active_choice_side = ""
+        self.left_lick_was_high = False
+        self.right_lick_was_high = False
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_pending_reward_due_s = None
+        self.active_pending_reward_row = None
+        self.active_pending_reward_measure = ""
+        self.active_pending_reward_probability = 0.0
+        self.active_pending_reward_draw = 0.0
+        self.active_pending_reward_side = "left"
+        self.active_trial_base_iti_s = 0.0
+        self.active_trial_extra_timeout_s = 0.0
+        self.active_lever_sound_id = 1
+        self.active_lever_next_sound_time_s = None
+        self.active_lever_low_start_s = None
+        self.active_lever_release_armed = False
+        self.lever_reset_seen_for_new_trial = False
+        self.trigger_reset_seen_for_new_trial = False
+        self.lever_pending_start_s = None
+        self.lever_sound_gap_s = 0.5
+        self.active_dmts_sample_sound_id = 1
+        self.active_dmts_test_sound_id = 1
+        self.active_dmts_test_sound_time_s = None
+        self.active_dmts_response_start_s = None
+        self.active_dmts_response_end_s = None
+        self.active_dmts_reward_start_s = None
+        self.active_dmts_response_evaluated = False
+        self.active_dmts_response_met = False
+        self.active_dmts_low_start_s = None
+        self.active_dmts_test_sound_played = False
+        self.active_dmts_response_started = False
+        self.active_dmts_scored = False
+        self.tac_pretraining_first_side = ""
+        self.tac_pretraining_first_time_s = None
+        self.sim_next_pulse_start_s = 0.0
+        self.sim_pulse_end_s = -1.0
+        self.current_trial_var.set("0")
+        self.last_trial_sound_var.set("")
+        self.last_trial_type_var.set("")
+        self.open_results_window()
+        self.set_status("green")
+        self.update_health_readouts()
+        self.startup_message('Starting session: preparing data folder and parameter files.')
+        self.prepare_session_folder()
+        self.startup_message('Starting session: opening signal files.')
+        self.open_behavior_signal_file()
+        if self.simulation_mode.get():
+            self.close_tasks()
+            self.log("Simulation mode enabled: generated IR crossings will be used.")
+        else:
+            self.startup_message('Starting session: initializing NI tasks.')
+            self.setup_tasks()
+        if self.session_requires_sound_file():
+            self.startup_message('Starting session: loading sound MAT file.')
+            self.load_sound_file()
+        self.startup_message('Starting session: starting acquisition.')
+        self.begin_session_history()
+        self.acq_thread = threading.Thread(target=self.acquisition_loop, daemon=True)
+        self.acq_thread.start()
+        self.log("Live acquisition started.")
+
+    def stop_live(self):
+        self.cancel_reward_train(log_message=False)
+        self.running = False
+        client = getattr(self, 'dmts_light_client', None)
+        if client is not None:
+            try:
+                client.reset()
+            except Exception as exc:
+                self.log(f'DMTS LED reset failed: {exc}')
+        self._dmts_light_pending = None
+        if self.active_trial_index is not None and self.time_buffer:
+            trial_end_s = min(self.time_buffer[-1], self.active_trial_end_s or self.time_buffer[-1])
+            row = self.get_active_trial_row()
+            if row is not None and (row.get('dmts_light_error') or
+                    (row.get('dmts_light_trial_id') and not self.active_dmts_scored)):
+                if not row.get('dmts_light_error'):
+                    row['ResultType'] = 'ABORTED'
+                    for key in ('HIT', 'MISS', 'CR', 'FA'):
+                        row[key] = 0
+                self.set_trial_end_time(row, trial_end_s)
+                self.end_trial_state_interval(trial_end_s)
+                self.clear_active_trial()
+                self.write_trial_log()
+            elif self.is_lever_task():
+                self.finish_active_lever_trial(trial_end_s, success=False)
+            else:
+                self.finish_active_trial(trial_end_s)
+        self.close_behavior_signal_file()
+        self.close_tasks()
+        self.update_session_history(stopped=True)
+        if self.output_format.get() == "NWB":
+            self.save_nwb(silent=True)
+        self.set_status("gray")
+        self.update_health_readouts()
+        self.log("Live acquisition stopped.")
+
+    def begin_session_history(self):
+        self.session_history = SessionHistory(os.path.join(APP_DIR, 'session_history.json'))
+        try:
+            self.session_history.start(self.user_name.get(), self.mouse_id.get(),
+                                       self.project_name.get(), self.simulation_mode.get())
+        except Exception as exc:
+            self.log(f'Session history could not be started: {exc}')
+            self.session_history = None
+            return
+
+    def update_session_history(self, stopped=False):
+        history = getattr(self, 'session_history', None)
+        if history is None or history.session_id is None:
+            return
+        try:
+            history.update(self.trial_index, self.reward_pulse_count, stopped=stopped)
+        except Exception as exc:
+            self.log(f'Session history could not be saved: {exc}')
+    def clear_buffers(self):
+        self.time_buffer.clear()
+        self.data_buffer.clear()
+        self.lever_lick_buffer.clear()
+        self.tac_left_buffer.clear()
+        self.tac_right_buffer.clear()
+        self.soundcopy_buffer.clear()
+        self.full_soundcopy_buffer.clear()
+        self.trigger_pulses.clear()
+        self.sound_outputs.clear()
+        self.trial_state_intervals.clear()
+        self.dmts_plot_windows.clear()
+        self.full_trigger_pulses.clear()
+        self.full_sound_outputs.clear()
+        self.current_behavior_baseline = 0.0
+
+    def clear_plot(self):
+        self.clear_buffers()
+        self.plot_static_signature = None
+        self.plot_fast_frame_count = 0
+        self.plot_canvas.delete("all")
+        self.log_text.delete("1.0", tk.END)
+        self.dropped_plot_frame_count = 0
+        self.update_health_readouts()
+
+    def sequence_has_sound(self):
+        if self.trial_stimulus_sequence:
+            return any(int(stimulus.get("sound_id", 0) or 0) > 0 for stimulus in self.trial_stimulus_sequence)
+        return True
+
+    def session_requires_sound_file(self):
+        if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
+            var = getattr(self, 'dmts_modality_probabilities', None)
+            if var is None or self.get_dmts_modality_probabilities()[0] == 0:
+                return False
+        return (self.play_sound_on_crossing.get() and not self.is_tac_pretraining_task()
+                and self.sequence_has_sound())
+
+    def acquisition_loop(self):
+        rate = self.parse_float(self.rate_hz, 1000)
+        callback_s = self.parse_float(self.callback_s, 0.1)
+        count = max(1, int(rate * callback_s))
+        start_time = time.perf_counter()
+        self.acq_start_perf = start_time
+
+        use_simulation = self.simulation_mode.get()
+        if self.ai_task is not None and not use_simulation:
+            self.ai_task.start()
+
+        while self.running:
+            try:
+                callback_start = time.perf_counter()
+                if self.ai_task is not None and not use_simulation:
+                    raw = self.ai_task.read(number_of_samples_per_channel=count, timeout=2.0)
+                    data = self.normalize_read(raw, count)
+                    chunk_start_sample = self.acq_sample_index
+                    times = [(chunk_start_sample + i) / rate for i in range(len(data))]
+                    self.acq_sample_index += len(data)
+                else:
+                    data, times = self.simulate_data(count, rate)
+                    time.sleep(callback_s)
+                self.handle_data(times, data)
+                callback_elapsed = time.perf_counter() - callback_start
+                observed_rate = (len(data) / callback_elapsed) if callback_elapsed > 0 else 0.0
+                self.plot_queue.put(("health", {"rate_hz": observed_rate, "callback_s": callback_elapsed}))
+            except Exception as exc:
+                self.plot_queue.put(("log", f"Acquisition error: {exc}"))
+                self.plot_queue.put(("status", "red"))
+                self.running = False
+                break
+
+    def normalize_read(self, raw, count):
+        if not raw:
+            return []
+        if isinstance(raw[0], list):
+            channels = raw
+            return [list(row) for row in zip(*channels)]
+        return [[x] for x in raw[:count]]
+
+    def simulate_data(self, count, rate):
+        values = []
+        times = []
+        for i in range(count):
+            sample_index = self.acq_sample_index + i
+            t = sample_index / rate
+            times.append(t)
+            # Simulated beam crossings every 3 seconds, with randomized crossing duration.
+            while t >= self.sim_next_pulse_start_s:
+                self.sim_pulse_end_s = self.sim_next_pulse_start_s + random.uniform(0.1, 2.0)
+                self.sim_next_pulse_start_s += 3.0
+            ir = 1.4 if t < self.sim_pulse_end_s else 0.1
+            lick = ir
+            values.append([ir, 0.0, 0.0, lick])
+        self.acq_sample_index += count
+        return values, times
+
+    def handle_data(self, times, rows):
+        if not rows:
+            return
+        behavior_col = self.get_behavior_signal_column(rows)
+        raw_behavior_values = [row[behavior_col] for row in rows]
+        raw_lever_lick_values = [self.get_row_channel_value(row, self.get_lever_lick_channel_name(), 0.0) for row in rows]
+        raw_tac_left_values = [self.get_row_channel_value(row, self.get_tac_left_channel_name(), 0.0) for row in rows]
+        raw_tac_right_values = [self.get_row_channel_value(row, self.get_tac_right_channel_name(), 0.0) for row in rows]
+        soundcopy_col = self.get_soundcopy_column(rows)
+        raw_soundcopy_values = [row[soundcopy_col] for row in rows] if soundcopy_col is not None else [0.0] * len(rows)
+        self.time_buffer.extend(times)
+        self.data_buffer.extend(raw_behavior_values)
+        self.lever_lick_buffer.extend(raw_lever_lick_values)
+        self.tac_left_buffer.extend(raw_tac_left_values)
+        self.tac_right_buffer.extend(raw_tac_right_values)
+        self.soundcopy_buffer.extend(raw_soundcopy_values)
+        self.full_soundcopy_buffer.extend(raw_soundcopy_values)
+
+        window = self.parse_float(self.window_s, 10)
+        min_time = self.time_buffer[-1] - window
+        while self.time_buffer and self.time_buffer[0] < min_time:
+            self.time_buffer.pop(0)
+            self.data_buffer.pop(0)
+            if self.lever_lick_buffer:
+                self.lever_lick_buffer.pop(0)
+            if self.tac_left_buffer:
+                self.tac_left_buffer.pop(0)
+            if self.tac_right_buffer:
+                self.tac_right_buffer.pop(0)
+            if self.soundcopy_buffer:
+                self.soundcopy_buffer.pop(0)
+        self.current_behavior_baseline = statistics.median(self.data_buffer) if self.subtract_baseline.get() and self.data_buffer else 0.0
+        corrected_behavior_values = [value - self.current_behavior_baseline for value in raw_behavior_values]
+        self.check_trigger(times, corrected_behavior_values, rows)
+        if self.behavior_signal_file is not None:
+            self.behavior_signal_file.write(struct.pack(f"{len(rows)}d", *raw_behavior_values))
+        if self.left_lick_file is not None:
+            self.left_lick_file.write(struct.pack(f"{len(rows)}d", *raw_tac_left_values))
+        if self.right_lick_file is not None:
+            self.right_lick_file.write(struct.pack(f"{len(rows)}d", *raw_tac_right_values))
+        if self.soundcopy_file is not None and soundcopy_col is not None:
+            self.soundcopy_file.write(struct.pack(f"{len(rows)}d", *raw_soundcopy_values))
+        if self.trial_state_file is not None:
+            trial_state_values = self.get_trial_state_values(times)
+            self.trial_state_file.write(struct.pack(f"{len(trial_state_values)}d", *trial_state_values))
+        if self.uses_dual_lick_channels():
+            plot_payload = (
+                list(self.time_buffer),
+                list(self.tac_left_buffer),
+                [
+                    (f"Left {self.get_tac_left_channel_name()}", list(self.tac_left_buffer), "#1f77b4"),
+                    (f"Right {self.get_tac_right_channel_name()}", list(self.tac_right_buffer), "#d62728"),
+                ],
+            )
+        elif self.is_lever_task():
+            plot_payload = (
+                list(self.time_buffer),
+                list(self.data_buffer),
+                [
+                    (f"Lever {self.get_behavior_signal_channel_name()}", list(self.data_buffer), "#1f77b4"),
+                    (f"Licks {self.get_lever_lick_channel_name()}", list(self.lever_lick_buffer), "#d62728"),
+                ],
+            )
+        else:
+            plot_payload = (list(self.time_buffer), list(self.data_buffer))
+        self.plot_queue.put(("plot", plot_payload))
+
+    def get_soundcopy_column(self, rows):
+        if not rows:
+            return None
+        soundcopy_col = self.get_channel_index("ai5")
+        if soundcopy_col is not None and soundcopy_col < len(rows[0]):
+            return soundcopy_col
+        if len(rows[0]) < 2:
+            return None
+        return 1
+
+    def get_trial_state_values(self, times):
+        if not times:
+            return []
+        if not self.trial_state_intervals:
+            return [0.0] * len(times)
+        values = []
+        intervals = list(self.trial_state_intervals)
+        for sample_time_s in times:
+            in_trial = any(
+                start_s <= sample_time_s and (end_s is None or sample_time_s < end_s)
+                for start_s, end_s in intervals
+            )
+            values.append(1.0 if in_trial else 0.0)
+        return values
+
+    def get_row_channel_value(self, row, channel_name, fallback=0.0):
+        channel_index = self.get_channel_index(channel_name)
+        if channel_index is not None and channel_index < len(row):
+            return row[channel_index]
+        return fallback
+
+    def check_trigger(self, times, ir_values, rows=None):
+        threshold = self.get_current_trigger_threshold()
+
+        for sample_index, (sample_time_s, value) in enumerate(zip(times, ir_values)):
+            if getattr(self, "dmts_lapse_stop_requested", False):
+                break
+            if self.is_lever_task():
+                self.check_lever_trigger_sample(sample_time_s, value, threshold)
+                continue
+
+            self.process_pending_go_reward(sample_time_s)
+            dmts_lick_crossings = ()
+            if self.is_dmts_task() and self.is_lick_trigger():
+                row = rows[sample_index] if rows is not None and sample_index < len(rows) else []
+                dmts_lick_crossings = self.get_dmts_lick_crossings(row)
+
+            if self.is_tac_pretraining_task():
+                row = rows[sample_index] if rows is not None and sample_index < len(rows) else []
+                self.check_tac_pretraining_sample(sample_time_s, row)
+                continue
+
+            if self.is_tac_task():
+                row = rows[sample_index] if rows is not None and sample_index < len(rows) else []
+                self.check_tac_sample(sample_time_s, row)
+                continue
+
+            if self.active_trial_index is not None and self.active_trial_end_s is not None and sample_time_s >= self.active_trial_end_s:
+                if self.is_dmts_task():
+                    self.finish_active_dmts_timeline(self.active_trial_end_s)
+                else:
+                    self.finish_active_trial(self.active_trial_end_s)
+                if getattr(self, "dmts_lapse_stop_requested", False):
+                    break
+
+            is_high = value >= threshold
+            crossed_up = is_high and not self.irfork_was_high
+            crossed_down = not is_high and self.irfork_was_high
+            self.irfork_was_high = is_high
+
+            if self.active_trial_index is not None:
+                if self.is_dmts_task():
+                    self.update_active_dmts_trial(sample_time_s, is_high, crossed_up, crossed_down, dmts_lick_crossings)
+                elif self.is_lick_trigger():
+                    if crossed_up and self.is_within_active_response_window(sample_time_s):
+                        self.add_active_lick()
+                elif self.is_within_active_response_window(sample_time_s):
+                    if crossed_up:
+                        self.active_high_start_s = sample_time_s
+                    elif crossed_down:
+                        self.add_active_high_interval(sample_time_s)
+                if not self.is_dmts_task():
+                    self.evaluate_active_trial(sample_time_s)
+                continue
+
+            if self.is_dmts_task():
+                max_trials = max(0, self.parse_int(self.max_trials, 0))
+                if not max_trials or self.trial_index < max_trials or getattr(self, 'dmts_reminder_remaining', 0):
+                    if not self.prepare_next_dmts_light_trial():
+                        break
+
+            if sample_time_s < self.next_trial_allowed_time_s:
+                self.trigger_reset_seen_for_new_trial = False
+                continue
+
+            if self.is_lick_trigger() and not self.is_dmts_task():
+                if self.start_classic_trial(sample_time_s, threshold, "ITI elapsed"):
+                    if crossed_up:
+                        self.add_active_lick()
+                    self.evaluate_active_trial(sample_time_s)
+                continue
+
+            auto_start_dmts = self.is_dmts_task() and self.is_lick_trigger()
+            if not auto_start_dmts:
+                if not is_high:
+                    self.trigger_reset_seen_for_new_trial = True
+
+                if not self.trigger_reset_seen_for_new_trial:
+                    continue
+
+                if not crossed_up:
+                    continue
+
+            max_trials = max(0, self.parse_int(self.max_trials, 0))
+            if max_trials and self.trial_index >= max_trials and not (auto_start_dmts and getattr(self, "dmts_reminder_remaining", 0)):
+                if not auto_start_dmts:
+                    self.plot_queue.put(("log", f"Accepted crossing ignored: max trials {max_trials} reached."))
+                continue
+
+            light_pair = getattr(self, '_dmts_light_pending', None) if self.is_dmts_task() else None
+            pending = getattr(self, '_dmts_trial_pending', None)
+            dmts_trial_type_id = pending['trial_type'] if pending else (light_pair['trial_type'] if light_pair else (self.consume_next_dmts_trial_type() if self.is_dmts_task() else None))
+            dmts_sample_id, dmts_test_id = ((light_pair['sample_id'], light_pair['test_id']) if light_pair
+                else (self.choose_dmts_trial_sound_ids(dmts_trial_type_id) if self.is_dmts_task() else (None, None)))
+            iti = self.draw_trial_iti_s()
+            if self.is_dmts_task():
+                sound_id = dmts_sample_id
+                trial_type = {0: "DMTS-blank", 1: "DMTS-match", 2: "DMTS-nonmatch"}[dmts_trial_type_id]
+                self.create_trial(
+                    sound_id,
+                    sample_time_s,
+                    threshold,
+                    iti,
+                    trial_test_sound_id=dmts_test_id,
+                    trial_type_id=dmts_trial_type_id,
+                    trial_type=trial_type,
+                )
+            else:
+                self.start_classic_trial(sample_time_s, threshold, f"{self.trigger_type.get().strip() or 'Trigger'} crossed {threshold:g} V")
+                continue
+            if self.is_dmts_task():
+                if light_pair:
+                    self._dmts_light_active = light_pair
+                    self._dmts_light_pending = None
+                self._dmts_trial_pending = None
+                self.start_active_dmts_trial(sample_time_s, iti, dmts_sample_id, dmts_test_id)
+            self.last_trigger_time = sample_time_s
+            trial_type_id, trial_type = self.classify_trial_sound(sound_id, dmts_test_id)
+            trigger_name = self.trigger_type.get().strip() or "Trigger"
+            start_reason = "ITI elapsed" if auto_start_dmts else f"{trigger_name} crossed {threshold:g} V"
+            self.plot_queue.put(("log", f"{start_reason}. Trial {self.trial_index} is type {trial_type_id} {trial_type}, sound id {sound_id}."))
+
+    def build_session_folder_path(self):
+        date_folder = datetime.now().strftime("%Y%m%d")
+        time_folder = datetime.now().strftime("%H%M%S") + "_Data"
+        user_folder = os.path.join(self.save_root.get(), self.user_name.get())
+        behavior_folder = os.path.join(user_folder, "behavior_data")
+        mouse_folder = os.path.join(behavior_folder, "M" + self.mouse_id.get())
+        exp_folder = os.path.join(mouse_folder, date_folder, time_folder)
+        return behavior_folder, exp_folder
+
+    def ensure_session_folder(self, *, write_parameters=False, log_message=False):
+        if self.exp_folder and os.path.isdir(self.exp_folder):
+            if write_parameters:
+                self.write_parameters_dat()
+            return self.exp_folder
+        behavior_folder, exp_folder = self.build_session_folder_path()
+        self.exp_folder = exp_folder
+        os.makedirs(behavior_folder, exist_ok=True)
+        os.makedirs(self.exp_folder, exist_ok=True)
+        self.trial_log_path = os.path.join(self.exp_folder, "TrialLog.csv")
+        self.parameters_log_path = os.path.join(self.exp_folder, "Parameters.csv")
+        if log_message:
+            self.log(f"Session folder: {self.exp_folder}")
+        if write_parameters:
+            self.write_parameters_dat()
+        return self.exp_folder
+
+    def prepare_session_folder(self):
+        self.ensure_session_folder(write_parameters=True, log_message=True)
+
+    def open_behavior_signal_file(self):
+        self.close_behavior_signal_file()
+        if not self.write_behavior_signal_bin.get():
+            return
+        if not self.exp_folder:
+            self.prepare_session_folder()
+        self.behavior_signal_file = open(os.path.join(self.exp_folder, "BehaviorSignal.bin"), "wb")
+        if self.uses_dual_lick_channels():
+            self.left_lick_file = open(os.path.join(self.exp_folder, "LeftLick.bin"), "wb")
+            self.right_lick_file = open(os.path.join(self.exp_folder, "RightLick.bin"), "wb")
+        self.soundcopy_file = open(os.path.join(self.exp_folder, "SoundCopy.bin"), "wb")
+        self.trial_state_file = open(os.path.join(self.exp_folder, "TrialState.bin"), "wb")
+        if self.uses_dual_lick_channels():
+            self.log(f"Writing BehaviorSignal.bin, LeftLick.bin, RightLick.bin, SoundCopy.bin, and TrialState.bin: {self.exp_folder}")
+        else:
+            self.log(f"Writing BehaviorSignal.bin, SoundCopy.bin, and TrialState.bin: {self.exp_folder}")
+
+    def close_behavior_signal_file(self):
+        if self.behavior_signal_file is not None:
+            self.behavior_signal_file.close()
+            self.behavior_signal_file = None
+            self.log("Closed BehaviorSignal.bin.")
+        if self.left_lick_file is not None:
+            self.left_lick_file.close()
+            self.left_lick_file = None
+            self.log("Closed LeftLick.bin.")
+        if self.right_lick_file is not None:
+            self.right_lick_file.close()
+            self.right_lick_file = None
+            self.log("Closed RightLick.bin.")
+        if self.soundcopy_file is not None:
+            self.soundcopy_file.close()
+            self.soundcopy_file = None
+            self.log("Closed SoundCopy.bin.")
+        if self.trial_state_file is not None:
+            self.trial_state_file.close()
+            self.trial_state_file = None
+            self.log("Closed TrialState.bin.")
+
+    def get_current_parameters(self):
+        sequence_values = self.sequence_values.get().split()
+        sequence_weights = self.sequence_weights.get().split()
+        return {
+            "UserName": self.user_name.get(),
+            "MouseId": self.mouse_id.get(),
+            "ProjectName": self.project_name.get(),
+            "NICard_filename": self.ni_script.get().replace(os.sep, "/"),
+            "Sound_filename": self.sound_file.get().replace(os.sep, "/"),
+            "IRForkColumn": self.get_behavior_signal_column() + 1,
+            "BehaviorSignalColumn": self.get_behavior_signal_column() + 1,
+            "SoundCopyColumn": (self.get_channel_index("ai5") + 1) if self.get_channel_index("ai5") is not None else 2,
+            "BehaviorSignalChannel": self.get_behavior_signal_channel_name(),
+            "Channels": self.channels.get(),
+            "SimulationMode": int(self.simulation_mode.get()),
+            "frec": self.rate_hz.get(),
+            "bin": self.callback_s.get(),
+            "TriggerTypeDropDown": self.trigger_type.get(),
+            "OuputformatDropDown": self.output_format.get(),
+            "TaskType": self.task_type.get(),
+            "GoWeight": sequence_weights[0] if len(sequence_weights) > 0 else "",
+            "NoGoWeight": sequence_weights[1] if len(sequence_weights) > 1 else "",
+            "BlankWeight": sequence_weights[2] if self.is_dmts_task() and len(sequence_weights) > 2 else "0",
+            "GoSoundId": self.lever_go_sound_id.get() if self.is_lever_task() else (sequence_values[0] if len(sequence_values) > 0 else ""),
+            "LeverTestSoundId": self.lever_test_sound_id.get(),
+            "LeverGoWeight": self.lever_go_weight.get(),
+            "LeverTestWeight": self.lever_test_weight.get(),
+            "LeverRewardTestTrials": int(self.lever_reward_test_trials.get()),
+            "NoGoSoundId": sequence_values[1] if len(sequence_values) > 1 else "",
+            "SoundLevel": self.sound_level.get(),
+            "RandomSeed": self.random_seed.get(),
+            "ITI_s": self.iti_s.get(),
+            "ITIrandMin_s": self.iti_rand_min_s.get(),
+            "ITIrandMax_s": self.iti_rand_max_s.get(),
+            "Sounddelay_s": self.sound_delay_s.get(),
+            "Delay_s": self.delay_s.get(),
+            "SoundDuration_s": self.sound_duration_s.get(),
+            "TrialDuration_s": self.trial_duration_s.get(),
+            "ResponseWindow_s": self.response_window_s.get(),
+            "RewardDelay_s": self.reward_delay_s.get(),
+            "Rewardduration_ms": self.pulse_ms.get(),
+            "RightRewardduration_ms": self.right_pulse_ms.get(),
+            "LightTTLPulse_ms": self.light_ttl_pulse_ms.get(),
+            "HIT": self.hit_threshold_s.get(),
+            "HITThreshold_percent": self.hit_threshold_s.get(),
+            "RewardGo": self.reward_go.get(),
+            "RewardProb": self.reward_go.get(),
+            "LeftRewardLine": "port2/line6",
+            "RightRewardLine": "port2/line7" if self.uses_dual_lick_channels() else "",
+            "LightTTLLine": "port0/line2",
+            "Pavlov": self.pavlov.get(),
+            "PunishNoGoFA": self.punish_no_go_fa.get(),
+            "Minlickcount": self.min_lick_count.get(),
+            "Lickthreshold": self.lick_threshold.get(),
+            "TACLeftChannel": self.get_tac_left_channel_name(),
+            "TACRightChannel": self.get_tac_right_channel_name(),
+            "TACLeftThreshold": self.tac_left_threshold.get(),
+            "TACRightThreshold": self.tac_right_threshold.get(),
+            "TACMinlickcount": self.tac_min_lick_count.get(),
+            "TACLeftBinary": "LeftLick.bin" if self.uses_dual_lick_channels() else "",
+            "TACRightBinary": "RightLick.bin" if self.uses_dual_lick_channels() else "",
+            "LeverThreshold": self.threshold_v.get(),
+            "LeverHoldTime_s": self.lever_hold_time_s.get(),
+            "LeverStartDebounce_s": self.lever_start_debounce_s.get(),
+            "LeverReleaseDebounce_s": self.lever_release_debounce_s.get(),
+            "LeverReleaseWindow_s": self.lever_release_window_s.get(),
+            "LeverReqRelBonus": int(self.lever_require_release.get()),
+            "LeverReqRelWindow": int(self.lever_req_rel_window.get()),
+            "MaxTrials": self.max_trials.get(),
+            "SampleSoundId": self.sample_sound_id.get(),
+            "TestSoundId": self.test_sound_id.get(),
+            "DMTSRandomMatchTrials": int(self.dmts_random_match_trials.get()),
+            "DMTSSoundIds": self.dmts_sound_ids.get(),
+            "DMTSModalityProbabilities": self.dmts_modality_probabilities.get(),
+            "DMTSStimulusSource": ("mixed" if self.get_dmts_modality_probabilities()[0] > 0 else "LED") if getattr(self, "dmts_light_client", None) is not None else "sound",
+            "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
+                if getattr(self, 'dmts_light_client', None) is not None else '',
+            "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder.get(),
+            "DMTSReminderTrials": self.dmts_reminder_trials.get(),
+            "DMTSBlankLickTimeout": int(self.dmts_blank_lick_timeout.get()),
+            "DMTSForkGrace_s": self.dmts_fork_grace_s.get(),
+            "PlaySound": int(self.play_sound_on_crossing.get()),
+            "TriggerOutput": int(self.trigger_output_on_crossing.get()),
+        }
+
+    def write_parameters_dat(self):
+        keys = (
+            "UserName",
+            "MouseId",
+            "ProjectName",
+            "NICard_filename",
+            "Sound_filename",
+            "IRForkColumn",
+            "BehaviorSignalColumn",
+            "SoundCopyColumn",
+            "BehaviorSignalChannel",
+            "SimulationMode",
+            "frec",
+            "bin",
+            "Channels",
+            "TriggerTypeDropDown",
+            "OuputformatDropDown",
+            "TaskType",
+            "GoWeight",
+            "NoGoWeight",
+            "BlankWeight",
+            "GoSoundId",
+            "LeverTestSoundId",
+            "LeverGoWeight",
+            "LeverTestWeight",
+            "LeverRewardTestTrials",
+            "NoGoSoundId",
+            "SampleSoundId",
+            "TestSoundId",
+            "DMTSRandomMatchTrials",
+            "DMTSSoundIds",
+            "DMTSStimulusSource",
+            "DMTSLightLibrary",
+            "DMTSMissesBeforeReminder",
+            "DMTSReminderTrials",
+            "DMTSBlankLickTimeout",
+            "DMTSForkGrace_s",
+            "SoundLevel",
+            "RandomSeed",
+            "ITI_s",
+            "ITIrandMin_s",
+            "ITIrandMax_s",
+            "Sounddelay_s",
+            "Delay_s",
+            "SoundDuration_s",
+            "TrialDuration_s",
+            "ResponseWindow_s",
+            "RewardDelay_s",
+            "Rewardduration_ms",
+            "RightRewardduration_ms",
+            "LightTTLPulse_ms",
+            "HIT",
+            "HITThreshold_percent",
+            "RewardGo",
+            "RewardProb",
+            "LeftRewardLine",
+            "RightRewardLine",
+            "LightTTLLine",
+            "Pavlov",
+            "PunishNoGoFA",
+            "Minlickcount",
+            "Lickthreshold",
+            "TACLeftChannel",
+            "TACRightChannel",
+            "TACLeftThreshold",
+            "TACRightThreshold",
+            "TACMinlickcount",
+            "TACLeftBinary",
+            "TACRightBinary",
+            "LeverThreshold",
+            "LeverHoldTime_s",
+            "LeverStartDebounce_s",
+            "LeverReleaseDebounce_s",
+            "LeverReleaseWindow_s",
+            "LeverReqRelBonus",
+            "LeverReqRelWindow",
+            "MaxTrials",
+        )
+        params = self.get_current_parameters()
+        path = os.path.join(self.exp_folder, "parameters.dat")
+        with open(path, "w", encoding="utf-8") as f:
+            for key in keys:
+                f.write(f"{key}={params[key]}\n")
+
+    def create_trial(self, sound_id, trigger_time_s, threshold, iti, trial_test_sound_id=None, trial_type_id=None, trial_type=None, stimulus=None):
+        self.trial_index += 1
+        if stimulus is None:
+            if self.braincodec_sequence_loaded and not self.is_lever_task() and not self.is_dmts_task() and not self.is_tac_family_task():
+                stimulus = self.current_trial_stimulus
+        if stimulus is None:
+            stimulus = {
+                "light_code": "",
+                "sound_id": int(sound_id or 0),
+                "trial_type_id": None,
+                "trial_type": "",
+                "stimulus_mode": "sound_only" if int(sound_id or 0) > 0 else "blank",
+            }
+        sound_id = int(stimulus.get("sound_id", sound_id or 0))
+        light_code = stimulus.get("light_code", "")
+        stimulus_mode = stimulus.get("stimulus_mode", "")
+        if trial_type_id is None or trial_type is None:
+            trial_type_id, trial_type = self.classify_trial_stimulus(stimulus, sound_id, trial_test_sound_id)
+        timestamp = datetime.now().isoformat(timespec="milliseconds")
+        rate = self.parse_float(self.rate_hz, 1000)
+        trigger_sample = int(round(trigger_time_s * rate))
+        params = self.get_current_parameters()
+        trial_row = {
+            "trial": self.trial_index,
+            "timestamp": timestamp,
+            "trigger_time_s": f"{trigger_time_s:.6f}",
+            "trial_end_s": "",
+            "trigger_sample": trigger_sample,
+            "crossing_duration_s": "",
+            "TrialType": f"{trial_type_id} {trial_type}",
+            "HIT": "",
+            "MISS": "",
+            "CR": "",
+            "FA": "",
+            "ResultType": "",
+            "dmts_reminder": 0,
+            "lever_reward_test_trials": int(params["LeverRewardTestTrials"]),
+            "light_code": light_code,
+            "sound_id": sound_id,
+            "stimulus_mode": stimulus_mode,
+            "sample_sound_id": sound_id if self.is_dmts_task() else params["SampleSoundId"],
+            "test_sound_id": trial_test_sound_id if self.is_dmts_task() and trial_test_sound_id is not None else params["TestSoundId"],
+            "sample_light_id": 0,
+            "test_light_id": 0,
+            "dmts_light_trial_id": "",
+            "dmts_light_fingerprint": "",
+            "dmts_light_confirmed": 0,
+            "dmts_light_timing_extension_s": 0.0,
+            "dmts_light_error": "",
+            "lick_count": "",
+            "left_lick_count": "",
+            "right_lick_count": "",
+            "correct_side": self.get_tac_side_for_sound(sound_id) if self.is_tac_task() else "",
+            "choice_side": "",
+        }
+        parameter_row = {
+            "trial": self.trial_index,
+            "timestamp": timestamp,
+            "light_code": light_code,
+            "sound_id": sound_id,
+            "stimulus_mode": stimulus_mode,
+            "trigger_time_s": f"{trigger_time_s:.6f}",
+            "trigger_sample": trigger_sample,
+            "task_type": params["TaskType"],
+            "blank_weight": params["BlankWeight"],
+            "behavior_signal_channel": params["BehaviorSignalChannel"],
+            "behavior_signal_column": params["BehaviorSignalColumn"],
+            "channels": params["Channels"],
+            "sample_sound_id": sound_id if self.is_dmts_task() else params["SampleSoundId"],
+            "test_sound_id": trial_test_sound_id if self.is_dmts_task() and trial_test_sound_id is not None else params["TestSoundId"],
+            "dmts_random_match_trials": params["DMTSRandomMatchTrials"],
+            "dmts_sound_ids": params["DMTSSoundIds"],
+            "dmts_misses_before_reminder": params["DMTSMissesBeforeReminder"],
+            "dmts_reminder_trials": params["DMTSReminderTrials"],
+            "dmts_blank_lick_timeout": params["DMTSBlankLickTimeout"],
+            "dmts_fork_grace_s": params["DMTSForkGrace_s"],
+            "hit_threshold_percent": self.parse_float_value(params["HIT"], 50),
+            "hit_threshold_s": self.get_hit_threshold_s(),
+            "threshold_v": threshold,
+            "lever_hold_time_s": self.parse_float_value(params["LeverHoldTime_s"], 1),
+            "lever_start_debounce_s": self.parse_float_value(params["LeverStartDebounce_s"], 0.1),
+            "lever_release_debounce_s": self.parse_float_value(params["LeverReleaseDebounce_s"], 0.05),
+            "lever_release_window_s": self.parse_float_value(params["LeverReleaseWindow_s"], 0.25),
+            "lever_require_release": params["LeverReqRelBonus"],
+            "lever_req_rel_window": params["LeverReqRelWindow"],
+            "iti_s": iti,
+            "iti_rand_min_s": params["ITIrandMin_s"],
+            "iti_rand_max_s": params["ITIrandMax_s"],
+            "sound_delay_s": self.parse_float_value(params["Sounddelay_s"], 0),
+            "delay_s": self.parse_float_value(params["Delay_s"], 0),
+            "sound_duration_s": params["SoundDuration_s"],
+            "trial_duration_s": self.parse_float_value(params["TrialDuration_s"], 3),
+            "response_window_s": self.parse_float_value(params["ResponseWindow_s"], 2),
+            "reward_delay_s": self.parse_float_value(params["RewardDelay_s"], 0),
+            "reward_duration_ms": self.parse_float_value(params["Rewardduration_ms"], 50),
+            "right_reward_duration_ms": self.parse_float_value(params["RightRewardduration_ms"], 50),
+            "reward_go": params["RewardGo"],
+            "reward_prob": params["RewardProb"],
+            "left_reward_line": params["LeftRewardLine"],
+            "right_reward_line": params["RightRewardLine"],
+            "light_ttl_line": params["LightTTLLine"],
+            "light_ttl_pulse_ms": self.parse_float_value(params["LightTTLPulse_ms"], 200),
+            "pavlov": params["Pavlov"],
+            "punish_no_go_fa": params["PunishNoGoFA"],
+            "min_lick_count": params["Minlickcount"],
+            "lick_threshold": params["Lickthreshold"],
+            "tac_left_channel": params["TACLeftChannel"],
+            "tac_right_channel": params["TACRightChannel"],
+            "tac_left_threshold": params["TACLeftThreshold"],
+            "tac_right_threshold": params["TACRightThreshold"],
+            "tac_min_lick_count": params["TACMinlickcount"],
+            "play_sound": params["PlaySound"],
+            "trigger_output": params["TriggerOutput"],
+            "Block": "",
+        }
+        parameter_row["Block"] = self.get_parameter_block_label(params=params)
+        parameter_row.update({key: params[key] for key in ("LeverGoWeight", "LeverTestWeight", "LeverTestSoundId")})
+        parameter_row["LeverRewardTestTrials"] = params["LeverRewardTestTrials"]
+        if self.is_dmts_task() and (getattr(self, 'dmts_light_client', None) is not None and getattr(self, '_dmts_trial_modality', 'light') == 'light'):
+            pair = self._dmts_light_pending
+            trial_row.update(sample_light_id=pair['sample_id'], test_light_id=pair['test_id'],
+                             dmts_light_trial_id=pair['trial_id'], dmts_light_fingerprint=pair['fingerprint'],
+                             stimulus_mode='light_only' if pair['sample_id'] else 'blank',
+                             light_code=pair['sample_id'], sound_id=0, sample_sound_id=0, test_sound_id=0)
+            parameter_row.update(light_code=pair['sample_id'], sound_id=0,
+                                 sample_sound_id=0, test_sound_id=0,
+                                 stimulus_mode=trial_row['stimulus_mode'])
+        self.trial_rows.append(trial_row)
+        self.parameter_rows.append(parameter_row)
+        self.write_trial_log()
+        self.write_parameters_csv()
+        self.after(0, self.update_trial_display, sound_id, trial_type_id, trial_type)
+
+    def draw_trial_iti_s(self):
+        base_iti_s = max(0.0, self.parse_float(self.iti_s, 1))
+        rand_min_s = max(0.0, self.parse_float(self.iti_rand_min_s, 0))
+        rand_max_s = max(0.0, self.parse_float(self.iti_rand_max_s, 0))
+        if rand_max_s < rand_min_s:
+            rand_min_s, rand_max_s = rand_max_s, rand_min_s
+        return base_iti_s + random.uniform(rand_min_s, rand_max_s)
+
+    def start_tac_trial(self, trial_start_s, threshold, start_reason):
+        max_trials = max(0, self.parse_int(self.max_trials, 0))
+        if max_trials and self.trial_index >= max_trials:
+            self.plot_queue.put(("log", f"tAC trial start ignored: max trials {max_trials} reached."))
+            return False
+        sound_id = self.consume_next_sound_id() if self.play_sound_on_crossing.get() else self.parse_int(self.sound_id, 1)
+        iti = self.draw_trial_iti_s()
+        side = self.get_tac_side_for_sound(sound_id)
+        trial_type_id = 1 if side == "left" else 2
+        trial_type = f"tAC-{side}"
+        self.create_trial(sound_id, trial_start_s, threshold, iti, trial_type_id=trial_type_id, trial_type=trial_type)
+        self.start_active_tac_trial(trial_start_s, iti)
+        if self.play_sound_on_crossing.get() and int(sound_id) > 0:
+            self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=trial_start_s)
+        self.last_trigger_time = trial_start_s
+        self.plot_queue.put(("log", f"{start_reason}. Trial {self.trial_index} is {trial_type}, sound id {sound_id}."))
+        return True
+
+    def start_active_tac_trial(self, trigger_time_s, iti_s):
+        response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
+        self.active_trial_index = self.trial_index
+        self.active_trial_start_s = trigger_time_s
+        self.active_response_end_s = trigger_time_s + response_window_s
+        self.active_trial_end_s = self.active_response_end_s
+        self.active_high_start_s = None
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_left_lick_count = 0
+        self.active_right_lick_count = 0
+        self.active_choice_side = ""
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_pending_reward_due_s = None
+        self.active_pending_reward_row = None
+        self.active_pending_reward_measure = ""
+        self.active_pending_reward_probability = 0.0
+        self.active_pending_reward_draw = 0.0
+        self.active_trial_base_iti_s = iti_s
+        self.active_trial_extra_timeout_s = 0.0
+        self.trigger_reset_seen_for_new_trial = False
+        self.start_trial_state_interval(trigger_time_s)
+
+    def start_classic_trial(self, trial_start_s, threshold, start_reason):
+        max_trials = max(0, self.parse_int(self.max_trials, 0))
+        if max_trials and self.trial_index >= max_trials:
+            self.plot_queue.put(("log", f"Trial start ignored: max trials {max_trials} reached."))
+            return False
+        stimulus = self.consume_next_trial_stimulus()
+        sound_id = int(stimulus["sound_id"])
+        iti = self.draw_trial_iti_s()
+        self.create_trial(
+            sound_id,
+            trial_start_s,
+            threshold,
+            iti,
+            trial_type_id=stimulus["trial_type_id"],
+            trial_type=stimulus["trial_type"],
+            stimulus=stimulus,
+        )
+        self.start_active_trial(trial_start_s, iti)
+        if self.braincodec_sequence_loaded:
+            self.send_light_trigger_pulse(from_worker=True)
+        if self.play_sound_on_crossing.get() and sound_id > 0:
+            self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=trial_start_s)
+        self.last_trigger_time = trial_start_s
+        trial_type_id, trial_type = stimulus["trial_type_id"], stimulus["trial_type"]
+        light_code = stimulus["light_code"]
+        self.plot_queue.put((
+            "log",
+            f"{start_reason}. Trial {self.trial_index} is type {trial_type_id} {trial_type}, "
+            f"LightCode {light_code}, SoundId {sound_id}.",
+        ))
+        return True
+
+    def start_active_trial(self, trigger_time_s, iti_s):
+        response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
+        self.active_trial_index = self.trial_index
+        self.active_trial_start_s = trigger_time_s
+        self.active_response_end_s = trigger_time_s + response_window_s
+        self.active_trial_end_s = self.active_response_end_s
+        self.active_high_start_s = trigger_time_s
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_pending_reward_due_s = None
+        self.active_pending_reward_row = None
+        self.active_pending_reward_measure = ""
+        self.active_pending_reward_probability = 0.0
+        self.active_pending_reward_draw = 0.0
+        self.active_pending_reward_side = "left"
+        self.active_trial_base_iti_s = iti_s
+        self.active_trial_extra_timeout_s = 0.0
+        self.trigger_reset_seen_for_new_trial = False
+        self.start_trial_state_interval(trigger_time_s)
+
+    def start_active_dmts_trial(self, trigger_time_s, iti_s, sample_sound_id=None, test_sound_id=None):
+        self.active_dmts_reminder = bool(getattr(self, "dmts_reminder_remaining", 0))
+        row = self.get_active_trial_row()
+        if row is not None:
+            row["dmts_reminder"] = int(self.active_dmts_reminder)
+        sound_duration_s = max(0.0, self.parse_float(self.sound_duration_s, 0))
+        delay_s = max(0.0, self.parse_float(self.delay_s, 0))
+        response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
+        reward_delay_s = max(0.0, self.parse_float(self.reward_delay_s, 0))
+        reward_duration_s = max(self.get_reward_pulse_s("left"), self.get_reward_pulse_s("right"))
+        self.active_trial_index = self.trial_index
+        self.active_trial_start_s = trigger_time_s
+        self.active_response_end_s = None
+        self.active_dmts_response_start_s = trigger_time_s + sound_duration_s + delay_s + sound_duration_s
+        self.active_dmts_response_end_s = self.active_dmts_response_start_s + response_window_s
+        self.active_dmts_reward_start_s = self.active_dmts_response_end_s + reward_delay_s
+        self.active_trial_end_s = self.active_dmts_reward_start_s + reward_duration_s
+        # Keep recent timing markers after the active trial has been cleared.
+        oldest = trigger_time_s - max(1, self.parse_float(self.window_s, 10)) * 2
+        self.dmts_plot_windows = [
+            window for window in self.dmts_plot_windows if window[2] >= oldest
+        ]
+        self.dmts_plot_windows.append((
+            self.active_dmts_response_start_s,
+            self.active_dmts_response_end_s,
+            self.active_dmts_reward_start_s,
+        ))
+        self.active_high_start_s = None
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_left_lick_count = 0
+        self.active_right_lick_count = 0
+        self.active_choice_side = ""
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_pending_reward_due_s = None
+        self.active_pending_reward_row = None
+        self.active_pending_reward_measure = ""
+        self.active_pending_reward_probability = 0.0
+        self.active_pending_reward_draw = 0.0
+        self.active_trial_base_iti_s = iti_s
+        self.active_trial_extra_timeout_s = 0.0
+        self.active_dmts_sample_sound_id = max(0, int(sample_sound_id if sample_sound_id is not None else self.parse_int(self.sample_sound_id, 1)))
+        self.active_dmts_test_sound_id = max(0, int(test_sound_id if test_sound_id is not None else self.parse_int(self.test_sound_id, 2)))
+        self.active_dmts_test_sound_time_s = trigger_time_s + sound_duration_s + delay_s
+        self.active_dmts_response_evaluated = False
+        self.active_dmts_response_met = False
+        self.active_dmts_low_start_s = None
+        self.active_dmts_test_sound_played = False
+        self.active_dmts_response_started = False
+        self.active_dmts_scored = False
+        self.trigger_reset_seen_for_new_trial = False
+        self.start_trial_state_interval(trigger_time_s)
+        if (getattr(self, 'dmts_light_client', None) is not None and getattr(self, '_dmts_trial_modality', 'light') == 'light'):
+            self._dmts_light_test_confirmed = False
+            self.trigger_dmts_light_phase('sample')
+        elif self.play_sound_on_crossing.get() and self.active_dmts_sample_sound_id > 0:
+            self.play_loaded_sound(sound_id=self.active_dmts_sample_sound_id, from_worker=True, start_s=trigger_time_s)
+
+    def is_lever_task(self):
+        return self.task_type.get().strip().lower() == "lever"
+
+    def is_dmts_task(self):
+        return self.task_type.get().strip().lower() == "dmts"
+
+    def get_dmts_modality_probabilities(self):
+        var = getattr(self, 'dmts_modality_probabilities', None)
+        text = var.get() if var is not None else '1 0'
+        try:
+            values = [float(value) for value in text.split()]
+        except ValueError:
+            values = []
+        if (len(values) != 2 or any(not math.isfinite(v) or not 0 <= v <= 1 for v in values)
+                or not math.isclose(sum(values), 1.0, rel_tol=0, abs_tol=1e-9)):
+            raise ValueError('Sound / Light probabilities must be two numbers between 0 and 1 summing to 1 (e.g. 0.5 0.5).')
+        return values
+
+    def configure_dmts_light_session(self):
+        self.dmts_light_client = None
+        self._dmts_light_pending = None
+        self._dmts_light_active = None
+        self._dmts_trial_pending = None
+        self._dmts_trial_modality = 'sound'
+        try:
+            probabilities = self.get_dmts_modality_probabilities() if self.is_dmts_task() else [1, 0]
+        except ValueError as exc:
+            self.log(str(exc))
+            return False
+        if probabilities[1] == 0:
+            return True
+        panel = getattr(self, 'braincodec_panel', None)
+        if panel is None or panel.get_mode() != 'dmts_patterns':
+            self.log('Light probability is positive: select DMTS patterns in the Braincodec tab.')
+            return False
+        try:
+            from braincodec.dmts_driver import DMTSLibrary
+            from braincodec.dmts_client import DMTSLightClient
+            if nidaqmx is None or self.simulation_mode.get():
+                raise ValueError('DMTS LEDs require NI hardware; simulated TTL cannot trigger PYNQ')
+            if not panel.validate_config():
+                raise ValueError('Select a valid DMTS stimulus YAML in the Braincodec tab')
+            library = DMTSLibrary(panel._read_config(), ext_cables_used=panel.ext_cables_used_var.get())
+            if len(library.ids) < 2:
+                raise ValueError('DMTS LED sessions require at least two stimuli for non-match trials')
+            client = DMTSLightClient(panel.remote_url_var.get().strip(), library)
+            client.connect()
+            # Allow a small software-timing margin before the test/response.
+            minimum_duration = library.duration_s + 0.05
+            if self.parse_float(self.sound_duration_s, 0) < minimum_duration:
+                self.sound_duration_s.set(f'{minimum_duration:.6g}')
+            pulse_s = self.parse_float(self.light_ttl_pulse_ms, 200) / 1000
+            if pulse_s <= 0 or pulse_s >= self.parse_float(self.sound_duration_s, 0):
+                raise ValueError('Light TTL duration must be positive and shorter than stimulus duration')
+            self.dmts_light_client = client
+            self.log(f'DMTS LEDs enabled: {len(library.ids)} stimuli; stimulus duration {self.sound_duration_s.get()} s.')
+            return True
+        except Exception as exc:
+            self.log(f'DMTS LEDs could not start: {exc}. Remote Start the DMTS driver first.')
+            return False
+
+    def fail_dmts_light_trial(self, exc):
+        row = self.get_active_trial_row()
+        if row is not None:
+            row['dmts_light_error'] = str(exc)
+            row['ResultType'] = 'ERROR'
+            for key in ('HIT', 'MISS', 'CR', 'FA'):
+                row[key] = 0
+            self.write_trial_log()
+        self.dmts_lapse_stop_requested = True
+        self.plot_queue.put(('log', f'DMTS LEDs stopped: {exc}'))
+        self.plot_queue.put(('stop_session', None))
+
+    def prepare_next_dmts_light_trial(self):
+        if getattr(self, '_dmts_trial_pending', None) is not None or getattr(self, '_dmts_light_pending', None) is not None:
+            return True
+        try:
+            # A fork-aborted trial can leave a prepared test on the board.
+            if getattr(self, '_dmts_light_active', None) is not None:
+                self.dmts_light_client.reset()
+                self._dmts_light_active = None
+            trial_type = self.consume_next_dmts_trial_type()
+            probabilities = self.get_dmts_modality_probabilities()
+            self._dmts_trial_modality = (random.choices(['sound', 'light'], weights=probabilities, k=1)[0]
+                                         if trial_type != 0 else 'blank')
+            self._dmts_trial_pending = {'trial_type': trial_type}
+            self._dmts_light_pending = None
+            if self._dmts_trial_modality != 'light':
+                return True
+            if self.dmts_light_client is None:
+                raise ValueError('Light trial requires a connected DMTS LED driver')
+            self._dmts_light_pending = self.dmts_light_client.prepare(trial_type)
+            pair = self._dmts_light_pending
+            self.plot_queue.put(('log', f"DMTS LEDs prepared: sample STIM{pair['sample_id']}, test STIM{pair['test_id']}"))
+            return True
+        except Exception as exc:
+            self.fail_dmts_light_trial(exc)
+            return False
+
+    def trigger_dmts_light_phase(self, phase):
+        try:
+            status = self.dmts_light_client.require_phase(
+                self._dmts_light_active, 'waiting_' + phase,
+                completion_timeout=1.0 if phase == 'test' else 0)
+            if phase == 'test':
+                self.extend_dmts_light_timeline(status.get('completion_wait_s', 0), shift_test=True)
+            if not self.send_light_trigger_pulse(from_worker=True):
+                raise RuntimeError('NI light trigger failed')
+            return True
+        except Exception as exc:
+            self.fail_dmts_light_trial(exc)
+            return False
+
+    def extend_dmts_light_timeline(self, extension_s, shift_test=False):
+        if extension_s <= 0:
+            return
+        names = ['active_dmts_response_start_s', 'active_dmts_response_end_s',
+                 'active_dmts_reward_start_s', 'active_trial_end_s']
+        if shift_test:
+            names.append('active_dmts_test_sound_time_s')
+        for name in names:
+            value = getattr(self, name, None)
+            if value is not None:
+                setattr(self, name, value + extension_s)
+        if getattr(self, 'dmts_plot_windows', None):
+            self.dmts_plot_windows[-1] = tuple(value + extension_s for value in self.dmts_plot_windows[-1])
+        row = self.get_active_trial_row()
+        if row is not None:
+            row['dmts_light_timing_extension_s'] = row.get('dmts_light_timing_extension_s', 0) + extension_s
+        self.plot_queue.put(('log', f'DMTS LED completion wait: {extension_s * 1000:.0f} ms; response window moved later.'))
+
+    def is_tac_task(self):
+        value = self.task_type.get().strip().lower()
+        return value in {"tac", "2ac", "twoalternatechoice", "twoalternativechoice"}
+
+    def is_tac_pretraining_task(self):
+        value = self.task_type.get().strip().lower()
+        return value in {"tacpretraining", "tac_pretraining", "tac-pretraining", "tacshaping"}
+
+    def is_tac_family_task(self):
+        return self.is_tac_task() or self.is_tac_pretraining_task()
+
+    def is_lick_trigger(self):
+        return self.trigger_type.get().strip().lower() == "lick"
+
+    def uses_dual_lick_channels(self):
+        return self.is_tac_family_task() or (self.is_dmts_task() and self.is_lick_trigger())
+
+    def is_active_dmts_blank(self):
+        return self.active_dmts_sample_sound_id == 0 and self.active_dmts_test_sound_id == 0
+
+    def get_dmts_lick_crossings(self, row):
+        """Track each channel continuously, including during ITI and sounds."""
+        crossings = []
+        for side, channel, threshold in (
+            ("left", self.get_tac_left_channel_name(), self.get_tac_left_threshold()),
+            ("right", self.get_tac_right_channel_name(), self.get_tac_right_threshold()),
+        ):
+            high = self.get_row_channel_value(row, channel, 0.0) >= threshold
+            attribute = side + "_lick_was_high"
+            if high and not getattr(self, attribute, False):
+                crossings.append(side)
+            setattr(self, attribute, high)
+        return crossings
+
+    def record_dmts_lick_choices(self, crossings):
+        for side in crossings:
+            if side == "left":
+                self.active_left_lick_count += 1
+            elif side == "right":
+                self.active_right_lick_count += 1
+        # Match trials lock the first qualifying side; same-sample ties favor left.
+        # Non-match trials only score left responses. Right licks never mask a later left FA.
+        same_sound = self.active_dmts_sample_sound_id == self.active_dmts_test_sound_id
+        if not self.is_active_dmts_blank() and not self.active_choice_side:
+            if self.active_left_lick_count >= self.get_min_lick_count():
+                self.active_choice_side = "left"
+            elif same_sound and self.active_right_lick_count >= self.get_min_lick_count():
+                self.active_choice_side = "right"
+        row = self.get_active_trial_row()
+        if row is not None:
+            row["left_lick_count"] = self.active_left_lick_count
+            row["right_lick_count"] = self.active_right_lick_count
+            row["choice_side"] = self.active_choice_side
+            row["correct_side"] = "left" if same_sound and not self.is_active_dmts_blank() else ""
+
+    def get_current_trigger_threshold(self):
+        if self.uses_dual_lick_channels():
+            return self.get_tac_left_threshold()
+        if self.is_lick_trigger():
+            return self.parse_float(self.lick_threshold, self.parse_float(self.threshold_v, 1))
+        return self.parse_float(self.threshold_v, 1)
+
+    def get_min_lick_count(self):
+        return max(1, self.parse_int(self.min_lick_count, 1))
+
+    def get_tac_min_lick_count(self):
+        return max(1, self.parse_int(self.tac_min_lick_count, 1))
+
+    def get_tac_left_channel_name(self):
+        return self.tac_left_channel.get().strip() or "ai0"
+
+    def get_tac_right_channel_name(self):
+        return self.tac_right_channel.get().strip() or "ai1"
+
+    def get_tac_left_threshold(self):
+        return self.parse_float(self.tac_left_threshold, self.parse_float(self.lick_threshold, 1))
+
+    def get_tac_right_threshold(self):
+        return self.parse_float(self.tac_right_threshold, self.parse_float(self.lick_threshold, 1))
+
+    def get_tac_side_for_sound(self, sound_id):
+        values = self._parse_number_list(self.sequence_values.get(), default=[1, 10], cast=int)
+        if values and int(sound_id) == int(values[0]):
+            return "left"
+        if len(values) > 1 and int(sound_id) == int(values[1]):
+            return "right"
+        return "left"
+
+    def check_tac_pretraining_sample(self, sample_time_s, row_values):
+        left_value = self.get_row_channel_value(row_values, self.get_tac_left_channel_name(), 0.0)
+        right_value = self.get_row_channel_value(row_values, self.get_tac_right_channel_name(), 0.0)
+        left_high = left_value >= self.get_tac_left_threshold()
+        right_high = right_value >= self.get_tac_right_threshold()
+        left_crossed_up = left_high and not self.left_lick_was_high
+        right_crossed_up = right_high and not self.right_lick_was_high
+        self.left_lick_was_high = left_high
+        self.right_lick_was_high = right_high
+
+        max_trials = max(0, self.parse_int(self.max_trials, 0))
+        if max_trials and self.trial_index >= max_trials:
+            return
+
+        if left_crossed_up:
+            if self.tac_pretraining_first_side == "right" and self.tac_pretraining_first_time_s is not None:
+                self.finish_tac_pretraining_sequence(
+                    self.tac_pretraining_first_time_s,
+                    sample_time_s,
+                    first_side="right",
+                    second_side="left",
+                )
+            else:
+                self.tac_pretraining_first_side = "left"
+                self.tac_pretraining_first_time_s = sample_time_s
+                self.plot_queue.put(("log", "tAC pretraining left lick registered; waiting for right lick."))
+
+        if right_crossed_up:
+            if self.tac_pretraining_first_side == "left" and self.tac_pretraining_first_time_s is not None:
+                self.finish_tac_pretraining_sequence(
+                    self.tac_pretraining_first_time_s,
+                    sample_time_s,
+                    first_side="left",
+                    second_side="right",
+                )
+            else:
+                self.tac_pretraining_first_side = "right"
+                self.tac_pretraining_first_time_s = sample_time_s
+                self.plot_queue.put(("log", "tAC pretraining right lick registered; waiting for left lick."))
+
+    def finish_tac_pretraining_sequence(self, first_time_s, second_time_s, first_side, second_side):
+        reward_side = first_side
+        threshold = self.get_tac_left_threshold() if first_side == "left" else self.get_tac_right_threshold()
+        sound_id = 0
+        trial_type_id = 1 if reward_side == "left" else 2
+        self.create_trial(sound_id, first_time_s, threshold, 0.0, trial_type_id=trial_type_id, trial_type="tAC-pretraining")
+        row = self.trial_rows[-1]
+        row["trial_end_s"] = f"{second_time_s:.6f}"
+        row["crossing_duration_s"] = f"{max(0.0, second_time_s - first_time_s):.6f}"
+        row["HIT"] = 1
+        row["MISS"] = 0
+        row["CR"] = 0
+        row["FA"] = 0
+        row["ResultType"] = "HIT"
+        row["lick_count"] = 2
+        row["left_lick_count"] = 1
+        row["right_lick_count"] = 1
+        row["correct_side"] = f"{reward_side}-reward"
+        row["choice_side"] = f"{first_side}-then-{second_side}"
+        self.last_trigger_time = first_time_s
+        self.last_trial_end_time_s = second_time_s
+        self.next_trial_allowed_time_s = second_time_s
+        self.start_trial_state_interval(first_time_s)
+        self.end_trial_state_interval(second_time_s)
+        reward_probability = min(1.0, max(0.0, self.parse_float(self.reward_go, 1.0)))
+        reward_draw = random.random()
+        reward_sent = reward_draw <= reward_probability and self.trigger_output_on_crossing.get()
+        if reward_sent:
+            self.send_output_pulse(from_worker=True, start_s=second_time_s, reward_side=reward_side)
+        self.write_trial_log()
+        self.write_parameters_csv()
+        self.store_trial_crossing_duration(row)
+        self.plot_queue.put(("results", None))
+        self.plot_queue.put((
+            "log",
+            f"tAC pretraining reward {row['trial']}: {first_side} lick then {second_side} lick, "
+            f"{reward_side} reward {'sent' if reward_sent else 'skipped'}, "
+            f"p={reward_probability:.3f}, draw={reward_draw:.3f}.",
+        ))
+        self.tac_pretraining_first_side = ""
+        self.tac_pretraining_first_time_s = None
+
+    def check_tac_sample(self, sample_time_s, row_values):
+        left_value = self.get_row_channel_value(row_values, self.get_tac_left_channel_name(), 0.0)
+        right_value = self.get_row_channel_value(row_values, self.get_tac_right_channel_name(), 0.0)
+        left_high = left_value >= self.get_tac_left_threshold()
+        right_high = right_value >= self.get_tac_right_threshold()
+        left_crossed_up = left_high and not self.left_lick_was_high
+        right_crossed_up = right_high and not self.right_lick_was_high
+        self.left_lick_was_high = left_high
+        self.right_lick_was_high = right_high
+
+        if self.active_trial_index is not None and self.active_trial_end_s is not None and sample_time_s >= self.active_trial_end_s:
+            self.finish_active_tac_trial(self.active_trial_end_s)
+
+        if self.active_trial_index is not None:
+            if self.is_within_active_response_window(sample_time_s):
+                if left_crossed_up:
+                    self.add_active_tac_lick("left")
+                if right_crossed_up:
+                    self.add_active_tac_lick("right")
+                self.evaluate_active_tac_trial(sample_time_s)
+            return
+
+        if sample_time_s < self.next_trial_allowed_time_s:
+            return
+
+        if self.start_tac_trial(sample_time_s, self.get_tac_left_threshold(), "ITI elapsed"):
+            if left_crossed_up:
+                self.add_active_tac_lick("left")
+            if right_crossed_up:
+                self.add_active_tac_lick("right")
+            self.evaluate_active_tac_trial(sample_time_s)
+
+    def add_active_tac_lick(self, side):
+        if side == "left":
+            self.active_left_lick_count += 1
+        elif side == "right":
+            self.active_right_lick_count += 1
+        self.active_lick_count = self.active_left_lick_count + self.active_right_lick_count
+        row = self.get_active_trial_row()
+        if row is not None:
+            row["lick_count"] = self.active_lick_count
+            row["left_lick_count"] = self.active_left_lick_count
+            row["right_lick_count"] = self.active_right_lick_count
+
+    def get_tac_correct_side(self, row):
+        trial_type = str(row.get("TrialType", "")).lower()
+        if "right" in trial_type:
+            return "right"
+        return "left"
+
+    def evaluate_active_tac_trial(self, sample_time_s):
+        row = self.get_active_trial_row()
+        if row is None or row["ResultType"]:
+            return
+        min_count = self.get_tac_min_lick_count()
+        chosen_side = ""
+        if self.active_left_lick_count >= min_count:
+            chosen_side = "left"
+        if self.active_right_lick_count >= min_count and not chosen_side:
+            chosen_side = "right"
+        if not chosen_side:
+            return
+        correct_side = self.get_tac_correct_side(row)
+        self.active_choice_side = chosen_side
+        row["choice_side"] = chosen_side
+        row["correct_side"] = correct_side
+        row["lick_count"] = self.active_lick_count
+        row["left_lick_count"] = self.active_left_lick_count
+        row["right_lick_count"] = self.active_right_lick_count
+        correct = chosen_side == correct_side
+        row["HIT"] = int(correct)
+        row["MISS"] = 0
+        row["CR"] = 0
+        row["FA"] = int(not correct)
+        row["ResultType"] = "HIT" if correct else "FA"
+        if correct:
+            self.maybe_send_go_reward(row, float(self.active_lick_count), start_s=sample_time_s)
+        else:
+            self.active_trial_extra_timeout_s = self.get_punish_no_go_fa_s()
+        self.write_trial_log()
+        self.plot_queue.put(("results", None))
+        self.plot_queue.put((
+            "log",
+            f"tAC trial {row['trial']} chose {chosen_side}; correct side was {correct_side}. Result={row['ResultType']}.",
+        ))
+
+    def finish_active_tac_trial(self, trial_end_s):
+        row = self.get_active_trial_row()
+        if row is None:
+            self.clear_active_trial()
+            return
+        if not row["ResultType"]:
+            correct_side = self.get_tac_correct_side(row)
+            row["choice_side"] = self.active_choice_side
+            row["correct_side"] = correct_side
+            row["lick_count"] = self.active_lick_count
+            row["left_lick_count"] = self.active_left_lick_count
+            row["right_lick_count"] = self.active_right_lick_count
+            row["HIT"] = 0
+            row["MISS"] = 1
+            row["CR"] = 0
+            row["FA"] = 0
+            row["ResultType"] = "MISS"
+        self.apply_trial_timeout(row, trial_end_s)
+        self.set_trial_end_time(row, trial_end_s)
+        self.write_trial_log()
+        self.store_trial_crossing_duration(row)
+        self.plot_queue.put(("results", None))
+        self.plot_queue.put((
+            "log",
+            f"tAC trial {row['trial']} left/right licks {self.active_left_lick_count}/{self.active_right_lick_count}. "
+            f"Result={row['ResultType']}.",
+        ))
+        self.end_trial_state_interval(trial_end_s)
+        self.clear_active_trial()
+
+    def check_lever_trigger_sample(self, sample_time_s, value, threshold):
+        is_high = value >= threshold
+        crossed_up = is_high and not self.irfork_was_high
+        crossed_down = not is_high and self.irfork_was_high
+        self.irfork_was_high = is_high
+
+        if self.active_trial_index is not None:
+            if is_high:
+                self.active_lever_low_start_s = None
+                self.evaluate_active_lever_trial(sample_time_s)
+            elif crossed_down:
+                self.active_lever_low_start_s = sample_time_s
+            elif self.active_lever_low_start_s is not None:
+                low_duration_s = sample_time_s - self.active_lever_low_start_s
+                if low_duration_s >= self.get_lever_release_debounce_s():
+                    release_time_s = self.active_lever_low_start_s
+                    success = self.is_lever_release_success(release_time_s)
+                    self.finish_active_lever_trial(sample_time_s, success=success, hold_end_s=release_time_s)
+            return
+
+        if sample_time_s < self.next_trial_allowed_time_s:
+            self.lever_reset_seen_for_new_trial = False
+            self.lever_pending_start_s = None
+            return
+
+        if not is_high:
+            self.lever_reset_seen_for_new_trial = True
+            self.lever_pending_start_s = None
+
+        if not self.lever_reset_seen_for_new_trial:
+            return
+
+        if crossed_up:
+            self.lever_pending_start_s = sample_time_s
+
+        if self.lever_pending_start_s is None:
+            return
+
+        if sample_time_s - self.lever_pending_start_s < self.get_lever_start_debounce_s():
+            return
+
+        max_trials = max(0, self.parse_int(self.max_trials, 0))
+        if max_trials and self.trial_index >= max_trials:
+            self.plot_queue.put(("log", f"Accepted lever press ignored: max trials {max_trials} reached."))
+            return
+
+        sound_id, trial_type_id, trial_type = self.choose_lever_trial()
+        iti = self.draw_trial_iti_s()
+        trigger_time_s = self.lever_pending_start_s
+        self.create_trial(sound_id, trigger_time_s, threshold, iti,
+                          trial_type_id=trial_type_id, trial_type=trial_type)
+        self.start_active_lever_trial(trigger_time_s, iti)
+        self.play_next_lever_sound(trigger_time_s)
+        self.last_trigger_time = trigger_time_s
+        self.plot_queue.put(("log", f"Lever crossed {threshold:g} V. Trial {self.trial_index} started; hold for {self.get_lever_hold_time_s():g} s."))
+        self.evaluate_active_lever_trial(sample_time_s)
+
+    def update_active_dmts_trial(self, sample_time_s, is_high, crossed_up, crossed_down, lick_crossings=()):
+        is_match_trial = self.active_dmts_sample_sound_id == self.active_dmts_test_sound_id
+        before_test_sound = (
+            self.active_dmts_test_sound_time_s is not None
+            and sample_time_s < self.active_dmts_test_sound_time_s
+        )
+        low_started_before_test = (
+            self.active_dmts_test_sound_time_s is not None
+            and self.active_dmts_low_start_s is not None
+            and self.active_dmts_low_start_s < self.active_dmts_test_sound_time_s
+        )
+        if not self.is_active_dmts_blank() and (is_match_trial or before_test_sound or low_started_before_test) and not self.is_lick_trigger() and not self.active_dmts_scored:
+            if is_high:
+                self.active_dmts_low_start_s = None
+            elif crossed_down:
+                self.active_dmts_low_start_s = sample_time_s
+            elif self.active_dmts_low_start_s is not None:
+                low_duration_s = sample_time_s - self.active_dmts_low_start_s
+                if low_duration_s >= self.get_dmts_fork_grace_s():
+                    self.finish_active_dmts_miss(self.active_dmts_low_start_s, "fork event ended before reward decision")
+                    return
+
+        if self.active_dmts_test_sound_time_s is not None and not self.active_dmts_test_sound_played:
+            if sample_time_s >= self.active_dmts_test_sound_time_s:
+                if (getattr(self, 'dmts_light_client', None) is not None and getattr(self, '_dmts_trial_modality', 'light') == 'light'):
+                    if not self.trigger_dmts_light_phase('test'):
+                        return
+                elif self.play_sound_on_crossing.get() and self.active_dmts_test_sound_id > 0:
+                    self.play_loaded_sound(
+                        sound_id=self.active_dmts_test_sound_id,
+                        from_worker=True,
+                        start_s=self.active_dmts_test_sound_time_s,
+                    )
+                self.active_dmts_test_sound_played = True
+
+        response_start_s = self.active_dmts_response_start_s
+        if response_start_s is None or sample_time_s < response_start_s:
+            return
+
+        if (getattr(self, 'dmts_light_client', None) is not None and getattr(self, '_dmts_trial_modality', 'light') == 'light') and not getattr(self, '_dmts_light_test_confirmed', False):
+            try:
+                status = self.dmts_light_client.require_phase(self._dmts_light_active, 'idle', completion_timeout=1.0)
+                self.extend_dmts_light_timeline(status.get('completion_wait_s', 0))
+                self._dmts_light_test_confirmed = True
+                row = self.get_active_trial_row()
+                if row is not None:
+                    row['dmts_light_confirmed'] = 1
+                    self.write_trial_log()
+                response_start_s = self.active_dmts_response_start_s
+                if sample_time_s < response_start_s:
+                    return
+            except Exception as exc:
+                self.fail_dmts_light_trial(exc)
+                return
+
+        response_end_s = self.active_dmts_response_end_s
+        if response_end_s is not None and sample_time_s >= response_end_s:
+            self.finish_active_dmts_response(response_end_s)
+            reward_start_s = self.active_dmts_reward_start_s
+            if reward_start_s is not None and sample_time_s >= reward_start_s:
+                self.finish_active_dmts_reward_period(reward_start_s)
+            return
+
+        if not self.active_dmts_response_started:
+            self.active_dmts_response_started = True
+            if is_high and not self.is_lick_trigger():
+                self.active_high_start_s = response_start_s
+
+        if self.is_lick_trigger():
+            self.record_dmts_lick_choices(lick_crossings)
+            if (
+                is_match_trial
+                and not self.is_active_dmts_blank()
+                and self.active_choice_side == "left"
+                and not self.active_reward_decided
+            ):
+                row = self.get_active_trial_row()
+                if row is not None:
+                    # The first qualifying choice is locked, so this HIT cannot
+                    # be reversed by later licks. Keep the full response window.
+                    self.maybe_send_go_reward(
+                        row, float(self.active_left_lick_count), start_s=sample_time_s,
+                    )
+        elif crossed_up:
+            self.active_high_start_s = sample_time_s
+        elif crossed_down:
+            self.add_active_high_interval(sample_time_s)
+
+    def finish_active_dmts_response(self, response_end_s):
+        if self.active_dmts_response_evaluated:
+            return
+        row = self.get_active_trial_row()
+        if row is None:
+            self.active_dmts_response_evaluated = True
+            return
+        self.active_dmts_response_evaluated = True
+        if self.is_lick_trigger():
+            self.record_dmts_lick_choices(())
+            self.active_lick_count = (
+                self.active_left_lick_count if self.active_dmts_sample_sound_id != self.active_dmts_test_sound_id or self.active_choice_side == "left"
+                else self.active_right_lick_count if self.active_choice_side == "right" else 0
+            )
+            row["lick_count"] = self.active_lick_count
+            response_met = (
+                bool(self.active_choice_side)
+                if self.active_dmts_sample_sound_id == self.active_dmts_test_sound_id
+                else self.active_left_lick_count >= self.get_min_lick_count()
+            )
+            measure = float(self.active_lick_count)
+            log_measure = f"left/right {self.active_left_lick_count}/{self.active_right_lick_count}, choice={self.active_choice_side or 'none'}"
+        else:
+            if self.active_high_start_s is not None:
+                self.add_active_high_interval(response_end_s)
+            measure = self.active_crossing_total_s
+            row["crossing_duration_s"] = f"{measure:.6f}"
+            response_met = measure >= self.get_hit_threshold_s()
+            log_measure = f"{measure:.3f} s total IR crossing"
+        self.active_dmts_response_met = response_met
+        self.write_trial_log()
+        self.plot_queue.put(("log", f"DMTS trial {row['trial']} response window ended with {log_measure}. Criterion met={int(response_met)}."))
+
+    def finish_active_dmts_reward_period(self, reward_start_s):
+        if self.active_dmts_scored:
+            return
+        if (getattr(self, 'dmts_light_client', None) is not None and getattr(self, '_dmts_trial_modality', 'light') == 'light') and not getattr(self, '_dmts_light_test_confirmed', False):
+            self.fail_dmts_light_trial('LED presentations are not confirmed; reward withheld')
+            return
+        row = self.get_active_trial_row()
+        if row is None:
+            self.clear_active_trial()
+            return
+        if not self.active_dmts_response_evaluated:
+            self.finish_active_dmts_response(self.active_dmts_response_end_s or reward_start_s)
+        self.active_dmts_scored = True
+        same_sound = self.active_dmts_sample_sound_id == self.active_dmts_test_sound_id
+        response_met = bool(self.active_dmts_response_met)
+        hit = bool(same_sound and response_met)
+        miss = bool(same_sound and not response_met)
+        cr = bool(not same_sound and not response_met)
+        fa = bool(not same_sound and response_met)
+        if self.is_lick_trigger():
+            hit = bool(same_sound and self.active_choice_side == "left")
+            miss = bool(same_sound and not self.active_choice_side)
+            cr = bool(not same_sound and not response_met)
+            fa = bool((same_sound and self.active_choice_side == "right") or (not same_sound and response_met))
+        row["HIT"] = int(hit)
+        row["MISS"] = int(miss)
+        row["CR"] = int(cr)
+        row["FA"] = int(fa)
+        if hit:
+            row["ResultType"] = "HIT"
+        elif miss:
+            row["ResultType"] = "MISS"
+        elif cr:
+            row["ResultType"] = "CR"
+        else:
+            row["ResultType"] = "FA"
+        if self.is_active_dmts_blank():
+            hit = miss = cr = fa = False
+            for outcome in ("HIT", "MISS", "CR", "FA"):
+                row[outcome] = 0
+            row["ResultType"] = "BLANK"
+        if (hit or (cr and self.is_lick_trigger())) and not self.active_reward_decided:
+            measure = float(row.get("lick_count") or self.active_crossing_total_s)
+            self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
+        if same_sound and not self.is_active_dmts_blank():
+            self.maybe_send_pavlov_reward(row, start_s=reward_start_s)
+        self.set_trial_end_time(row, self.active_trial_end_s if self.active_trial_end_s is not None else reward_start_s)
+        self.write_trial_log()
+        self.store_trial_crossing_duration(row)
+        self.plot_queue.put(("results", None))
+        self.plot_queue.put(("log", f"DMTS trial {row['trial']} reached reward period. Same sound={int(same_sound)}. Result={row['ResultType']}."))
+
+    def finish_active_dmts_miss(self, trial_end_s, reason):
+        row = self.get_active_trial_row()
+        if row is None:
+            self.clear_active_trial()
+            return
+        self.active_dmts_scored = True
+        if self.active_high_start_s is not None:
+            self.add_active_high_interval(trial_end_s)
+        row["crossing_duration_s"] = f"{self.active_crossing_total_s:.6f}"
+        row["HIT"] = 0
+        row["MISS"] = 1
+        row["CR"] = 0
+        row["FA"] = 0
+        row["ResultType"] = "MISS"
+        self.set_trial_end_time(row, trial_end_s)
+        self.apply_trial_timeout(row, trial_end_s)
+        self.store_trial_crossing_duration(row)
+        self.write_trial_log()
+        self.plot_queue.put(("results", None))
+        self.plot_queue.put(("log", f"DMTS trial {row['trial']} stopped: {reason}. Result=MISS."))
+        self.end_trial_state_interval(trial_end_s)
+        self.clear_active_trial()
+
+    def get_dmts_fork_grace_s(self):
+        return max(0.0, self.parse_float(self.dmts_fork_grace_s, 0.1))
+
+    def choose_dmts_trial_sound_ids(self, trial_type_id=1):
+        if trial_type_id == 0:
+            return 0, 0
+        sound_ids = self.parse_dmts_sound_ids() if self.dmts_random_match_trials.get() else []
+        is_nonmatch = int(trial_type_id or 1) == 2
+        if sound_ids:
+            sample_id = random.choice(sound_ids)
+            if is_nonmatch:
+                test_choices = [sound_id for sound_id in sound_ids if sound_id != sample_id]
+                if test_choices:
+                    return sample_id, random.choice(test_choices)
+                return sample_id, sample_id + 1
+            return sample_id, sample_id
+        sample_id = max(1, self.parse_int(self.sample_sound_id, 1))
+        test_id = max(1, self.parse_int(self.test_sound_id, sample_id))
+        if is_nonmatch and test_id == sample_id:
+            test_id = sample_id + 1
+        if not is_nonmatch:
+            test_id = sample_id
+        return sample_id, test_id
+
+    def parse_dmts_sound_ids(self):
+        values = []
+        text = self.dmts_sound_ids.get().strip()
+        if not text:
+            return values
+        for item in text.replace(";", " ").replace(",", " ").split():
+            if ":" in item or "-" in item:
+                separator = ":" if ":" in item else "-"
+                left, right = item.split(separator, 1)
+                try:
+                    start = int(float(left.strip()))
+                    end = int(float(right.strip()))
+                except Exception:
+                    continue
+                step = 1 if end >= start else -1
+                values.extend(range(start, end + step, step))
+                continue
+            try:
+                values.append(int(float(item)))
+            except Exception:
+                continue
+        return [value for value in values if value > 0]
+
+    def finish_active_dmts_timeline(self, trial_end_s):
+        if (getattr(self, 'dmts_light_client', None) is not None and getattr(self, '_dmts_trial_modality', 'light') == 'light') and not getattr(self, '_dmts_light_test_confirmed', False):
+            # Fork-aborted trials are already scored as MISS and may omit the test.
+            if not self.active_dmts_scored:
+                self.fail_dmts_light_trial('Trial ended before both LED presentations were confirmed')
+                return
+        if not self.active_dmts_scored:
+            reward_start_s = self.active_dmts_reward_start_s or trial_end_s
+            self.finish_active_dmts_reward_period(reward_start_s)
+        row = self.get_active_trial_row()
+        if row is not None:
+            self.set_trial_end_time(row, trial_end_s)
+            self.apply_trial_timeout(row, trial_end_s)
+            self.store_trial_crossing_duration(row)
+            self.update_dmts_lapse_state(row)
+        self.write_trial_log()
+        self.plot_queue.put(("results", None))
+        self.end_trial_state_interval(trial_end_s)
+        self.clear_active_trial()
+        if getattr(self, "dmts_lapse_stop_requested", False):
+            self.plot_queue.put(("stop_session", None))
+
+    def update_dmts_lapse_state(self, row):
+        if not self.is_lick_trigger():
+            return
+        if getattr(self, "active_dmts_reminder", False):
+            engaged = self.active_left_lick_count > 0 or self.active_right_lick_count > 0
+            self.dmts_reminder_engaged = self.dmts_reminder_engaged or engaged
+            self.dmts_reminder_remaining -= 1
+            self.plot_queue.put(("log", f"DMTS reminder trial {row['trial']} completed; response-window licking={int(engaged)}, remaining={self.dmts_reminder_remaining}."))
+            if not self.dmts_reminder_remaining:
+                self.dmts_match_miss_streak = 0
+                if self.dmts_reminder_engaged:
+                    self.plot_queue.put(("log", "DMTS reminder complete: licking resumed; returning to normal trials."))
+                else:
+                    self.dmts_lapse_stop_requested = True
+                    self.running = False
+                    self.plot_queue.put(("log", "DMTS stopping: no response-window licking during the reminder trials."))
+            return
+        if not str(row.get("TrialType", "")).endswith("DMTS-match"):
+            return
+        self.dmts_match_miss_streak = getattr(self, "dmts_match_miss_streak", 0) + 1 if row.get("ResultType") == "MISS" else 0
+        threshold = max(1, self.parse_int(self.dmts_misses_before_reminder, 5))
+        if self.dmts_match_miss_streak >= threshold:
+            self.dmts_reminder_remaining = max(1, self.parse_int(self.dmts_reminder_trials, 3))
+            self.dmts_reminder_engaged = False
+            self.plot_queue.put(("log", f"DMTS: {threshold} consecutive match misses; next {self.dmts_reminder_remaining} trials are match-only with guaranteed Pavlov reward (when output is enabled)."))
+
+    def choose_lever_trial(self):
+        weights = [self.parse_float(self.lever_go_weight, 1), self.parse_float(self.lever_test_weight, 0)]
+        if any(not math.isfinite(w) or w < 0 for w in weights) or sum(weights) <= 0:
+            weights = [1, 0]
+        is_test = random.choices([False, True], weights=weights, k=1)[0]
+        sound_var = self.lever_test_sound_id if is_test else self.lever_go_sound_id
+        sound_id = max(1, self.parse_int(sound_var, 10 if is_test else 1))
+        return sound_id, 2 if is_test else 1, "Lever-Test" if is_test else "Lever-GO"
+
+    def start_active_lever_trial(self, trigger_time_s, iti_s):
+        self.active_trial_index = self.trial_index
+        self.active_trial_start_s = trigger_time_s
+        self.active_trial_end_s = None
+        self.active_high_start_s = trigger_time_s
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_trial_base_iti_s = iti_s
+        self.active_trial_extra_timeout_s = 0.0
+        self.active_lever_sound_id = int(self.get_active_trial_row()["sound_id"])
+        # Freeze the GO sound boundary for this trial, like its starting sound ID.
+        self.active_lever_sound_stop_id = (
+            None if str(self.get_active_trial_row().get("TrialType", "")).endswith("Lever-Test")
+            else max(1, self.parse_int(self.lever_test_sound_id, 10))
+        )
+        self.active_lever_next_sound_time_s = trigger_time_s
+        self.active_lever_low_start_s = None
+        self.active_lever_release_armed = False
+        self.lever_reset_seen_for_new_trial = False
+        self.trigger_reset_seen_for_new_trial = False
+        self.lever_pending_start_s = None
+        self.start_trial_state_interval(trigger_time_s)
+
+    def start_trial_state_interval(self, start_s):
+        self.trial_state_intervals.append([start_s, None])
+        window = max(1, self.parse_float(self.window_s, 10))
+        oldest = start_s - window * 2
+        while self.trial_state_intervals and self.trial_state_intervals[0][1] is not None and self.trial_state_intervals[0][1] < oldest:
+            self.trial_state_intervals.pop(0)
+
+    def end_trial_state_interval(self, end_s):
+        for interval in reversed(self.trial_state_intervals):
+            if interval[1] is None:
+                interval[1] = end_s
+                break
+
+    def get_lever_hold_time_s(self):
+        return max(0.0, self.parse_float(self.lever_hold_time_s, 1))
+
+    def get_lever_release_debounce_s(self):
+        return max(0.0, self.parse_float(self.lever_release_debounce_s, 0.05))
+
+    def get_lever_start_debounce_s(self):
+        return max(0.0, self.parse_float(self.lever_start_debounce_s, 0.1))
+
+    def is_lever_release_success(self, release_time_s):
+        if self.lever_req_rel_window.get():
+            if self.active_high_start_s is None:
+                return False
+            # Compare absolute times so inclusive boundaries avoid subtraction drift.
+            earliest_s = self.active_high_start_s + self.get_lever_hold_time_s()
+            latest_s = earliest_s + self.get_lever_release_window_s()
+            return earliest_s <= release_time_s <= latest_s
+        if not self.lever_require_release.get():
+            return bool(self.active_lever_release_armed)
+        if self.active_high_start_s is None:
+            return False
+        hold_s = max(0.0, release_time_s - self.active_high_start_s)
+        target_s = self.get_lever_hold_time_s()
+        window_s = self.get_lever_release_window_s()
+        return hold_s >= max(0.0, target_s - window_s)
+
+    def get_lever_release_window_s(self):
+        return max(0.0, self.parse_float(self.lever_release_window_s, 0.25))
+
+    def get_lever_release_reward_count(self, hold_s):
+        if self.lever_req_rel_window.get() or not self.is_lever_task() or not self.lever_require_release.get():
+            return 1
+        target_s = self.get_lever_hold_time_s()
+        window_s = self.get_lever_release_window_s()
+        return 3 if target_s - window_s <= hold_s <= target_s + window_s else 1
+
+    def play_next_lever_sound(self, sample_time_s):
+        if not self.play_sound_on_crossing.get():
+            return
+        if self.active_lever_next_sound_time_s is None:
+            return
+        if sample_time_s < self.active_lever_next_sound_time_s:
+            return
+        sound_id = max(1, self.active_lever_sound_id)
+        if self.active_lever_sound_stop_id is not None and sound_id >= self.active_lever_sound_stop_id:
+            self.active_lever_next_sound_time_s = None
+            self.plot_queue.put(("log", f"GO sound sequence stopped before Test sound ID {self.active_lever_sound_stop_id}; lever trial continues."))
+            return
+        duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
+        if duration_s is None:
+            self.active_lever_next_sound_time_s = None
+            return
+        self.active_lever_sound_id = sound_id + 1
+        self.active_lever_next_sound_time_s = sample_time_s + max(0.0, duration_s) + self.lever_sound_gap_s
+
+    def evaluate_active_lever_trial(self, sample_time_s):
+        row = self.get_active_trial_row()
+        if row is None or self.active_high_start_s is None:
+            return
+        self.play_next_lever_sound(sample_time_s)
+        hold_s = max(0.0, sample_time_s - self.active_high_start_s)
+        row["crossing_duration_s"] = f"{hold_s:.6f}"
+        if hold_s >= self.get_lever_hold_time_s() and not row["HIT"]:
+            if self.lever_req_rel_window.get() or self.lever_require_release.get():
+                if not self.active_lever_release_armed:
+                    self.active_lever_release_armed = True
+                    self.plot_queue.put(("log", f"Lever trial {row['trial']} target hold reached; release now to trigger reward."))
+            else:
+                row["HIT"] = 1
+                row["MISS"] = 0
+                row["CR"] = 0
+                row["FA"] = 0
+                row["ResultType"] = "HIT"
+                self.maybe_send_go_reward(row, hold_s, start_s=sample_time_s)
+                self.write_trial_log()
+                self.plot_queue.put(("results", None))
+
+    def finish_active_lever_trial(self, trial_end_s, success, hold_end_s=None):
+        row = self.get_active_trial_row()
+        if row is None:
+            self.clear_active_trial()
+            return
+        hold_s = 0.0
+        if hold_end_s is None:
+            hold_end_s = trial_end_s
+        if self.active_high_start_s is not None:
+            hold_s = max(0.0, hold_end_s - self.active_high_start_s)
+        success = bool(success or row["HIT"])
+        row["crossing_duration_s"] = f"{hold_s:.6f}"
+        row["HIT"] = int(success)
+        row["MISS"] = int(not success)
+        row["CR"] = 0
+        row["FA"] = 0
+        row["ResultType"] = "HIT" if success else "MISS"
+        if success:
+            reward_count = self.get_lever_release_reward_count(hold_s)
+            self.maybe_send_go_reward(row, hold_s, start_s=trial_end_s, reward_count=reward_count)
+        self.apply_trial_timeout(row, trial_end_s)
+        self.set_trial_end_time(row, trial_end_s)
+        self.write_trial_log()
+        self.store_trial_crossing_duration(row)
+        self.plot_queue.put(("results", None))
+        self.plot_queue.put(("log", f"Lever trial {row['trial']} hold time was {hold_s:.3f} s. Result={row['ResultType']}."))
+        self.end_trial_state_interval(trial_end_s)
+        self.clear_active_trial()
+
+    def write_trial_log(self):
+        self.write_csv(self.trial_log_path, self.trial_rows)
+        if self.trial_log_path and self.trial_rows:
+            table_path = os.path.splitext(self.trial_log_path)[0] + '.tsv'
+            with open(table_path, 'w', newline='', encoding='utf-8-sig') as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(self.trial_rows[0]), delimiter='\t')
+                writer.writeheader()
+                writer.writerows(self.trial_rows)
+
+    def set_trial_end_time(self, row, trial_end_s):
+        if row is not None and trial_end_s is not None:
+            row["trial_end_s"] = f"{trial_end_s:.6f}"
+
+    def write_csv(self, path, rows):
+        if not path or not rows:
+            return
+        with open(path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def get_parameter_block_label(self, parameter_row=None, params=None):
+        if parameter_row is None and params is None:
+            return f"block{max(1, self.parameter_block_index)}"
+        if params is not None:
+            signature = tuple((key, str(value)) for key, value in params.items())
+        else:
+            signature = tuple(
+                (key, parameter_row[key])
+                for key in parameter_row
+                if key not in (
+                    "Block",
+                    "trial",
+                    "timestamp",
+                    "light_code",
+                    "sound_id",
+                    "stimulus_mode",
+                    "sample_sound_id",
+                    "test_sound_id",
+                    "trigger_time_s",
+                    "trigger_sample",
+                    "iti_s",
+                )
+            )
+        if self.current_parameter_signature != signature:
+            self.parameter_block_index += 1
+            self.current_parameter_signature = signature
+        return f"block{self.parameter_block_index}"
+
+    def write_parameters_csv(self):
+        self.write_csv(self.parameters_log_path, self.parameter_rows)
+
+    def add_active_lick(self):
+        self.active_lick_count += 1
+        row = self.get_active_trial_row()
+        if row is not None:
+            row["lick_count"] = self.active_lick_count
+
+    def add_active_high_interval(self, crossing_end_s):
+        if self.active_high_start_s is None:
+            return
+        self.active_crossing_total_s += max(0.0, crossing_end_s - self.active_high_start_s)
+        self.active_high_start_s = None
+
+    def get_active_crossing_total(self, sample_time_s):
+        total_s = self.active_crossing_total_s
+        if self.active_high_start_s is not None:
+            total_s += max(0.0, sample_time_s - self.active_high_start_s)
+        return total_s
+
+    def get_active_response_sample_time(self, sample_time_s):
+        if self.active_response_end_s is None:
+            return sample_time_s
+        return min(sample_time_s, self.active_response_end_s)
+
+    def is_within_active_response_window(self, sample_time_s):
+        return self.active_response_end_s is None or sample_time_s <= self.active_response_end_s
+
+    def get_hit_threshold_s(self):
+        response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
+        raw_value = max(0.0, self.parse_float(self.hit_threshold_s, 50))
+        if raw_value <= 1.0:
+            return raw_value
+        return response_window_s * min(raw_value, 100.0) / 100.0
+
+    def evaluate_active_trial(self, sample_time_s):
+        row = self.get_active_trial_row()
+        if row is None:
+            return
+        if self.is_lick_trigger():
+            self.evaluate_active_lick_trial(row, sample_time_s)
+            return
+        hit_threshold_s = self.get_hit_threshold_s()
+        scoring_time_s = self.get_active_response_sample_time(sample_time_s)
+        total_s = self.get_active_crossing_total(scoring_time_s)
+        row["crossing_duration_s"] = f"{total_s:.6f}"
+        is_dmts = row["TrialType"].endswith("DMTS")
+        is_go = row["TrialType"].endswith("GO")
+        is_nogo = row["TrialType"].endswith("noGo")
+        if (is_go or is_dmts) and total_s >= hit_threshold_s and not row["HIT"]:
+            row["HIT"] = 1
+            row["MISS"] = 0
+            row["CR"] = 0
+            row["FA"] = 0
+            row["ResultType"] = "HIT"
+            self.maybe_send_go_reward(row, total_s, start_s=sample_time_s)
+            self.write_trial_log()
+        elif is_nogo and total_s >= hit_threshold_s and not row["FA"]:
+            row["HIT"] = 0
+            row["MISS"] = 0
+            row["CR"] = 0
+            row["FA"] = 1
+            row["ResultType"] = "FA"
+            self.write_trial_log()
+
+    def evaluate_active_lick_trial(self, row, sample_time_s):
+        row["lick_count"] = self.active_lick_count
+        min_lick_count = self.get_min_lick_count()
+        is_dmts = row["TrialType"].endswith("DMTS")
+        is_go = row["TrialType"].endswith("GO")
+        is_nogo = row["TrialType"].endswith("noGo")
+        if (is_go or is_dmts) and self.active_lick_count >= min_lick_count and not row["HIT"]:
+            row["HIT"] = 1
+            row["MISS"] = 0
+            row["CR"] = 0
+            row["FA"] = 0
+            row["ResultType"] = "HIT"
+            self.maybe_send_go_reward(row, float(self.active_lick_count), start_s=sample_time_s)
+            self.write_trial_log()
+        elif is_nogo and self.active_lick_count >= min_lick_count and not row["FA"]:
+            row["HIT"] = 0
+            row["MISS"] = 0
+            row["CR"] = 0
+            row["FA"] = 1
+            row["ResultType"] = "FA"
+            self.write_trial_log()
+
+    def finish_active_trial(self, trial_end_s):
+        row = self.get_active_trial_row()
+        if row is None:
+            self.clear_active_trial()
+            return
+        if self.is_lick_trigger():
+            self.finish_active_lick_trial(row, trial_end_s)
+            return
+        scoring_end_s = self.get_active_response_sample_time(trial_end_s)
+        if self.active_high_start_s is not None:
+            self.add_active_high_interval(scoring_end_s)
+        hit_threshold_s = self.get_hit_threshold_s()
+        total_s = self.active_crossing_total_s
+        row["crossing_duration_s"] = f"{total_s:.6f}"
+        is_dmts = row["TrialType"].endswith("DMTS")
+        is_go = row["TrialType"].endswith("GO")
+        is_nogo = row["TrialType"].endswith("noGo")
+        if is_go or is_dmts:
+            row["HIT"] = int(total_s >= hit_threshold_s)
+            row["MISS"] = int(total_s < hit_threshold_s)
+            row["CR"] = 0
+            row["FA"] = 0
+            row["ResultType"] = "HIT" if row["HIT"] else "MISS"
+            if row["HIT"]:
+                self.maybe_send_go_reward(row, total_s, start_s=trial_end_s)
+            if is_go:
+                self.maybe_send_pavlov_reward(row, start_s=trial_end_s)
+        elif is_nogo:
+            row["HIT"] = 0
+            row["MISS"] = 0
+            row["CR"] = int(total_s < hit_threshold_s)
+            row["FA"] = int(total_s >= hit_threshold_s)
+            row["ResultType"] = "CR" if row["CR"] else "FA"
+            if row["FA"]:
+                self.active_trial_extra_timeout_s = self.get_punish_no_go_fa_s()
+        self.apply_trial_timeout(row, trial_end_s)
+        self.set_trial_end_time(row, trial_end_s)
+        self.write_trial_log()
+        self.store_trial_crossing_duration(row)
+        self.plot_queue.put(("results", None))
+        result = f", {row['ResultType']}" if row["ResultType"] else ""
+        self.plot_queue.put(("log", f"Trial {row['trial']} total IR crossing time was {total_s:.3f} s. HIT={row['HIT']}{result}."))
+        self.end_trial_state_interval(trial_end_s)
+        self.clear_active_trial()
+
+    def finish_active_lick_trial(self, row, trial_end_s):
+        min_lick_count = self.get_min_lick_count()
+        lick_count = self.active_lick_count
+        row["lick_count"] = lick_count
+        is_dmts = row["TrialType"].endswith("DMTS")
+        is_go = row["TrialType"].endswith("GO")
+        is_nogo = row["TrialType"].endswith("noGo")
+        if is_go or is_dmts:
+            row["HIT"] = int(lick_count >= min_lick_count)
+            row["MISS"] = int(lick_count < min_lick_count)
+            row["CR"] = 0
+            row["FA"] = 0
+            row["ResultType"] = "HIT" if row["HIT"] else "MISS"
+            if row["HIT"]:
+                self.maybe_send_go_reward(row, float(lick_count), start_s=trial_end_s)
+            if is_go:
+                self.maybe_send_pavlov_reward(row, start_s=trial_end_s)
+        elif is_nogo:
+            row["HIT"] = 0
+            row["MISS"] = 0
+            row["CR"] = int(lick_count < min_lick_count)
+            row["FA"] = int(lick_count >= min_lick_count)
+            row["ResultType"] = "CR" if row["CR"] else "FA"
+            if row["FA"]:
+                self.active_trial_extra_timeout_s = self.get_punish_no_go_fa_s()
+        self.apply_trial_timeout(row, trial_end_s)
+        self.set_trial_end_time(row, trial_end_s)
+        self.write_trial_log()
+        self.store_trial_crossing_duration(row)
+        self.plot_queue.put(("results", None))
+        result = f", {row['ResultType']}" if row["ResultType"] else ""
+        self.plot_queue.put(("log", f"Trial {row['trial']} lick count was {lick_count}. HIT={row['HIT']}{result}."))
+        self.end_trial_state_interval(trial_end_s)
+        self.clear_active_trial()
+
+    def get_punish_no_go_fa_s(self):
+        return min(10.0, max(0.0, self.parse_float(self.punish_no_go_fa, 0)))
+
+    def apply_trial_timeout(self, row, trial_end_s):
+        trial_type = row["TrialType"]
+        blank_lick_timeout = (
+            trial_type.endswith("DMTS-blank")
+            and row["ResultType"] == "BLANK"
+            and getattr(self, "dmts_blank_lick_timeout", None) is not None
+            and self.dmts_blank_lick_timeout.get()
+            and (float(row.get("left_lick_count") or 0) > 0 or float(row.get("right_lick_count") or 0) > 0)
+        )
+        punish_fa = (
+            trial_type.endswith("noGo")
+            or trial_type.endswith("DMTS-nonmatch")
+            or (trial_type.endswith("DMTS-match") and row.get("choice_side") in {"left", "right"})
+            or trial_type.endswith("tAC-left")
+            or trial_type.endswith("tAC-right")
+        ) and row["ResultType"] == "FA"
+        if punish_fa or blank_lick_timeout:
+            self.active_trial_extra_timeout_s = self.get_punish_no_go_fa_s()
+        else:
+            self.active_trial_extra_timeout_s = 0.0
+        total_timeout_s = self.active_trial_base_iti_s + self.active_trial_extra_timeout_s
+        self.last_trial_end_time_s = trial_end_s
+        self.next_trial_allowed_time_s = trial_end_s + total_timeout_s
+        if self.active_trial_extra_timeout_s:
+            if blank_lick_timeout:
+                timeout_label = "DMTS blank licking"
+            elif "DMTS-" in trial_type:
+                timeout_label = "DMTS FA"
+            elif trial_type.endswith("tAC-left") or trial_type.endswith("tAC-right"):
+                timeout_label = "tAC wrong choice"
+            else:
+                timeout_label = "noGo FA"
+            self.plot_queue.put((
+                "log",
+                f"{timeout_label} timeout added: {self.active_trial_extra_timeout_s:g} s. "
+                f"Next trial allowed after {total_timeout_s:g} s from trial end.",
+            ))
+
+    def store_trial_crossing_duration(self, row):
+        if row is None:
+            return
+        trial_number = row.get("trial")
+        if trial_number in self.trial_crossing_duration_stored:
+            return
+        value = row.get("crossing_duration_s", "")
+        try:
+            crossing_duration_s = float(value)
+        except Exception:
+            return
+        trial_type = row.get("TrialType", "unknown")
+        self.dict_across_trials.setdefault(trial_type, []).append(crossing_duration_s)
+        self.trial_crossing_duration_stored.add(trial_number)
+
+    def maybe_send_go_reward(self, row, total_s, start_s=None, reward_count=1):
+        if self.active_reward_decided:
+            return
+        self.active_reward_decided = True
+        if str(row.get("TrialType", "")).endswith("Lever-Test") and not row.get("lever_reward_test_trials", 0):
+            self.plot_queue.put(("log", f"Trial {row['trial']} is a lever Test trial; no reward."))
+            return
+        reward_count = max(1, int(reward_count))
+        reward_probability = min(1.0, max(0.0, self.parse_float(self.reward_go, 1.0)))
+        if (
+            self.is_lever_task()
+            and self.lever_require_release.get()
+            and not self.lever_req_rel_window.get()
+            and reward_count == 3
+        ):
+            # In-window bonus releases are guaranteed; RewardGo gates late releases only.
+            reward_probability = 1.0
+        draw = random.random()
+        if self.is_lick_trigger() or self.is_tac_task():
+            measure = f"{int(total_s)} licks"
+        else:
+            measure = f"{total_s:.3f} s total IR crossing"
+        if draw <= reward_probability and self.trigger_output_on_crossing.get():
+            delay_s = self.get_classic_go_reward_delay_s(row)
+            reward_start_s = (start_s or 0.0) + delay_s
+            reward_side = self.get_reward_output_side(row)
+            if delay_s > 0:
+                self.schedule_pending_go_reward(row, reward_start_s, measure, reward_probability, draw, reward_side)
+            else:
+                self.send_reward_pulses(reward_count, from_worker=True, start_s=start_s, reward_side=reward_side)
+                self.active_reward_sent = True
+                reward_text = "Reward sent" if reward_count == 1 else f"{reward_count} rewards sent"
+                self.plot_queue.put((
+                    "log",
+                    f"Trial {row['trial']} qualified for reward ({row.get('ResultType') or 'HIT'}) with {measure}. "
+                    f"{reward_text} to {reward_side}, p={reward_probability:.3f}, draw={draw:.3f}.",
+                ))
+        else:
+            self.plot_queue.put((
+                "log",
+                f"Trial {row['trial']} qualified for reward ({row.get('ResultType') or 'HIT'}) with {measure}. "
+                f"Reward skipped, p={reward_probability:.3f}, draw={draw:.3f}.",
+            ))
+
+    def send_reward_pulses(self, count, from_worker=False, start_s=None, reward_side="left"):
+        count = max(1, int(count))
+        pulse_s = self.get_reward_pulse_s(reward_side)
+        for index in range(count):
+            pulse_start_s = start_s
+            if start_s is not None:
+                pulse_start_s = start_s + index * pulse_s * 2
+            self.send_output_pulse(from_worker=from_worker, start_s=pulse_start_s, reward_side=reward_side)
+            if index < count - 1 and pulse_s > 0:
+                time.sleep(pulse_s)
+
+    def get_classic_go_reward_delay_s(self, row):
+        if row is None:
+            return 0.0
+        trial_type = str(row.get("TrialType", ""))
+        if trial_type != "GO" and not trial_type.endswith("tAC-left") and not trial_type.endswith("tAC-right"):
+            return 0.0
+        return max(0.0, self.parse_float(self.reward_delay_s, 0.0))
+
+    def get_reward_output_side(self, row):
+        if row is not None and str(row.get("TrialType", "")).endswith("DMTS-nonmatch") and row.get("ResultType") == "CR":
+            return "right"
+        if row is not None and "DMTS-" in str(row.get("TrialType", "")) and row.get("choice_side") in {"left", "right"}:
+            return row["choice_side"]
+        if row is not None and str(row.get("TrialType", "")).endswith("tAC-right"):
+            return "right"
+        return "left"
+
+    def schedule_pending_go_reward(self, row, reward_start_s, measure, reward_probability, draw, reward_side="left"):
+        self.active_pending_reward_due_s = reward_start_s
+        self.active_pending_reward_row = row
+        self.active_pending_reward_measure = measure
+        self.active_pending_reward_probability = reward_probability
+        self.active_pending_reward_draw = draw
+        self.active_pending_reward_side = reward_side
+        reward_duration_s = self.get_reward_pulse_s(reward_side)
+        if self.active_trial_end_s is not None:
+            self.active_trial_end_s = max(self.active_trial_end_s, reward_start_s + reward_duration_s)
+        self.plot_queue.put((
+            "log",
+            f"Trial {row['trial']} reached HIT threshold with {measure}. "
+            f"{reward_side.capitalize()} reward scheduled after {self.get_classic_go_reward_delay_s(row):.3f} s, "
+            f"p={reward_probability:.3f}, draw={draw:.3f}.",
+        ))
+
+    def process_pending_go_reward(self, sample_time_s):
+        if self.active_pending_reward_due_s is None:
+            return
+        if sample_time_s < self.active_pending_reward_due_s:
+            return
+        row = self.active_pending_reward_row
+        self.send_output_pulse(
+            from_worker=True,
+            start_s=self.active_pending_reward_due_s,
+            reward_side=self.active_pending_reward_side,
+        )
+        self.active_reward_sent = True
+        self.plot_queue.put((
+            "log",
+            f"Trial {row['trial'] if row else '?'} delayed {self.active_pending_reward_side} reward sent with {self.active_pending_reward_measure}. "
+            f"p={self.active_pending_reward_probability:.3f}, draw={self.active_pending_reward_draw:.3f}.",
+        ))
+        self.active_pending_reward_due_s = None
+        self.active_pending_reward_row = None
+        self.active_pending_reward_measure = ""
+        self.active_pending_reward_probability = 0.0
+        self.active_pending_reward_draw = 0.0
+        self.active_pending_reward_side = "left"
+
+    def get_pavlov_probability(self):
+        return min(1.0, max(0.0, self.parse_float(self.pavlov, 0.0)))
+
+    def maybe_send_pavlov_reward(self, row, start_s=None):
+        if self.active_reward_sent or self.active_pending_reward_due_s is not None:
+            return
+        pavlov_probability = 1.0 if getattr(self, "active_dmts_reminder", False) and "DMTS-match" in str(row.get("TrialType", "")) else self.get_pavlov_probability()
+        if pavlov_probability <= 0:
+            return
+        draw = random.random()
+        if draw <= pavlov_probability and self.trigger_output_on_crossing.get():
+            self.send_output_pulse(from_worker=True, start_s=start_s)
+            self.active_reward_sent = True
+            self.plot_queue.put((
+                "log",
+                f"Trial {row['trial']} {row['TrialType']} Pavlov reward sent, p={pavlov_probability:.3f}, draw={draw:.3f}.",
+            ))
+        else:
+            self.plot_queue.put((
+                "log",
+                f"Trial {row['trial']} {row['TrialType']} Pavlov reward skipped, p={pavlov_probability:.3f}, draw={draw:.3f}.",
+            ))
+
+    def get_active_trial_row(self):
+        if self.active_trial_index is None:
+            return None
+        for row in reversed(self.trial_rows):
+            if row["trial"] == self.active_trial_index:
+                return row
+        return None
+
+    def clear_active_trial(self):
+        self.active_trial_index = None
+        self.active_trial_start_s = None
+        self.active_trial_end_s = None
+        self.active_response_end_s = None
+        self.active_high_start_s = None
+        self.active_crossing_total_s = 0.0
+        self.active_lick_count = 0
+        self.active_reward_decided = False
+        self.active_reward_sent = False
+        self.active_trial_base_iti_s = 0.0
+        self.active_trial_extra_timeout_s = 0.0
+        self.active_lever_sound_id = 1
+        self.active_lever_next_sound_time_s = None
+        self.active_lever_low_start_s = None
+        self.active_lever_release_armed = False
+        self.lever_reset_seen_for_new_trial = False
+        self.lever_pending_start_s = None
+        self.active_dmts_sample_sound_id = 1
+        self.active_dmts_test_sound_id = 1
+        self.active_dmts_test_sound_time_s = None
+        self.active_dmts_response_start_s = None
+        self.active_dmts_response_end_s = None
+        self.active_dmts_reward_start_s = None
+        self.active_dmts_response_evaluated = False
+        self.active_dmts_response_met = False
+        self.active_dmts_low_start_s = None
+        self.active_dmts_test_sound_played = False
+        self.active_dmts_response_started = False
+        self.active_dmts_scored = False
+
+    def classify_trial_sound(self, sound_id, test_sound_id=None):
+        if int(sound_id) == 0:
+            return 0, "DMTS-blank" if self.is_dmts_task() else "BLANK"
+        if self.is_lever_task():
+            return 1, "Lever"
+        if self.is_dmts_task():
+            if test_sound_id is not None and int(sound_id) != int(test_sound_id):
+                return 2, "DMTS-nonmatch"
+            return 1, "DMTS-match"
+        if self.is_tac_task():
+            side = self.get_tac_side_for_sound(sound_id)
+            return (1, "tAC-left") if side == "left" else (2, "tAC-right")
+        values = self._parse_number_list(self.sequence_values.get(), default=[sound_id], cast=int)
+        if not values or sound_id == values[0]:
+            return 1, "GO"
+        if len(values) > 1 and sound_id == values[1]:
+            return 2, "noGo"
+        return 0, "unknown"
+
+    def classify_light_code(self, light_code):
+        light_code = int(float(light_code or 0))
+        if light_code == 1:
+            return 1, "GO"
+        if light_code == 0:
+            return 0, "BLANK"
+        return 2, "noGo"
+
+    def classify_trial_stimulus(self, stimulus, fallback_sound_id=0, test_sound_id=None):
+        if stimulus:
+            if self.braincodec_sequence_loaded:
+                return int(stimulus["trial_type_id"]), str(stimulus["trial_type"])
+            return self.classify_trial_sound(int(stimulus["sound_id"]), test_sound_id)
+        return self.classify_trial_sound(fallback_sound_id, test_sound_id)
+
+    def update_trial_display(self, sound_id, trial_type_id, trial_type):
+        self.current_trial_var.set(str(self.trial_index))
+        self.last_trial_sound_var.set(str(sound_id))
+        self.last_trial_type_var.set(f"{trial_type_id} {trial_type}")
+
+    def send_light_trigger_pulse(self, from_worker=False):
+        pulse_s = max(0, self.parse_float(self.light_ttl_pulse_ms, 200) / 1000.0)
+        line_name = self.get_light_ttl_line()
+        try:
+            if nidaqmx is None:
+                msg = f"Light trigger simulated on {line_name} for {pulse_s * 1000:g} ms."
+            else:
+                task = nidaqmx.Task()
+                try:
+                    task.do_channels.add_do_chan(line_name, line_grouping=LineGrouping.CHAN_PER_LINE)
+                    task.write(True)
+                    time.sleep(pulse_s)
+                    task.write(False)
+                    msg = f"Light trigger sent on {line_name} for {pulse_s * 1000:g} ms."
+                finally:
+                    task.close()
+        except Exception as exc:
+            msg = f"Light trigger error on {line_name}: {exc}"
+            success = False
+        else:
+            success = True
+        if from_worker:
+            self.plot_queue.put(("log", msg))
+        else:
+            self.log(msg)
+        return success
+
+    def get_reward_pulse_s(self, reward_side="left"):
+        duration = self.right_pulse_ms if reward_side == "right" else self.pulse_ms
+        return max(0.0, self.parse_float(duration, 50) / 1000.0)
+
+    def send_output_pulse(self, from_worker=False, start_s=None, reward_side="left"):
+        pulse_s = self.get_reward_pulse_s(reward_side)
+        self.record_trigger_pulse(pulse_s, start_s=start_s)
+        pulse_ok = False
+        try:
+            if (self.reward_task is None or (reward_side == "right" and self.right_reward_task is None)) and nidaqmx is not None:
+                self.setup_tasks()
+            task = self.right_reward_task if reward_side == "right" else self.reward_task
+            line_name = "port2/line7" if reward_side == "right" else "port2/line6"
+            if task is not None:
+                task.write(True)
+                time.sleep(pulse_s)
+                task.write(False)
+                msg = f"{reward_side.capitalize()} output pulse sent on {line_name} for {pulse_s * 1000:g} ms."
+                pulse_ok = True
+            else:
+                msg = f"{reward_side.capitalize()} output pulse simulated on {line_name}; nidaqmx is not available."
+                pulse_ok = True
+        except Exception as exc:
+            msg = f"{reward_side.capitalize()} output pulse error: {exc}"
+        if from_worker:
+            self.plot_queue.put(("log", msg))
+        else:
+            self.log(msg)
+        if pulse_ok:
+            self.reward_pulse_count += 1
+            if from_worker:
+                self.plot_queue.put(("health", None))
+            else:
+                self.update_health_readouts()
+
+    def toggle_reward_train(self, reward_side="left"):
+        if self.reward_train_after_id is not None or self.reward_train_remaining > 0:
+            self.cancel_reward_train(log_message=True)
+            return
+        self.start_reward_train(count=100, interval_ms=1000, reward_side=reward_side)
+
+    def start_reward_train(self, count=100, interval_ms=5000, reward_side="left"):
+        self.reward_train_total = max(0, int(count))
+        self.reward_train_remaining = self.reward_train_total
+        self.reward_train_interval_ms = max(1, int(interval_ms))
+        self.reward_train_side = "right" if reward_side == "right" else "left"
+        if self.reward_train_remaining <= 0:
+            return
+        self.update_reward_train_buttons(active=True)
+        self.log(
+            f"Starting {self.reward_train_total} {self.reward_train_side} rewards, "
+            f"one every {self.reward_train_interval_ms / 1000:g} s."
+        )
+        self.run_reward_train_step()
+
+    def run_reward_train_step(self):
+        self.reward_train_after_id = None
+        if self.reward_train_remaining <= 0:
+            self.finish_reward_train()
+            return
+        delivered_index = self.reward_train_total - self.reward_train_remaining + 1
+        self.log(f"{self.reward_train_side.capitalize()} reward train pulse {delivered_index}/{self.reward_train_total}.")
+        self.send_output_pulse(reward_side=self.reward_train_side)
+        self.reward_train_remaining -= 1
+        if self.reward_train_remaining <= 0:
+            self.finish_reward_train()
+            return
+        self.reward_train_after_id = self.after(self.reward_train_interval_ms, self.run_reward_train_step)
+
+    def finish_reward_train(self):
+        self.reward_train_after_id = None
+        self.reward_train_remaining = 0
+        self.reward_train_total = 0
+        self.update_reward_train_buttons(active=False)
+        self.log("Reward train finished.")
+
+    def cancel_reward_train(self, log_message=True):
+        if self.reward_train_after_id is not None:
+            try:
+                self.after_cancel(self.reward_train_after_id)
+            except Exception:
+                pass
+        was_active = self.reward_train_after_id is not None or self.reward_train_remaining > 0
+        self.reward_train_after_id = None
+        self.reward_train_remaining = 0
+        self.reward_train_total = 0
+        self.update_reward_train_buttons(active=False)
+        if log_message and was_active:
+            self.log("Reward train cancelled.")
+
+    def update_reward_train_buttons(self, active=False):
+        if not hasattr(self, "reward_train_left_button") or not hasattr(self, "reward_train_right_button"):
+            return
+        if active and self.reward_train_side == "left":
+            self.reward_train_left_button.configure(text="Cancel Left", state=tk.NORMAL)
+            self.reward_train_right_button.configure(text="100 Right", state=tk.DISABLED)
+        elif active and self.reward_train_side == "right":
+            self.reward_train_left_button.configure(text="100 Left", state=tk.DISABLED)
+            self.reward_train_right_button.configure(text="Cancel Right", state=tk.NORMAL)
+        else:
+            self.reward_train_left_button.configure(text="100 Left", state=tk.NORMAL)
+            self.reward_train_right_button.configure(text="100 Right", state=tk.NORMAL)
+
+    def record_trigger_pulse(self, pulse_s, start_s=None):
+        if self.acq_start_perf is None:
+            return
+        if start_s is None:
+            start_s = time.perf_counter() - self.acq_start_perf
+        end_s = start_s + pulse_s
+        self.trigger_pulses.append((start_s, end_s))
+        self.full_trigger_pulses.append((start_s, end_s))
+        window = max(1, self.parse_float(self.window_s, 10))
+        oldest = start_s - window * 2
+        while self.trigger_pulses and self.trigger_pulses[0][1] < oldest:
+            self.trigger_pulses.pop(0)
+
+    def load_sound_file(self):
+        if loadmat is None:
+            self.log("Cannot load sound: scipy.io.loadmat is unavailable.")
+            return False
+        path = self.sound_file.get()
+        if not os.path.exists(path):
+            self.log(f"Sound file not found: {path}")
+            return False
+        try:
+            data = loadmat(path, squeeze_me=True, struct_as_record=False)
+            self.sound_data = data["Sound"]
+            self.sound_loaded = True
+            self.log(f"Loaded sound file: {path}")
+            return True
+        except Exception as exc:
+            self.log(f"Sound load error: {exc}")
+            return False
+
+    def get_sound_by_id(self, sound_id):
+        if not self.sound_loaded and not self.load_sound_file():
+            return None
+        sound = self.sound_data
+        try:
+            if np is not None:
+                arr = np.asarray(sound, dtype=object)
+                if arr.dtype == object:
+                    selected = arr.flat[sound_id - 1]
+                elif arr.ndim == 1:
+                    selected = arr
+                else:
+                    selected = arr[:, sound_id - 1]
+                return np.asarray(selected, dtype=float).reshape(-1)
+        except Exception:
+            pass
+        self.log("Could not extract selected sound from MAT file.")
+        return None
+
+    def get_sound_level_gain(self):
+        return self.parse_float(self.sound_level, 1.0)
+
+    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None):
+        if sound_id is None:
+            sound_id = self.consume_next_sound_id() if use_sequence else self.parse_int(self.sound_id, 1)
+        if int(sound_id or 0) <= 0:
+            return 0.0
+        signal = self.get_sound_by_id(sound_id)
+        if signal is None:
+            return None
+        gain = self.get_sound_level_gain()
+        signal = signal * gain
+        fs = 192000
+        duration_s = len(signal) / fs if len(signal) else 0.0
+        peak_v = 0.0
+        try:
+            peak_v = float(np.max(np.abs(signal))) if np is not None and len(signal) else max(abs(float(value)) for value in signal)
+        except Exception:
+            peak_v = 0.0
+        msg = f"Played sound id {sound_id}, level {gain:g}, peak {peak_v:.3g} V."
+        try:
+            self.record_sound_output(signal, fs, sound_id, start_s=start_s)
+            if nidaqmx is not None:
+                self.play_sound_on_ni(signal, fs)
+            elif sd is not None:
+                sd.play(signal, fs, blocking=False)
+            else:
+                msg = f"Sound id {sound_id} selected; no NI or sounddevice playback backend is available."
+        except Exception as exc:
+            msg = f"Sound playback error: {exc}"
+            duration_s = None
+        if from_worker:
+            self.plot_queue.put(("log", msg))
+        else:
+            self.log(msg)
+        return duration_s
+
+    def record_sound_output(self, signal, fs, sound_id=None, start_s=None):
+        if self.acq_start_perf is None:
+            return
+        if start_s is None:
+            start_s = time.perf_counter() - self.acq_start_perf
+        values = signal.tolist() if hasattr(signal, "tolist") else list(signal)
+        self.sound_outputs.append((start_s, fs, values, sound_id))
+        self.full_sound_outputs.append((start_s, fs, values, sound_id))
+        window = max(1, self.parse_float(self.window_s, 10))
+        oldest = start_s - window * 2
+        while self.sound_outputs:
+            first_start, first_fs, first_values = self.sound_outputs[0][:3]
+            first_end = first_start + len(first_values) / first_fs
+            if first_end >= oldest:
+                break
+            self.sound_outputs.pop(0)
+
+    def play_sound_on_ni(self, signal, fs):
+        device = self.device.get().strip() or "Dev1"
+        task = nidaqmx.Task()
+        try:
+            task.ao_channels.add_ao_voltage_chan(f"{device}/ao0")
+            task.timing.cfg_samp_clk_timing(fs, sample_mode=AcquisitionType.FINITE, samps_per_chan=len(signal))
+            values = signal.tolist() if hasattr(signal, "tolist") else list(signal)
+            task.write(values, auto_start=False)
+            task.start()
+            task.wait_until_done(timeout=max(2.0, len(values) / fs + 1.0))
+            task.stop()
+        finally:
+            task.close()
+
+    def generate_sequence(self, log=True):
+        self.ensure_sequence_controls()
+        if self.is_dmts_task():
+            try:
+                self.get_dmts_modality_probabilities()
+            except ValueError as exc:
+                self.log(str(exc))
+                return False
+        self.braincodec_sequence_loaded = False
+        self.light_sequence = []
+        self.light_sequence_index = 0
+        self.trial_stimulus_sequence = []
+        self.trial_stimulus_index = 0
+        self.current_trial_stimulus = None
+        length = max(1, self.parse_int(self.sequence_length, 300))
+        default_values = [1, 2, 0] if self.is_dmts_task() else [1, 10]
+        values = self._parse_number_list(self.sequence_values.get(), default=default_values, cast=int)
+        weights = self._parse_number_list(self.sequence_weights.get(), default=[0.5, 0.5], cast=float)
+        if self.is_dmts_task():
+            values = [value if value in (0, 1, 2) else 2 for value in values]
+            if len(weights) != len(values):
+                weights = [0.5, 0.5, 0.0]
+                values = [1, 2, 0]
+            by_type = {value: sum(weight for code, weight in zip(values, weights) if code == value) for value in (1, 2, 0)}
+            values = [1, 2, 0]
+            weights = [by_type[value] for value in values]
+            self.sequence_values.set(" ".join(str(value) for value in values))
+            self.sequence_weights.set(" ".join(str(weight) for weight in weights))
+        if len(weights) != len(values) or any(not math.isfinite(w) or w < 0 for w in weights) or sum(weights) <= 0:
+            weights = [1.0 / len(values)] * len(values)
+            self.sequence_weights.set(" ".join(str(w) for w in weights))
+        rng = random
+        seed_text = self.random_seed.get().strip() if hasattr(self, "random_seed") else ""
+        if seed_text:
+            try:
+                seed = int(float(seed_text))
+            except Exception:
+                seed = seed_text
+            rng = random.Random(seed)
+        self.sound_sequence = rng.choices(values, weights=weights, k=length)
+        self.sound_sequence_index = 0
+        self.update_sequence_display()
+        if log:
+            label = "DMTS trial-type" if self.is_dmts_task() else "sound"
+            self.log(f"Generated {label} sequence: {length} entries from {values}.")
+
+    def ensure_sequence_controls(self):
+        if not hasattr(self, "sequence_length"):
+            self.sequence_length = tk.StringVar(value="300")
+        if not hasattr(self, "sequence_values"):
+            self.sequence_values = tk.StringVar(value="1 2" if self.is_dmts_task() else "1 10")
+        if not hasattr(self, "sequence_weights"):
+            self.sequence_weights = tk.StringVar(value="0.5 0.5")
+        if not hasattr(self, "sequence_index_var"):
+            self.sequence_index_var = tk.StringVar(value="0")
+        if not hasattr(self, "sequence_next_var"):
+            self.sequence_next_var = tk.StringVar(value="1")
+        if not hasattr(self, "sound_sequence"):
+            self.sound_sequence = []
+        if not hasattr(self, "sound_sequence_index"):
+            self.sound_sequence_index = 0
+        if not hasattr(self, "light_sequence"):
+            self.light_sequence = []
+        if not hasattr(self, "light_sequence_index"):
+            self.light_sequence_index = 0
+        if not hasattr(self, "trial_stimulus_sequence"):
+            self.trial_stimulus_sequence = []
+        if not hasattr(self, "trial_stimulus_index"):
+            self.trial_stimulus_index = 0
+
+    def _parse_number_list(self, text, default, cast):
+        try:
+            values = [cast(item) for item in text.replace(",", " ").split()]
+            return values or list(default)
+        except Exception:
+            return list(default)
+
+    def update_sequence_display(self):
+        if self.trial_stimulus_sequence:
+            self.sequence_index_var.set(str(self.trial_stimulus_index + 1))
+            stimulus = self.trial_stimulus_sequence[self.trial_stimulus_index]
+            self.sequence_next_var.set(
+                f"L{stimulus['light_code']} S{stimulus['sound_id']} {stimulus['trial_type']}"
+            )
+            self.sound_id.set(str(stimulus["sound_id"]))
+            return
+        if not self.sound_sequence:
+            self.sequence_index_var.set("0")
+            self.sequence_next_var.set(self.sound_id.get())
+            return
+        self.sequence_index_var.set(str(self.sound_sequence_index + 1))
+        next_id = self.sound_sequence[self.sound_sequence_index]
+        if self.is_dmts_task():
+            next_label = {0: "blank", 1: "match", 2: "nonmatch"}.get(int(next_id), "match")
+            self.sequence_next_var.set(f"{next_id} {next_label}")
+        else:
+            self.sequence_next_var.set(str(next_id))
+            self.sound_id.set(str(next_id))
+
+    def consume_next_trial_stimulus(self):
+        if self.trial_stimulus_sequence:
+            stimulus = self.trial_stimulus_sequence[self.trial_stimulus_index]
+            self.current_trial_stimulus = stimulus
+            self.trial_stimulus_index += 1
+            self.light_sequence_index = self.trial_stimulus_index
+            self.sound_sequence_index = self.trial_stimulus_index
+            if self.trial_stimulus_index >= len(self.trial_stimulus_sequence):
+                self.trial_stimulus_index = 0
+                self.light_sequence_index = 0
+                self.sound_sequence_index = 0
+                self.plot_queue.put(("log", "Trial stimulus sequence wrapped to the beginning."))
+            self.after(0, self.update_sequence_display)
+            return stimulus
+
+        sound_id = self.consume_next_sound_id() if self.play_sound_on_crossing.get() else self.parse_int(self.sound_id, 1)
+        stimulus = self.make_trial_stimulus(0, sound_id)
+        trial_type_id, trial_type = self.classify_trial_sound(sound_id)
+        stimulus["trial_type_id"] = trial_type_id
+        stimulus["trial_type"] = trial_type
+        self.current_trial_stimulus = stimulus
+        return stimulus
+
+    def consume_next_sound_id(self):
+        if not self.sound_sequence:
+            self.generate_sequence(log=False)
+        sound_id = self.sound_sequence[self.sound_sequence_index]
+        self.sound_sequence_index += 1
+        if self.sound_sequence_index >= len(self.sound_sequence):
+            self.sound_sequence_index = 0
+            self.plot_queue.put(("log", "Sound sequence wrapped to the beginning."))
+        self.after(0, self.update_sequence_display)
+        return sound_id
+
+    def consume_next_dmts_trial_type(self):
+        if getattr(self, "dmts_reminder_remaining", 0) and self.is_lick_trigger():
+            return 1
+        trial_type_id = int(self.consume_next_sound_id())
+        return trial_type_id if trial_type_id in (0, 1, 2) else 1
+
+    def open_bin(self):
+        path = filedialog.askopenfilename(initialdir=self.save_root.get(), filetypes=[("BIN files", "*.bin"), ("All files", "*.*")])
+        if not path:
+            return
+        with open(path, "rb") as f:
+            data_bytes = f.read()
+        count = len(data_bytes) // 8
+        values = list(struct.unpack(f"{count}d", data_bytes[: count * 8]))
+        rate = self.read_rate_from_parameters(os.path.dirname(path))
+        times = [i / rate for i in range(len(values))]
+        self.time_buffer = times
+        self.data_buffer = values
+        self.current_behavior_baseline = statistics.median(values) if self.subtract_baseline.get() and values else 0.0
+        self.draw_plot(times, values)
+        self.log(f"Opened {os.path.basename(path)}: {len(values)} samples at {rate:g} Hz.")
+
+    def read_rate_from_parameters(self, folder):
+        rate = self.parse_float(self.rate_hz, 1000)
+        path = os.path.join(folder, "parameters.dat")
+        if not os.path.exists(path):
+            return rate
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if line.startswith("frec="):
+                    try:
+                        rate = float(line.split("=", 1)[1].strip())
+                        self.rate_hz.set(str(rate))
+                    except Exception:
+                        pass
+        return rate
+
+    def save_nwb_placeholder(self):
+        self.save_nwb(silent=False)
+
+    def save_nwb(self, silent=False):
+        if self.nwb_saving:
+            msg = "NWB save is already in progress."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showwarning("Save NWB", msg)
+            return False
+
+        if NWBFile is None or NWBHDF5IO is None or TimeSeries is None:
+            msg = "Cannot save NWB: pynwb is not installed. Install it with pip install pynwb."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showerror("Save NWB", msg)
+            return False
+        if h5py is None:
+            msg = "Cannot save GUI-compatible NWB: h5py is not installed. Install it with pip install h5py."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showerror("Save NWB", msg)
+            return False
+        if not self.exp_folder:
+            msg = "No session folder is available yet. Start acquisition or open a saved session first."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showwarning("Save NWB", msg)
+            return False
+
+        behavior_signal_path = self.get_behavior_signal_binary_path()
+        if not behavior_signal_path:
+            msg = f"Cannot save NWB: BehaviorSignal.bin was not found in {self.exp_folder}."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showwarning("Save NWB", msg)
+            return False
+
+        data = self.read_binary_double_trace(behavior_signal_path)
+        if len(data) == 0:
+            msg = f"Cannot save NWB: {os.path.basename(behavior_signal_path)} contains no samples."
+            if silent:
+                self.log(msg)
+            else:
+                messagebox.showwarning("Save NWB", msg)
+            return False
+
+        rate = self.read_rate_from_parameters(self.exp_folder)
+        identifier = self.safe_filename_component(
+            f"{self.user_name.get()}_M{self.mouse_id.get()}_{os.path.basename(self.exp_folder)}"
+        )
+        nwb_path = os.path.join(self.exp_folder, f"{identifier}.nwb")
+        nwbfile = NWBFile(
+            session_description=f"BASIL acquisition for {self.project_name.get()}",
+            identifier=identifier,
+            session_start_time=datetime.now(timezone.utc).astimezone(),
+        )
+        nwbfile.add_acquisition(
+            TimeSeries(
+                name="IRFork",
+                data=data,
+                unit="volts",
+                starting_time=0.0,
+                rate=rate,
+                description="Compatibility behavior signal trace. Current sessions save this signal in BehaviorSignal.bin.",
+            )
+        )
+        nwbfile.add_acquisition(
+            TimeSeries(
+                name="BehaviorSignal",
+                data=data,
+                unit="volts",
+                starting_time=0.0,
+                rate=rate,
+                description="Selected behavior signal used for trial detection and scoring.",
+            )
+        )
+        left_lick_trace = self.get_optional_binary_trace("LeftLick.bin", len(data))
+        if left_lick_trace is not None:
+            nwbfile.add_acquisition(
+                TimeSeries(
+                    name="LeftLick",
+                    data=left_lick_trace,
+                    unit="volts",
+                    starting_time=0.0,
+                    rate=rate,
+                    description=f"Continuous left lick signal from {self.get_tac_left_channel_name()}.",
+                )
+            )
+        right_lick_trace = self.get_optional_binary_trace("RightLick.bin", len(data))
+        if right_lick_trace is not None:
+            nwbfile.add_acquisition(
+                TimeSeries(
+                    name="RightLick",
+                    data=right_lick_trace,
+                    unit="volts",
+                    starting_time=0.0,
+                    rate=rate,
+                    description=f"Continuous right lick signal from {self.get_tac_right_channel_name()}.",
+                )
+            )
+        trigger_trace = self.build_trigger_trace(len(data), rate)
+        nwbfile.add_acquisition(
+            TimeSeries(
+                name="Reward",
+                data=trigger_trace,
+                unit="volts",
+                starting_time=0.0,
+                rate=rate,
+                description="Commanded reward/trigger digital output represented as a 0 to 5 V trace.",
+            )
+        )
+        sound_epochs = self.build_contract_sound_epochs(len(data), rate)
+        export_trial_rows = self.get_nwb_contract_trial_rows(len(data), rate, sound_epochs)
+        trial_type_trace = self.build_contract_trial_type_trace(len(data), rate, export_trial_rows, sound_epochs)
+        nwbfile.add_acquisition(
+            TimeSeries(
+                name="TrialType",
+                data=trial_type_trace,
+                unit="marker",
+                starting_time=0.0,
+                rate=10.0,
+                description="Behavior GUI compatibility marker trace; value 99 marks trial anchors at 100 ms bins.",
+            )
+        )
+        sound_copy, which_sound = self.build_contract_sound_traces(len(data), rate, sound_epochs)
+        recorded_soundcopy = self.get_recorded_soundcopy_trace(len(data))
+        if recorded_soundcopy is not None:
+            sound_copy = recorded_soundcopy
+        nwbfile.add_stimulus(
+            TimeSeries(
+                name="SoundCopy",
+                data=sound_copy,
+                unit="volts",
+                starting_time=0.0,
+                rate=rate,
+                description="Continuous sound copy trace for behavior GUI compatibility; uses recorded NI SoundCopy when available.",
+            )
+        )
+        nwbfile.add_stimulus(
+            TimeSeries(
+                name="WhichSound",
+                data=which_sound,
+                unit="sound_id",
+                starting_time=0.0,
+                rate=rate,
+                description="Continuous encoded sound identity trace for behavior GUI compatibility.",
+            )
+        )
+        tmp_path = os.path.join(self.exp_folder, f".{identifier}.tmp.nwb")
+        try:
+            self.nwb_saving = True
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+            with NWBHDF5IO(tmp_path, "w") as io:
+                io.write(nwbfile)
+            self.write_nwb_contract_hdf5(tmp_path, rate, export_trial_rows)
+            self.validate_nwb_contract_hdf5(tmp_path)
+            os.replace(tmp_path, nwb_path)
+        except Exception as exc:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
+            msg = f"Could not save NWB file: {exc}"
+            self.log(msg)
+            if not silent:
+                messagebox.showerror("Save NWB", msg)
+            return False
+        finally:
+            self.nwb_saving = False
+
+        msg = f"Saved NWB file: {nwb_path}"
+        self.log(msg)
+        if not silent:
+            messagebox.showinfo("Save NWB", msg)
+        return True
+
+    def safe_filename_component(self, text):
+        cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(text)).strip(" .")
+        return cleaned or "BASIL_session"
+
+    def write_nwb_contract_hdf5(self, path, rate, trial_rows):
+        utf8 = h5py.string_dtype(encoding="utf-8")
+        created_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+        with h5py.File(path, "a") as h5f:
+            self.replace_hdf5_dataset(h5f, "file_create_date", [created_at], dtype=utf8)
+
+            trials = h5f.require_group("intervals").require_group("trials")
+            trial_ids = [int(row.get("trial", index + 1)) for index, row in enumerate(trial_rows)]
+            sound_ids = [int(row.get("sound_id", 0) or 0) for row in trial_rows]
+            sample_sound_ids = [int(row.get("sample_sound_id", row.get("sound_id", 0)) or 0) for row in trial_rows]
+            test_sound_ids = [int(row.get("test_sound_id", row.get("sound_id", 0)) or 0) for row in trial_rows]
+            hmcf = [self.nwb_contract_hmcf(row) for row in trial_rows]
+            trial_types = [self.nwb_contract_trial_type(row) for row in trial_rows]
+            self.replace_hdf5_dataset(trials, "id", trial_ids)
+            for column in ("trigger_time_s", "crossing_duration_s", "trial_end_s"):
+                values = [float(row[column]) if row.get(column) not in (None, "") else float("nan")
+                          for row in trial_rows]
+                self.replace_hdf5_dataset(trials, column, values, dtype="float64")
+            self.replace_hdf5_dataset(trials, "sound_ids", sound_ids)
+            self.replace_hdf5_dataset(trials, "sample_sound_ids", sample_sound_ids)
+            self.replace_hdf5_dataset(trials, "test_sound_ids", test_sound_ids)
+            for column in ('sample_light_id', 'test_light_id', 'dmts_light_confirmed'):
+                self.replace_hdf5_dataset(trials, column, [int(row.get(column, 0) or 0) for row in trial_rows])
+            self.replace_hdf5_dataset(trials, 'dmts_light_timing_extension_s',
+                                      [float(row.get('dmts_light_timing_extension_s', 0) or 0) for row in trial_rows])
+            for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error'):
+                self.replace_hdf5_dataset(trials, column, [str(row.get(column, '')) for row in trial_rows], dtype=utf8)
+            self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)
+            self.replace_hdf5_dataset(trials, "trial_type", trial_types)
+
+            parameters = h5f.require_group("acquisition").require_group("Parameters")
+            parameter_items = self.build_nwb_contract_parameters(rate, len(trial_rows))
+            self.replace_hdf5_dataset(parameters, "key", [key for key, value in parameter_items], dtype=utf8)
+            self.replace_hdf5_dataset(parameters, "value", [value for key, value in parameter_items], dtype=utf8)
+
+    def replace_hdf5_dataset(self, parent, name, data, dtype=None):
+        if name in parent:
+            del parent[name]
+        if dtype is None:
+            parent.create_dataset(name, data=data)
+        else:
+            parent.create_dataset(name, data=data, dtype=dtype)
+
+    def build_nwb_contract_parameters(self, rate, exported_trial_count=None):
+        params = self.get_current_parameters()
+        items = [
+            ("User", params["UserName"]),
+            ("Mouse", params["MouseId"]),
+            ("Project", params["ProjectName"]),
+            ("Output", params["OuputformatDropDown"]),
+            ("Device", self.device.get()),
+            ("Channels", params["Channels"]),
+            ("BehaviorSignalChannel", params["BehaviorSignalChannel"]),
+            ("BehaviorSignalColumn", params["BehaviorSignalColumn"]),
+            ("frec", rate),
+            ("TaskType", params["TaskType"]),
+            ("GoWeight", params["GoWeight"]),
+            ("NoGoWeight", params["NoGoWeight"]),
+            ("BlankWeight", params["BlankWeight"]),
+            ("TriggerType", params["TriggerTypeDropDown"]),
+            ("Threshold", params["LeverThreshold"]),
+            ("LeverHoldTime_s", params["LeverHoldTime_s"]),
+            ("GoSoundId", params["GoSoundId"]),
+            ("LeverTestSoundId", params["LeverTestSoundId"]),
+            ("LeverGoWeight", params["LeverGoWeight"]),
+            ("LeverTestWeight", params["LeverTestWeight"]),
+            ("LeverRewardTestTrials", params["LeverRewardTestTrials"]),
+            ("LeverStartDebounce_s", params["LeverStartDebounce_s"]),
+            ("LeverReleaseWindow_s", params["LeverReleaseWindow_s"]),
+            ("LeverReqRelBonus", params["LeverReqRelBonus"]),
+            ("LeverReqRelWindow", params["LeverReqRelWindow"]),
+            ("SampleSoundId", params["SampleSoundId"]),
+            ("TestSoundId", params["TestSoundId"]),
+            ("DMTSRandomMatchTrials", params["DMTSRandomMatchTrials"]),
+            ("DMTSSoundIds", params["DMTSSoundIds"]),
+            ("DMTSStimulusSource", params["DMTSStimulusSource"]),
+            ("DMTSLightLibrary", params["DMTSLightLibrary"]),
+            ("Delay_s", params["Delay_s"]),
+            ("DMTSMissesBeforeReminder", params["DMTSMissesBeforeReminder"]),
+            ("DMTSReminderTrials", params["DMTSReminderTrials"]),
+            ("DMTSBlankLickTimeout", params["DMTSBlankLickTimeout"]),
+            ("DMTSForkGrace_s", params["DMTSForkGrace_s"]),
+            ("SoundDuration_s", params["SoundDuration_s"]),
+            ("ResponseWindow_s", params["ResponseWindow_s"]),
+            ("Rewardduration_ms", params["Rewardduration_ms"]),
+            ("RightRewardduration_ms", params["RightRewardduration_ms"]),
+            ("HIT", params["HIT"]),
+            ("RewardGo", params["RewardGo"]),
+            ("RewardProb", params["RewardProb"]),
+            ("LeftRewardLine", params["LeftRewardLine"]),
+            ("RightRewardLine", params["RightRewardLine"]),
+            ("LightTTLLine", params["LightTTLLine"]),
+            ("LightTTLPulse_ms", params["LightTTLPulse_ms"]),
+            ("Pavlov", params["Pavlov"]),
+            ("PunishNoGoFA", params["PunishNoGoFA"]),
+            ("Minlickcount", params["Minlickcount"]),
+            ("Lickthreshold", params["Lickthreshold"]),
+            ("TACLeftChannel", params["TACLeftChannel"]),
+            ("TACRightChannel", params["TACRightChannel"]),
+            ("TACLeftThreshold", params["TACLeftThreshold"]),
+            ("TACRightThreshold", params["TACRightThreshold"]),
+            ("TACMinlickcount", params["TACMinlickcount"]),
+            ("TACLeftBinary", params["TACLeftBinary"]),
+            ("TACRightBinary", params["TACRightBinary"]),
+            ("NWBExportedTrials", exported_trial_count if exported_trial_count is not None else len(self.trial_rows)),
+            ("NWBOriginalTrialRows", len(self.trial_rows)),
+            ("NWBTrialAnchor", "sound_epoch_start_or_trigger_time"),
+        ]
+        if self.parameter_rows:
+            latest = self.parameter_rows[-1]
+            for key, value in latest.items():
+                items.append((key, value))
+        seen = set()
+        unique_items = []
+        for key, value in items:
+            key = str(key)
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_items.append((key, str(value)))
+        return unique_items
+
+    def validate_nwb_contract_hdf5(self, path):
+        required_paths = (
+            "/stimulus/presentation/SoundCopy/data",
+            "/stimulus/presentation/WhichSound/data",
+            "/acquisition/Reward/data",
+            "/acquisition/TrialType/data",
+            "/acquisition/BehaviorSignal/data",
+            "/acquisition/IRFork/data",
+            "/intervals/trials/id",
+            "/intervals/trials/trigger_time_s",
+            "/intervals/trials/crossing_duration_s",
+            "/intervals/trials/trial_end_s",
+            "/intervals/trials/sound_ids",
+            "/intervals/trials/sample_sound_ids",
+            "/intervals/trials/test_sound_ids",
+            "/intervals/trials/HMCF",
+            "/intervals/trials/trial_type",
+            "/file_create_date",
+            "/acquisition/Parameters/key",
+            "/acquisition/Parameters/value",
+        )
+        with h5py.File(path, "r") as h5f:
+            missing = [item for item in required_paths if item not in h5f]
+            if missing:
+                raise RuntimeError(f"NWB contract paths are missing: {', '.join(missing)}")
+
+            trial_count = len(h5f["/intervals/trials/id"])
+            aligned_paths = (
+                "/intervals/trials/trigger_time_s",
+                "/intervals/trials/crossing_duration_s",
+                "/intervals/trials/trial_end_s",
+                "/intervals/trials/sound_ids",
+                "/intervals/trials/sample_sound_ids",
+                "/intervals/trials/test_sound_ids",
+                "/intervals/trials/HMCF",
+                "/intervals/trials/trial_type",
+            )
+            for item in aligned_paths:
+                if len(h5f[item]) != trial_count:
+                    raise RuntimeError(f"NWB contract trial table length mismatch: {item}")
+
+            parameter_key_count = len(h5f["/acquisition/Parameters/key"])
+            parameter_value_count = len(h5f["/acquisition/Parameters/value"])
+            if parameter_key_count != parameter_value_count:
+                raise RuntimeError("NWB contract parameter key/value length mismatch.")
+
+            trial_type_values = set(int(value) for value in h5f["/intervals/trials/trial_type"][()])
+            bad_trial_types = trial_type_values - {0, 1, 2}
+            if bad_trial_types:
+                raise RuntimeError(f"NWB contract trial_type has unsupported values: {sorted(bad_trial_types)}")
+
+            hmcf_values = {
+                self.decode_hdf5_string(value)
+                for value in h5f["/intervals/trials/HMCF"][()]
+                if self.decode_hdf5_string(value)
+            }
+            bad_hmcf = hmcf_values - {"Hit", "Miss", "Correct", "FalseAlarm"}
+            if bad_hmcf:
+                raise RuntimeError(f"NWB contract HMCF has unsupported values: {sorted(bad_hmcf)}")
+
+            signal_count = len(h5f["/acquisition/BehaviorSignal/data"])
+            if len(h5f["/acquisition/IRFork/data"]) != signal_count:
+                raise RuntimeError("NWB contract BehaviorSignal and IRFork compatibility traces have different lengths.")
+            for item in (
+                "/stimulus/presentation/SoundCopy/data",
+                "/stimulus/presentation/WhichSound/data",
+                "/acquisition/Reward/data",
+            ):
+                if len(h5f[item]) != signal_count:
+                    raise RuntimeError(f"NWB contract continuous signal length mismatch: {item}")
+
+            anchor_count = int((h5f["/acquisition/TrialType/data"][()] == 99).sum())
+            if anchor_count != trial_count:
+                raise RuntimeError(
+                    f"NWB contract trial anchor count mismatch: {anchor_count} anchors for {trial_count} trial rows."
+                )
+            if trial_count and anchor_count == 0:
+                raise RuntimeError("NWB contract TrialType trace has trials but no value 99 anchors.")
+
+    def decode_hdf5_string(self, value):
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        return str(value)
+
+    def nwb_contract_trial_type(self, row):
+        trial_type = str(row.get("TrialType", ""))
+        try:
+            return int(trial_type.split(maxsplit=1)[0])
+        except Exception:
+            return 0
+
+    def nwb_contract_hmcf(self, row):
+        result = str(row.get("ResultType", "")).upper()
+        if result == "HIT":
+            return "Hit"
+        if result == "MISS":
+            return "Miss"
+        if result == "CR":
+            return "Correct"
+        if result == "FA":
+            return "FalseAlarm"
+        return ""
+
+    def get_behavior_signal_binary_path(self):
+        if not self.exp_folder:
+            return ""
+        behavior_signal_path = os.path.join(self.exp_folder, "BehaviorSignal.bin")
+        if os.path.exists(behavior_signal_path):
+            return behavior_signal_path
+        legacy_irfork_path = os.path.join(self.exp_folder, "IRFork.bin")
+        if os.path.exists(legacy_irfork_path):
+            return legacy_irfork_path
+        return ""
+
+    def read_binary_double_trace(self, path):
+        if np is not None:
+            return np.fromfile(path, dtype="<f8")
+        with open(path, "rb") as f:
+            data_bytes = f.read()
+        count = len(data_bytes) // 8
+        if count <= 0:
+            return []
+        return list(struct.unpack(f"{count}d", data_bytes[: count * 8]))
+
+    def get_optional_binary_trace(self, filename, sample_count):
+        path = os.path.join(self.exp_folder, filename) if self.exp_folder else ""
+        if not path or not os.path.exists(path):
+            return None
+        values = self.read_binary_double_trace(path)
+        if len(values) == 0:
+            return None
+        if np is not None:
+            trace = np.asarray(values, dtype=float).reshape(-1)
+            if len(trace) < sample_count:
+                trace = np.pad(trace, (0, sample_count - len(trace)), mode="constant")
+            elif len(trace) > sample_count:
+                trace = trace[:sample_count]
+            return trace
+        trace = [float(value) for value in values]
+        if len(trace) < sample_count:
+            trace.extend([0.0] * (sample_count - len(trace)))
+        elif len(trace) > sample_count:
+            trace = trace[:sample_count]
+        return trace
+
+    def build_trigger_trace(self, sample_count, rate):
+        if np is not None:
+            trace = np.zeros(sample_count, dtype=float)
+        else:
+            trace = [0.0] * sample_count
+        for start_s, end_s in self.full_trigger_pulses:
+            start_idx = max(0, int(start_s * rate))
+            end_idx = min(sample_count, max(start_idx + 1, int(end_s * rate)))
+            if start_idx < sample_count:
+                if np is not None:
+                    trace[start_idx:end_idx] = 5.0
+                else:
+                    trace[start_idx:end_idx] = [5.0] * (end_idx - start_idx)
+        return trace
+
+    def build_contract_sound_epochs(self, sample_count, rate):
+        duration_s = sample_count / rate if rate else 0.0
+        epochs = []
+        for sound_output in self.full_sound_outputs:
+            start_s, fs, sound_values = sound_output[:3]
+            sound_id = sound_output[3] if len(sound_output) > 3 else 0
+            if fs <= 0 or start_s >= duration_s:
+                continue
+            epochs.append({
+                "start_s": max(0.0, float(start_s)),
+                "fs": fs,
+                "values": sound_values,
+                "sound_id": int(sound_id or 0),
+            })
+        return epochs
+
+    def get_recorded_soundcopy_trace(self, sample_count):
+        soundcopy_path = os.path.join(self.exp_folder, "SoundCopy.bin") if self.exp_folder else ""
+        if soundcopy_path and os.path.exists(soundcopy_path):
+            values = self.read_binary_double_trace(soundcopy_path)
+        elif self.full_soundcopy_buffer:
+            values = self.full_soundcopy_buffer
+        else:
+            return None
+
+        if len(values) == 0:
+            return None
+        if np is not None:
+            trace = np.asarray(values, dtype=float).reshape(-1)
+            if len(trace) < sample_count:
+                trace = np.pad(trace, (0, sample_count - len(trace)), mode="constant")
+            elif len(trace) > sample_count:
+                trace = trace[:sample_count]
+            if not np.any(np.abs(trace) > 1e-12):
+                return None
+            return trace
+
+        trace = [float(value) for value in values]
+        if len(trace) < sample_count:
+            trace.extend([0.0] * (sample_count - len(trace)))
+        elif len(trace) > sample_count:
+            trace = trace[:sample_count]
+        if not any(abs(value) > 1e-12 for value in trace):
+            return None
+        return trace
+
+    def get_nwb_contract_trial_rows(self, sample_count, rate, sound_epochs):
+        duration_s = sample_count / rate if rate else 0.0
+        rows = []
+        for row in self.trial_rows:
+            anchor_s = self.nwb_contract_trial_anchor_s(row, sound_epochs)
+            if anchor_s is None or anchor_s >= duration_s:
+                continue
+            rows.append(row)
+        skipped = len(self.trial_rows) - len(rows)
+        if skipped:
+            self.log(
+                f"NWB export skipped {skipped} trial rows outside the continuous recording "
+                f"duration ({duration_s:.3f} s)."
+            )
+        return rows
+
+    def nwb_contract_trial_anchor_s(self, row, sound_epochs):
+        try:
+            trigger_time_s = float(row.get("trigger_time_s", 0.0))
+        except Exception:
+            return None
+        try:
+            sound_id = int(row.get("sound_id", 0) or 0)
+        except Exception:
+            sound_id = 0
+        if str(row.get("TrialType", "")).endswith("DMTS-blank"):
+            return trigger_time_s
+        best_start_s = None
+        best_distance_s = None
+        for epoch in sound_epochs:
+            if sound_id and epoch["sound_id"] not in (0, sound_id):
+                continue
+            start_s = epoch["start_s"]
+            if start_s < trigger_time_s - 0.25 or start_s > trigger_time_s + 1.0:
+                continue
+            distance_s = abs(start_s - trigger_time_s)
+            if best_distance_s is None or distance_s < best_distance_s:
+                best_start_s = start_s
+                best_distance_s = distance_s
+        return best_start_s if best_start_s is not None else trigger_time_s
+
+    def build_contract_sound_traces(self, sample_count, rate, sound_epochs):
+        if np is not None:
+            sound_copy = np.zeros(sample_count, dtype=float)
+            which_sound = np.zeros(sample_count, dtype=int)
+        else:
+            sound_copy = [0.0] * sample_count
+            which_sound = [0] * sample_count
+        for epoch in sound_epochs:
+            start_s = epoch["start_s"]
+            fs = epoch["fs"]
+            sound_values = epoch["values"]
+            sound_id = epoch["sound_id"]
+            start_idx = int(max(0.0, start_s) * rate)
+            output_count = int(math.ceil(len(sound_values) * rate / fs)) if fs else 0
+            for offset in range(output_count):
+                target_idx = start_idx + offset
+                if target_idx >= sample_count:
+                    break
+                source_start = min(len(sound_values), int(offset * fs / rate))
+                source_end = min(len(sound_values), max(source_start + 1, int((offset + 1) * fs / rate)))
+                if source_start < source_end:
+                    source_bin = sound_values[source_start:source_end]
+                    if np is not None:
+                        sound_copy[target_idx] = float(np.max(np.abs(source_bin)))
+                    else:
+                        sound_copy[target_idx] = max(abs(float(value)) for value in source_bin)
+                which_sound[target_idx] = int(sound_id or 0)
+        return sound_copy, which_sound
+
+    def build_contract_trial_type_trace(self, ir_sample_count, ir_rate, trial_rows, sound_epochs):
+        trial_bin_s = 0.1
+        duration_s = ir_sample_count / ir_rate if ir_rate else 0.0
+        marker_count = max(1, int(math.ceil(duration_s / trial_bin_s)) + 1)
+        if np is not None:
+            trace = np.zeros(marker_count, dtype=int)
+        else:
+            trace = [0] * marker_count
+        for row in trial_rows:
+            anchor_s = self.nwb_contract_trial_anchor_s(row, sound_epochs)
+            if anchor_s is None:
+                continue
+            marker_idx = int(round(anchor_s / trial_bin_s))
+            if 0 <= marker_idx < marker_count:
+                trace[marker_idx] = 99
+        return trace
+
+    def _drain_plot_queue(self):
+        latest_plot_payload = None
+        results_pending = False
+        health_payload = None
+        health_pending = False
+        try:
+            while True:
+                kind, payload = self.plot_queue.get_nowait()
+                if kind == "plot":
+                    if latest_plot_payload is not None:
+                        self.dropped_plot_frame_count += 1
+                    latest_plot_payload = payload
+                elif kind == "log":
+                    self.log(payload)
+                elif kind == "status":
+                    self.set_status(payload)
+                elif kind == "results":
+                    results_pending = True
+                elif kind == "health":
+                    health_pending = True
+                    health_payload = payload
+                elif kind == "stop_session":
+                    self.stop_live()
+        except queue.Empty:
+            pass
+        if results_pending:
+            self.redraw_results_window()
+        if latest_plot_payload is not None:
+            self.draw_plot(*latest_plot_payload)
+        if health_pending or latest_plot_payload is not None or results_pending:
+            self.update_health_readouts(health_payload)
+        self.after(50, self._drain_plot_queue)
+
+    def open_results_window(self):
+        if self.results_window is not None and self.results_window.winfo_exists():
+            self.results_window.lift()
+            self.redraw_results_window()
+            return
+
+        self.results_window = tk.Toplevel(self)
+        self.results_window.title("BASIL Trial Results")
+        self.results_window.geometry("900x520")
+        self.results_window.protocol("WM_DELETE_WINDOW", self.close_results_window)
+        frame = ttk.Frame(self.results_window, padding=10)
+        frame.pack(fill=tk.BOTH, expand=True)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+        self.results_canvas = tk.Canvas(frame, bg="white", highlightthickness=0)
+        self.results_canvas.grid(row=0, column=0, sticky="nsew")
+        self.results_canvas.bind("<Configure>", lambda _event: self.redraw_results_window())
+        self.redraw_results_window()
+
+    def close_results_window(self):
+        if self.results_window is not None and self.results_window.winfo_exists():
+            self.results_window.destroy()
+        self.results_window = None
+        self.results_canvas = None
+
+    def redraw_results_window(self):
+        if self.results_canvas is None:
+            return
+        if self.results_window is None or not self.results_window.winfo_exists():
+            self.results_canvas = None
+            self.results_window = None
+            return
+
+        canvas = self.results_canvas
+        canvas.delete("all")
+        width = max(520, canvas.winfo_width())
+        height = max(320, canvas.winfo_height())
+        completed = [row for row in self.trial_rows if row.get("ResultType")]
+        if not completed:
+            canvas.create_text(width / 2, height / 2, text="No completed trials yet", fill="#555555")
+            return
+
+        counts = {key: 0 for key in ("HIT", "MISS", "CR", "FA")}
+        for row in completed:
+            result = row.get("ResultType", "")
+            if result in counts:
+                counts[result] += 1
+
+        go_total = counts["HIT"] + counts["MISS"]
+        nogo_total = counts["CR"] + counts["FA"]
+        hit_rate = counts["HIT"] / go_total if go_total else 0.0
+        cr_rate = counts["CR"] / nogo_total if nogo_total else 0.0
+        if self.is_tac_family_task():
+            choice_total = counts["HIT"] + counts["MISS"] + counts["FA"]
+            choice_rate = counts["HIT"] / choice_total if choice_total else 0.0
+            title = (
+                f"Trials {len(completed)}   HIT {counts['HIT']}   MISS {counts['MISS']}   "
+                f"FA {counts['FA']}   Choice accuracy {choice_rate:.0%}"
+            )
+            canvas.create_text(18, 18, text=title, anchor="w", fill="#222222", font=("Segoe UI", 10, "bold"))
+            left = 54
+            right = width - 24
+        else:
+            title = (
+                f"Trials {len(completed)}   HIT {counts['HIT']}   MISS {counts['MISS']}   "
+                f"CR {counts['CR']}   FA {counts['FA']}   "
+                f"GO hit {hit_rate:.0%}   noGo CR {cr_rate:.0%}"
+            )
+            canvas.create_text(18, 18, text=title, anchor="w", fill="#222222", font=("Segoe UI", 10, "bold"))
+            left = 54
+            right = width - 24
+        if width >= 900:
+            crossing_width = min(250, max(210, width * 0.22))
+            crossing_left = width - crossing_width - 24
+            condition_width = min(230, max(190, width * 0.20))
+            condition_left = crossing_left - condition_width - 24
+            main_right = condition_left - 28
+            recent_top = 72
+            recent_bottom = min(200, max(160, int(height * 0.34)))
+            rate_top = recent_bottom + 54
+            rate_bottom = height - 36
+            crossing_bottom = min(height - 160, max(220, int(height * 0.48)))
+            self._draw_recent_trial_strip(canvas, completed, left, main_right, recent_top, recent_bottom)
+            self._draw_rate_panel(canvas, completed, left, main_right, rate_top, rate_bottom)
+            self._draw_condition_panel(canvas, completed, condition_left, crossing_left - 24, recent_top, height - 36)
+            self._draw_crossing_duration_panel(canvas, crossing_left, width - 24, recent_top, crossing_bottom)
+            return
+
+        condition_left = None
+        if width >= 760:
+            condition_width = min(240, max(190, width * 0.28))
+            condition_left = width - condition_width
+            right = condition_left - 28
+        raster_top = 52
+        raster_bottom = min(190, height * 0.42)
+        rate_top = raster_bottom + 54
+        rate_bottom = height - 36
+        plot_width = max(1, right - left)
+
+        recent = completed[-80:]
+        cell_w = plot_width / max(1, len(recent))
+        colors = {
+            "HIT": "#2ca02c",
+            "MISS": "#ff7f0e",
+            "CR": "#1f77b4",
+            "FA": "#d62728",
+        }
+        y_positions = {
+            "HIT": raster_top + 16,
+            "MISS": raster_top + 48,
+            "CR": raster_top + 80,
+            "FA": raster_top + 112,
+        }
+        for result, y in y_positions.items():
+            canvas.create_text(left - 10, y, text=result, anchor="e", fill="#333333")
+            canvas.create_line(left, y, right, y, fill="#eeeeee")
+        for index, row in enumerate(recent):
+            result = row.get("ResultType", "")
+            y = y_positions.get(result, raster_top + 16)
+            x0 = left + index * cell_w + 1
+            x1 = left + (index + 1) * cell_w - 1
+            canvas.create_rectangle(x0, y - 9, max(x0 + 2, x1), y + 9, fill=colors.get(result, "#777777"), outline="")
+        canvas.create_text(left, raster_bottom + 18, text="Recent trial outcomes", anchor="w", fill="#333333")
+
+        self._draw_rate_panel(canvas, completed, left, right, rate_top, rate_bottom)
+        if condition_left is not None:
+            panel_gap = 42
+            split_y = int(52 + (height - 88) * 0.48)
+            self._draw_condition_panel(canvas, completed, condition_left, width - 24, 52, split_y)
+            self._draw_crossing_duration_panel(canvas, condition_left, width - 24, split_y + panel_gap, height - 36)
+
+    def _draw_recent_trial_strip(self, canvas, rows, left, right, top, bottom):
+        canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
+        recent = rows[-80:]
+        if not recent:
+            return
+        plot_top = top + 12
+        plot_bottom = bottom - 26
+        plot_width = max(1, right - left - 8)
+        cell_w = plot_width / max(1, len(recent))
+        colors = {
+            "HIT": "#2ca02c",
+            "MISS": "#ff7f0e",
+            "CR": "#1f77b4",
+            "FA": "#d62728",
+        }
+        y_positions = {
+            "HIT": plot_top + 16,
+            "MISS": plot_top + 48,
+            "CR": plot_top + 80,
+            "FA": plot_top + 112,
+        }
+        for result, y in y_positions.items():
+            if y > plot_bottom:
+                continue
+            canvas.create_text(left - 10, y, text=result, anchor="e", fill="#333333")
+            canvas.create_line(left, y, right, y, fill="#eeeeee")
+        for index, row in enumerate(recent):
+            result = row.get("ResultType", "")
+            y = y_positions.get(result, plot_top + 16)
+            if y > plot_bottom:
+                continue
+            x0 = left + index * cell_w + 3
+            x1 = left + (index + 1) * cell_w + 1
+            canvas.create_rectangle(x0, y - 8, max(x0 + 2, x1), y + 8, fill=colors.get(result, "#777777"), outline="")
+        canvas.create_text(left, bottom - 10, text="Recent trial outcomes", anchor="w", fill="#333333")
+
+    def _draw_recent_trial_column(self, canvas, rows, left, right, top, bottom):
+        canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
+        canvas.create_text(left, top - 20, text="Recent trials", anchor="w", fill="#333333")
+        recent = rows[-80:]
+        if not recent:
+            return
+        colors = {
+            "HIT": "#2ca02c",
+            "MISS": "#ff7f0e",
+            "CR": "#1f77b4",
+            "FA": "#d62728",
+        }
+        result_order = ("HIT", "MISS", "CR", "FA")
+        plot_top = top + 26
+        plot_bottom = bottom - 24
+        col_w = max(1, (right - left - 18) / len(result_order))
+        for index, result in enumerate(result_order):
+            x = left + 10 + index * col_w + col_w / 2
+            canvas.create_text(x, top + 12, text=result[0], anchor="center", fill="#555555", font=("Segoe UI", 8))
+            canvas.create_line(x, plot_top, x, plot_bottom, fill="#eeeeee")
+        row_h = max(3, (plot_bottom - plot_top) / max(1, len(recent)))
+        for index, row in enumerate(recent):
+            result = row.get("ResultType", "")
+            if result not in result_order:
+                continue
+            y = plot_top + index * row_h + row_h / 2
+            x = left + 10 + result_order.index(result) * col_w + col_w / 2
+            canvas.create_rectangle(x - 4, y - 2, x + 4, y + 2, fill=colors.get(result, "#777777"), outline="")
+            trial = row.get("trial", "")
+            if index == 0 or index == len(recent) - 1 or (isinstance(trial, int) and trial % 20 == 0):
+                canvas.create_text(right - 4, y, text=str(trial), anchor="e", fill="#777777", font=("Segoe UI", 7))
+
+    def _draw_condition_panel(self, canvas, rows, left, right, top, bottom):
+        canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
+        canvas.create_text(left, top - 20, text="HIT/CR by condition", anchor="w", fill="#333333")
+
+        label_width = 72
+        bar_left = left + label_width
+        bar_right = right - 12
+        plot_top = top + 34
+        plot_bottom = bottom - 24
+        for fraction in (0.0, 0.5, 1.0):
+            x = bar_left + fraction * max(1, bar_right - bar_left)
+            canvas.create_line(x, plot_top - 14, x, plot_bottom, fill="#eeeeee")
+            canvas.create_text(x, bottom - 10, text=f"{fraction:.1f}", anchor="n", fill="#555555", font=("Segoe UI", 8))
+
+        conditions = {}
+        for row in rows:
+            trial_type = str(row.get("TrialType", ""))
+            sound_id = row.get("sound_id", "")
+            key = (sound_id, trial_type)
+            if key not in conditions:
+                conditions[key] = {"correct": 0, "total": 0}
+            result = row.get("ResultType", "")
+            conditions[key]["total"] += 1
+            if trial_type.endswith("noGo"):
+                conditions[key]["correct"] += int(result == "CR")
+            elif trial_type.endswith("GO") or trial_type.endswith("Lever") or trial_type.endswith("Lever-Test") or "tAC-" in trial_type:
+                conditions[key]["correct"] += int(result == "HIT")
+            else:
+                conditions[key]["correct"] += int(result in ("HIT", "CR"))
+
+        def sort_key(item):
+            sound_id, trial_type = item[0]
+            try:
+                sound_sort = (0, int(sound_id))
+            except (TypeError, ValueError):
+                sound_sort = (1, str(sound_id))
+            return (str(trial_type), sound_sort)
+
+        ordered = sorted(conditions.items(), key=sort_key)
+        max_rows = max(1, int((plot_bottom - plot_top) // 24))
+        hidden_count = max(0, len(ordered) - max_rows)
+        ordered = ordered[:max_rows]
+        row_gap = (plot_bottom - plot_top) / max(1, len(ordered))
+        colors = {
+            "GO": "#2ca02c",
+            "Lever": "#2ca02c",
+            "Lever-GO": "#2ca02c",
+            "Lever-Test": "#1f77b4",
+            "noGo": "#1f77b4",
+            "tAC-left": "#2ca02c",
+            "tAC-right": "#9467bd",
+        }
+        for index, ((sound_id, trial_type), stats) in enumerate(ordered):
+            y = plot_top + index * row_gap + row_gap / 2
+            total = max(1, stats["total"])
+            fraction = stats["correct"] / total
+            type_name = str(trial_type).split(maxsplit=1)[-1] if trial_type else "condition"
+            color = colors.get(type_name, "#777777")
+            label = f"S{sound_id} {type_name}"
+            bar_end = bar_left + fraction * max(1, bar_right - bar_left)
+            canvas.create_text(left + label_width - 8, y, text=label, anchor="e", fill="#333333", font=("Segoe UI", 8))
+            canvas.create_rectangle(bar_left, y - 7, bar_right, y + 7, fill="#f7f7f7", outline="#dddddd")
+            canvas.create_rectangle(bar_left, y - 7, bar_end, y + 7, fill=color, outline="")
+            canvas.create_text(bar_right, y - 10, text=f"{fraction:.0%} n={stats['total']}", anchor="e", fill="#333333", font=("Segoe UI", 8))
+        if hidden_count:
+            canvas.create_text(left + 8, bottom - 6, text=f"+{hidden_count} more", anchor="sw", fill="#555555", font=("Segoe UI", 8))
+
+    def _draw_crossing_duration_panel(self, canvas, left, right, top, bottom):
+        canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
+        canvas.create_text(left, top - 20, text="Crossing duration by trial type", anchor="w", fill="#333333")
+        groups = [(trial_type, values) for trial_type, values in self.dict_across_trials.items() if values]
+        if not groups:
+            canvas.create_text((left + right) / 2, (top + bottom) / 2, text="No IR durations yet", fill="#555555", font=("Segoe UI", 8))
+            return
+
+        def group_sort_key(item):
+            trial_type = str(item[0])
+            try:
+                prefix = int(trial_type.split(maxsplit=1)[0])
+            except Exception:
+                prefix = 99
+            return (prefix, trial_type)
+
+        groups = sorted(groups, key=group_sort_key)[:6]
+        all_values = [value for _trial_type, values in groups for value in values]
+        y_max = max(0.1, max(all_values))
+        y_max *= 1.12
+        plot_left = left + 32
+        plot_right = right - 12
+        plot_top = top + 24
+        plot_bottom = bottom - 38
+        if plot_bottom <= plot_top:
+            return
+        for fraction in (0.0, 0.5, 1.0):
+            y = plot_bottom - fraction * (plot_bottom - plot_top)
+            canvas.create_line(plot_left, y, plot_right, y, fill="#eeeeee")
+            canvas.create_text(plot_left - 8, y, text=f"{fraction * y_max:.1f}", anchor="e", fill="#555555", font=("Segoe UI", 8))
+
+        colors = ["#2ca02c", "#1f77b4", "#ff7f0e", "#d62728", "#9467bd", "#17a589"]
+        group_width = (plot_right - plot_left) / max(1, len(groups))
+        for index, (trial_type, values) in enumerate(groups):
+            center_x = plot_left + group_width * (index + 0.5)
+            color = colors[index % len(colors)]
+            recent_values = values[-40:]
+            for value_index, value in enumerate(recent_values):
+                jitter = ((value_index % 7) - 3) * min(3.0, group_width / 16)
+                x = center_x + jitter
+                y = plot_bottom - min(value, y_max) / y_max * (plot_bottom - plot_top)
+                canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=color, outline="")
+            median_value = statistics.median(values)
+            median_y = plot_bottom - min(median_value, y_max) / y_max * (plot_bottom - plot_top)
+            canvas.create_line(center_x - group_width * 0.25, median_y, center_x + group_width * 0.25, median_y, fill="#222222", width=2)
+            label = str(trial_type).split(maxsplit=1)[-1]
+            if len(label) > 10:
+                label = label[:9] + "."
+            canvas.create_text(center_x, bottom - 22, text=label, anchor="n", fill="#333333", font=("Segoe UI", 8))
+            canvas.create_text(center_x, bottom - 8, text=f"n={len(values)}", anchor="n", fill="#555555", font=("Segoe UI", 8))
+
+    def _draw_rate_panel(self, canvas, rows, left, right, top, bottom):
+        canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
+        for fraction in (0.0, 0.5, 1.0):
+            y = bottom - fraction * (bottom - top)
+            canvas.create_line(left, y, right, y, fill="#eeeeee")
+            canvas.create_text(left - 8, y, text=f"{fraction:.1f}", anchor="e", fill="#555555")
+
+        hit_points = []
+        cr_points = []
+        result_points = []
+        go_hits = go_total = nogo_cr = nogo_total = 0
+        n = len(rows)
+        for index, row in enumerate(rows, start=1):
+            result = row.get("ResultType", "")
+            if result in ("HIT", "MISS"):
+                go_total += 1
+                go_hits += int(result == "HIT")
+                result_score = 1 if result == "HIT" else 0
+            elif result in ("CR", "FA"):
+                nogo_total += 1
+                nogo_cr += int(result == "CR")
+                result_score = 1 if result == "CR" else 0
+            else:
+                result_score = None
+            x = left + ((index - 1) / max(1, n - 1)) * (right - left)
+            if result_score is not None:
+                result_points.append((x, bottom - result_score * (bottom - top), result))
+            hit_points.append((x, bottom - (go_hits / go_total if go_total else 0.0) * (bottom - top)))
+            cr_points.append((x, bottom - (nogo_cr / nogo_total if nogo_total else 0.0) * (bottom - top)))
+
+        colors = {
+            "HIT": "#2ca02c",
+            "MISS": "#ff7f0e",
+            "CR": "#1f77b4",
+            "FA": "#d62728",
+        }
+        for x, y, result in result_points:
+            canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill=colors.get(result, "#777777"), outline="")
+        self._draw_polyline(canvas, hit_points, "#2ca02c")
+        self._draw_polyline(canvas, cr_points, "#1f77b4")
+        canvas.create_text(left, top - 20, text="Running performance", anchor="w", fill="#333333")
+        canvas.create_line(right - 170, top - 20, right - 140, top - 20, fill="#2ca02c", width=3)
+        canvas.create_text(right - 134, top - 20, text="GO hit", anchor="w", fill="#333333")
+        canvas.create_line(right - 82, top - 20, right - 52, top - 20, fill="#1f77b4", width=3)
+        canvas.create_text(right - 46, top - 20, text="noGo CR", anchor="w", fill="#333333")
+
+    def _draw_polyline(self, canvas, points, color):
+        if len(points) == 1:
+            x, y = points[0]
+            canvas.create_oval(x - 2, y - 2, x + 2, y + 2, fill=color, outline="")
+            return
+        coords = []
+        for x, y in points:
+            coords.extend((x, y))
+        canvas.create_line(*coords, fill=color, width=3, smooth=True)
+
+    def draw_plot(self, times, values, signal_traces=None):
+        width = max(10, self.plot_canvas.winfo_width())
+        height = max(10, self.plot_canvas.winfo_height())
+        if not times or not values:
+            return
+        max_points = 1200
+        step = max(1, len(values) // max_points)
+        times = times[::step]
+        values = values[::step]
+        prepared_signal_traces = []
+        if signal_traces:
+            for label, trace_values, color in signal_traces:
+                downsampled = list(trace_values)[::step]
+                if len(downsampled) < len(times):
+                    downsampled.extend([0.0] * (len(times) - len(downsampled)))
+                elif len(downsampled) > len(times):
+                    downsampled = downsampled[: len(times)]
+                baseline = statistics.median(downsampled) if self.subtract_baseline.get() and downsampled else 0.0
+                prepared_signal_traces.append((label, [value - baseline for value in downsampled], color, baseline))
+            values = prepared_signal_traces[0][1] if prepared_signal_traces else values
+            behavior_baseline = prepared_signal_traces[0][3] if prepared_signal_traces else 0.0
+        else:
+            behavior_baseline = self.current_behavior_baseline if self.subtract_baseline.get() else 0.0
+            values = [value - behavior_baseline for value in values]
+            prepared_signal_traces.append(("Behavior signal", values, "#1f77b4", behavior_baseline))
+        min_t, max_t = times[0], times[-1] if times[-1] != times[0] else times[0] + 1
+        plotted_values = [value for _label, trace_values, _color, _baseline in prepared_signal_traces for value in trace_values]
+        min_v, max_v = min(plotted_values), max(plotted_values)
+        overlay_min_v, overlay_max_v = 0.0, 1.0
+        visible_trigger = any(end_s >= min_t and start_s <= max_t for start_s, end_s in self.trigger_pulses)
+        visible_sound = any(
+            start_s + len(sound_values) / sound_fs >= min_t and start_s <= max_t
+            for start_s, sound_fs, sound_values in (sound_output[:3] for sound_output in self.sound_outputs)
+        )
+        visible_trial_state = any(
+            (end_s if end_s is not None else max_t) >= min_t and start_s <= max_t
+            for start_s, end_s in self.trial_state_intervals
+        )
+        if visible_trigger:
+            overlay_min_v = min(overlay_min_v, 0.0)
+            overlay_max_v = max(overlay_max_v, 5.0)
+        if visible_trial_state:
+            overlay_min_v = min(overlay_min_v, 0.0)
+            overlay_max_v = max(overlay_max_v, 1.0)
+        if visible_sound:
+            for sound_output in self.sound_outputs:
+                start_s, sound_fs, sound_values = sound_output[:3]
+                sound_end = start_s + len(sound_values) / sound_fs
+                if sound_end < min_t or start_s > max_t or not sound_values:
+                    continue
+                overlay_min_v = min(overlay_min_v, min(sound_values))
+                overlay_max_v = max(overlay_max_v, max(sound_values))
+        if not self.auto_scale.get():
+            min_v = self.parse_float(self.left_y_min, -1.0)
+            max_v = self.parse_float(self.left_y_max, 5.0)
+            overlay_min_v = self.parse_float(self.right_y_min, -1.0)
+            overlay_max_v = self.parse_float(self.right_y_max, 5.0)
+            if max_v < min_v:
+                min_v, max_v = max_v, min_v
+            if overlay_max_v < overlay_min_v:
+                overlay_min_v, overlay_max_v = overlay_max_v, overlay_min_v
+        if max_v == min_v:
+            max_v = min_v + 1
+        if overlay_max_v == overlay_min_v:
+            overlay_max_v = overlay_min_v + 1
+        left_pad = 42
+        right_pad = 52
+        top_pad = 12
+        bottom_pad = 34
+        plot_width = max(1, width - left_pad - right_pad)
+        plot_height = max(1, height - top_pad - bottom_pad)
+        x_axis_y = height - bottom_pad
+        right_axis_x = left_pad + plot_width
+        trace_signature = tuple((label, color) for label, _trace_values, color, _baseline in prepared_signal_traces[:3])
+        static_signature = (width, height, trace_signature, self.auto_scale.get())
+        self.plot_fast_frame_count += 1
+        full_redraw = (
+            self.plot_static_signature != static_signature
+            or self.plot_fast_frame_count >= self.plot_full_redraw_interval
+        )
+        if full_redraw:
+            self.plot_canvas.delete("all")
+            self.plot_static_signature = static_signature
+            self.plot_fast_frame_count = 0
+            self.plot_canvas.create_line(left_pad, x_axis_y, width - right_pad, x_axis_y, fill="#cccccc")
+            self.plot_canvas.create_line(left_pad, top_pad, left_pad, x_axis_y, fill="#cccccc")
+            self.plot_canvas.create_line(right_axis_x, top_pad, right_axis_x, x_axis_y, fill="#cccccc")
+            first_second = math.ceil(min_t)
+            last_second = math.floor(max_t)
+            for second in range(first_second, last_second + 1):
+                tick_x = left_pad + (second - min_t) / (max_t - min_t) * plot_width
+                self.plot_canvas.create_line(tick_x, top_pad, tick_x, x_axis_y, fill="#eeeeee")
+            for i in range(5):
+                frac = i / 4
+                tick_x = left_pad + frac * plot_width
+                tick_t = min_t + frac * (max_t - min_t)
+                self.plot_canvas.create_line(tick_x, x_axis_y, tick_x, x_axis_y + 4, fill="#999999")
+                self.plot_canvas.create_text(tick_x, x_axis_y + 16, text=f"{tick_t:.1f}", fill="#555555")
+                left_tick_v = min_v + (1.0 - frac) * (max_v - min_v)
+                right_tick_v = overlay_min_v + (1.0 - frac) * (overlay_max_v - overlay_min_v)
+                tick_y = top_pad + frac * plot_height
+                self.plot_canvas.create_text(left_pad - 5, tick_y, text=f"{left_tick_v:.1f}", anchor="e", fill="#1f77b4", font=("Segoe UI", 8))
+                self.plot_canvas.create_text(right_axis_x + 5, tick_y, text=f"{right_tick_v:.1f}", anchor="w", fill="#555555", font=("Segoe UI", 8))
+            self.plot_canvas.create_text(width / 2, height - 6, text="Time (s)", fill="#555555")
+            self.plot_canvas.create_text(
+                8,
+                8,
+                anchor="nw",
+                text=f"Left {min_v:.2f} to {max_v:.2f} V, right {overlay_min_v:.2f} to {overlay_max_v:.2f}, baseline {behavior_baseline:.2f} V",
+                fill="#555555",
+            )
+            legend_y = 10
+            for label, _trace_values, color, _baseline in prepared_signal_traces[:3]:
+                self.plot_canvas.create_text(width - 150, legend_y, anchor="nw", text=label, fill=color)
+                legend_y += 16
+            self.plot_canvas.create_text(width - 130, legend_y, anchor="nw", text="Trigger reward", fill="#d97904")
+            self.plot_canvas.create_text(width - 130, legend_y + 16, anchor="nw", text="Sound output", fill="#2ca02c")
+            self.plot_canvas.create_text(width - 130, legend_y + 32, anchor="nw", text="Trial state", fill="#6f42c1")
+            if self.is_dmts_task():
+                self.plot_canvas.create_text(width - 150, legend_y + 48, anchor="nw", text="Response window", fill="#d97904")
+                self.plot_canvas.create_text(width - 150, legend_y + 64, anchor="nw", text="Scheduled reward", fill="#d97904")
+        else:
+            self.plot_canvas.delete("plot_dynamic")
+        self.draw_iti_shading(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
+        self.draw_dmts_window_markers(min_t, max_t, left_pad, top_pad, plot_width, x_axis_y)
+        self.draw_trial_state_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
+        self.draw_trigger_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y)
+        self.draw_sound_trace(min_t, max_t, overlay_min_v, overlay_max_v, left_pad, plot_width, plot_height, x_axis_y)
+        for _label, trace_values, color, _baseline in prepared_signal_traces:
+            points = []
+            for t, v in zip(times, trace_values):
+                x = left_pad + (t - min_t) / (max_t - min_t) * plot_width
+                y = height - bottom_pad - (v - min_v) / (max_v - min_v) * plot_height
+                points.extend([x, y])
+            if len(points) >= 4:
+                self.plot_canvas.create_line(*points, fill=color, width=2, tags=("plot_dynamic",))
+        self.draw_since_last_trial_timer(max_t, width)
+
+    def draw_dmts_window_markers(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
+        """Draw a few canvas shapes per visible trial, without sampled traces."""
+        if not self.is_dmts_task() or max_t <= min_t:
+            return
+        scale = plot_width / (max_t - min_t)
+        for start_s, end_s, reward_s in list(self.dmts_plot_windows):
+            if end_s > min_t and start_s < max_t:
+                x0 = left_pad + (max(start_s, min_t) - min_t) * scale
+                x1 = left_pad + (min(end_s, max_t) - min_t) * scale
+                self.plot_canvas.create_rectangle(
+                    x0, top_pad, x1, x_axis_y,
+                    fill="#fff0db", outline="", tags=("plot_dynamic",),
+                )
+                for boundary in (start_s, end_s):
+                    if min_t <= boundary <= max_t:
+                        x = left_pad + (boundary - min_t) * scale
+                        self.plot_canvas.create_line(
+                            x, top_pad, x, x_axis_y,
+                            fill="#d97904", dash=(4, 3), tags=("plot_dynamic",),
+                        )
+            if min_t <= reward_s <= max_t:
+                x = left_pad + (reward_s - min_t) * scale
+                self.plot_canvas.create_line(
+                    x, x_axis_y - 18, x, x_axis_y - 9,
+                    fill="#d97904", width=2, tags=("plot_dynamic",),
+                )
+
+    def draw_iti_shading(self, min_t, max_t, left_pad, top_pad, plot_width, x_axis_y):
+        if self.last_trial_end_time_s <= -1e11 or self.next_trial_allowed_time_s <= self.last_trial_end_time_s:
+            return
+        shade_start_s = max(self.last_trial_end_time_s, min_t)
+        shade_end_s = min(self.next_trial_allowed_time_s, max_t)
+        shade_end_s = min(max(shade_end_s, shade_start_s), max_t)
+        if shade_end_s < min_t or shade_start_s > max_t:
+            return
+        x0 = left_pad + (shade_start_s - min_t) / (max_t - min_t) * plot_width
+        x1 = left_pad + (shade_end_s - min_t) / (max_t - min_t) * plot_width
+        if x1 <= x0:
+            x1 = x0 + 1
+        self.plot_canvas.create_rectangle(x0, top_pad, x1, x_axis_y, fill="#f3f0df", outline="", tags=("plot_dynamic",))
+        self.plot_canvas.create_line(x0, top_pad, x0, x_axis_y, fill="#c7b76a", dash=(4, 3), tags=("plot_dynamic",))
+        if self.next_trial_allowed_time_s <= max_t:
+            self.plot_canvas.create_line(x1, top_pad, x1, x_axis_y, fill="#c7b76a", dash=(4, 3), tags=("plot_dynamic",))
+
+    def draw_since_last_trial_timer(self, current_time_s, width):
+        if self.active_trial_index is not None:
+            text = "Trial running"
+        elif self.last_trial_end_time_s > -1e11:
+            elapsed_s = max(0.0, current_time_s - self.last_trial_end_time_s)
+            text = f"Since trial end: {elapsed_s:.1f} s"
+        elif self.last_trigger_time <= -1e11:
+            text = "Since trial end: --"
+        else:
+            text = "Trial running"
+        self.plot_canvas.create_text(
+            width - 8,
+            78,
+            anchor="ne",
+            text=text,
+            fill="#333333",
+            font=("Segoe UI", 10, "bold"),
+            tags=("plot_dynamic",),
+        )
+
+    def draw_trial_state_trace(self, min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y):
+        if not self.trial_state_intervals:
+            return
+
+        def x_for(t):
+            return left_pad + (t - min_t) / (max_t - min_t) * plot_width
+
+        def y_for(v):
+            return x_axis_y - (v - min_v) / (max_v - min_v) * plot_height
+
+        low_y = y_for(0.0)
+        high_y = y_for(1.0)
+        if min_v <= 0.0 <= max_v:
+            self.plot_canvas.create_line(left_pad, low_y, left_pad + plot_width, low_y, fill="#d8ccef", tags=("plot_dynamic",))
+        for start_s, end_s in list(self.trial_state_intervals):
+            interval_end_s = end_s if end_s is not None else max_t
+            if interval_end_s < min_t or start_s > max_t:
+                continue
+            start_x = x_for(max(start_s, min_t))
+            end_x = x_for(min(interval_end_s, max_t))
+            if end_x <= start_x:
+                end_x = start_x + 1
+            self.plot_canvas.create_line(start_x, low_y, start_x, high_y, fill="#6f42c1", width=2, tags=("plot_dynamic",))
+            self.plot_canvas.create_line(start_x, high_y, end_x, high_y, fill="#6f42c1", width=2, tags=("plot_dynamic",))
+            if end_s is not None and end_s <= max_t:
+                self.plot_canvas.create_line(end_x, high_y, end_x, low_y, fill="#6f42c1", width=2, tags=("plot_dynamic",))
+
+    def draw_trigger_trace(self, min_t, max_t, min_v, max_v, left_pad, top_pad, plot_width, plot_height, x_axis_y):
+        def x_for(t):
+            return left_pad + (t - min_t) / (max_t - min_t) * plot_width
+
+        def y_for(v):
+            return x_axis_y - (v - min_v) / (max_v - min_v) * plot_height
+
+        low_y = y_for(0.0)
+        high_y = y_for(5.0)
+        if top_pad <= low_y <= x_axis_y:
+            self.plot_canvas.create_line(left_pad, low_y, left_pad + plot_width, low_y, fill="#f1c27d", tags=("plot_dynamic",))
+
+        for start_s, end_s in list(self.trigger_pulses):
+            if end_s < min_t or start_s > max_t:
+                continue
+            start_x = x_for(max(start_s, min_t))
+            end_x = x_for(min(end_s, max_t))
+            self.plot_canvas.create_line(start_x, low_y, start_x, high_y, fill="#d97904", width=2, tags=("plot_dynamic",))
+            self.plot_canvas.create_line(start_x, high_y, end_x, high_y, fill="#d97904", width=2, tags=("plot_dynamic",))
+            self.plot_canvas.create_line(end_x, high_y, end_x, low_y, fill="#d97904", width=2, tags=("plot_dynamic",))
+
+    def draw_sound_trace(self, min_t, max_t, min_v, max_v, left_pad, plot_width, plot_height, x_axis_y):
+        def x_for(t):
+            return left_pad + (t - min_t) / (max_t - min_t) * plot_width
+
+        bar_top = max(0, x_axis_y - plot_height + 4)
+        bar_bottom = min(x_axis_y, bar_top + max(4, plot_height * 0.06))
+
+        for sound_output in list(self.sound_outputs):
+            start_s, fs, values = sound_output[:3]
+            if not values:
+                continue
+            end_s = start_s + len(values) / fs
+            if end_s < min_t or start_s > max_t:
+                continue
+            start_x = x_for(max(start_s, min_t))
+            end_x = x_for(min(end_s, max_t))
+            if end_x <= start_x:
+                end_x = start_x + 1
+            self.plot_canvas.create_rectangle(
+                start_x,
+                bar_top,
+                end_x,
+                bar_bottom,
+                fill="#2ca02c",
+                outline="",
+                tags=("plot_dynamic",),
+            )
+
+    def on_close(self):
+        self.stop_live()
+        self.destroy()
+
+
+if __name__ == "__main__":
+    app = BehaviorAcquisitionApp()
+    app.protocol("WM_DELETE_WINDOW", app.on_close)
+    app.mainloop()

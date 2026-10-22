@@ -41,7 +41,7 @@ NAMES = {
     "get_lever_release_reward_count", "apply_imported_parameters",
     "select_lever_release_mode",
 }
-RUNTIME = load_methods("pyBEHAVIOR_v7.py", NAMES)
+RUNTIME = load_methods("pyBEHAVIOR_v8.py", NAMES)
 
 
 class LeverHarness:
@@ -98,7 +98,7 @@ for name in NAMES:
 
 class LeverModeTests(unittest.TestCase):
     def test_reward_test_flag_is_captured_in_trial_log(self):
-        methods = load_methods("pyBEHAVIOR_v7.py", {"create_trial"})
+        methods = load_methods("pyBEHAVIOR_v8.py", {"create_trial"})
         methods["datetime"] = datetime
         app = Mock()
         app.trial_index = 0
@@ -117,7 +117,7 @@ class LeverModeTests(unittest.TestCase):
         self.assertEqual(app.trial_rows[1]["lever_reward_test_trials"], 0)
 
     def test_enabled_test_trials_follow_go_reward_rules(self):
-        methods = load_methods("pyBEHAVIOR_v7.py", {"maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side"})
+        methods = load_methods("pyBEHAVIOR_v8.py", {"maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side"})
         methods["random"] = SimpleNamespace(random=lambda: 0.75)
         for mode, release, probability, output, pulses in [
             ("simple", 1.5, 1, True, 1), ("simple", 1.5, 0.5, True, 0),
@@ -142,7 +142,7 @@ class LeverModeTests(unittest.TestCase):
                 self.assertEqual([c.args[0] for c in app.send_reward_pulses.call_args_list], [pulses] if pulses else [])
 
     def test_lever_weighted_selection_and_trial_sound_snapshot(self):
-        methods = load_methods("pyBEHAVIOR_v7.py", {"choose_lever_trial", "start_active_lever_trial", "play_next_lever_sound"})
+        methods = load_methods("pyBEHAVIOR_v8.py", {"choose_lever_trial", "start_active_lever_trial", "play_next_lever_sound"})
         rng = random.Random(123)
         methods.update(math=math, random=rng)
         app = LeverHarness("bonus")
@@ -171,7 +171,7 @@ class LeverModeTests(unittest.TestCase):
         self.assertEqual([c.kwargs["sound_id"] for c in app.play_loaded_sound.call_args_list], [10, 11, 12])
 
     def test_test_trials_never_reward_in_any_mode(self):
-        methods = load_methods("pyBEHAVIOR_v7.py", {"maybe_send_go_reward"})
+        methods = load_methods("pyBEHAVIOR_v8.py", {"maybe_send_go_reward"})
         for mode, release in [("simple", 1.5), ("window", 1.1), ("bonus", 1.0), ("bonus", 1.5)]:
             with self.subTest(mode=mode, release=release):
                 app = LeverHarness(mode)
@@ -187,7 +187,7 @@ class LeverModeTests(unittest.TestCase):
 
     def test_go_sound_limit_preserves_trial_and_release_reward(self):
         # Sound limits are independent of reward eligibility.
-        methods = load_methods("pyBEHAVIOR_v7.py", {"start_active_lever_trial", "play_next_lever_sound"})
+        methods = load_methods("pyBEHAVIOR_v8.py", {"start_active_lever_trial", "play_next_lever_sound"})
         for start_id, stop_id, expected in [(1, 10, list(range(1, 10))), (3, 5, [3, 4]), (10, 10, []), (11, 10, [])]:
             with self.subTest(start_id=start_id, stop_id=stop_id):
                 app = LeverHarness("bonus")
@@ -239,7 +239,7 @@ class LeverModeTests(unittest.TestCase):
         self.assertEqual(written, "GoSoundId=1\nLeverTestSoundId=10\nLeverGoWeight=0.8\nLeverTestWeight=0.2\nLeverRewardTestTrials=1\n")
 
     def test_bonus_probability_and_other_modes(self):
-        methods = load_methods("pyBEHAVIOR_v7.py", {
+        methods = load_methods("pyBEHAVIOR_v8.py", {
             "maybe_send_go_reward", "get_classic_go_reward_delay_s", "get_reward_output_side",
         })
         methods["random"] = SimpleNamespace(random=lambda: 0.75)

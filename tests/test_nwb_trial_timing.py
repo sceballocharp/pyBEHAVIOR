@@ -10,7 +10,7 @@ from test_lever_modes import load_methods
 
 class NWBTrialTimingTests(unittest.TestCase):
     def test_timing_values_preserve_zero_precision_and_missing_rows(self):
-        methods = load_methods("pyBEHAVIOR_v7.py", {"write_nwb_contract_hdf5"})
+        methods = load_methods("pyBEHAVIOR_v8.py", {"write_nwb_contract_hdf5"})
         h5py = MagicMock()
         methods.update(h5py=h5py, datetime=datetime, timezone=timezone)
         saved = {}

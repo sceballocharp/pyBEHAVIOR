@@ -6,7 +6,7 @@ import unittest
 from test_lever_modes import load_methods
 
 
-DRAW = load_methods("pyBEHAVIOR_v7.py", {"draw_dmts_window_markers"})["draw_dmts_window_markers"]
+DRAW = load_methods("pyBEHAVIOR_v8.py", {"draw_dmts_window_markers"})["draw_dmts_window_markers"]
 
 
 class DMTSPlotMarkerTests(unittest.TestCase):

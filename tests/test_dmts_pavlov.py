@@ -7,7 +7,7 @@ from test_dmts_choices import harness
 from test_lever_modes import load_methods, Var
 
 
-METHODS = load_methods("pyBEHAVIOR_v7.py", {
+METHODS = load_methods("pyBEHAVIOR_v8.py", {
     "get_pavlov_probability", "maybe_send_pavlov_reward",
 })
 METHODS["random"] = SimpleNamespace(random=lambda: 0.4)

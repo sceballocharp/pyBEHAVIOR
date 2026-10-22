@@ -6,12 +6,12 @@ This document describes how parameters are represented, imported, saved, and mir
 
 Parameters can come from:
 
-- GUI defaults in `_build_ui()` in `pyBEHAVIOR_v7.py`.
+- GUI defaults in `_build_ui()` in `pyBEHAVIOR_v8.py`.
 - Imported `.dat` files through `import_parameters_file()`.
 - Generated protocol files from `protocol_generator.py`.
 - Live GUI edits made before or during acquisition.
 
-The compact user-facing parameter table is in `pyBEHAVIOR_v7_parameters.md`.
+The compact user-facing parameter table is in `pyBEHAVIOR_v8_parameters.md`.
 
 ## Runtime Parameter Pipeline
 
@@ -59,7 +59,7 @@ When adding a new saved parameter, update all relevant places:
 6. Add it to `build_nwb_contract_parameters()` if it should appear in NWB metadata.
 7. Add it to `protocol_generator.py` `PARAMETERS` and `validate()` if protocol files should generate it.
 8. Add or update example files under `protocols/`.
-9. Update `pyBEHAVIOR_v7_parameters.md` and this documentation if behavior changes.
+9. Update `pyBEHAVIOR_v8_parameters.md` and this documentation if behavior changes.
 
 The recent `Pavlov` parameter follows this pattern.
 
@@ -95,3 +95,11 @@ The protocol generator uses behavior-specific UI keys such as `LeverRewardGo`, `
 `LeverReqRelBonus` is the canonical lever release/bonus parameter. The runtime and protocol generator still accept `LeverRequireRelease` as an import alias; when both are present, `LeverReqRelBonus` takes precedence. New exports use `LeverReqRelBonus`. The internal variable and trial-log field `lever_require_release` are unchanged.
 
 `LeverReqRelWindow` defaults to `0`, including when absent on import. It is saved in session parameters, Parameters.csv, and NWB parameter metadata, and mirrored as `lever_req_rel_window` in TrialLog.csv. If both release flags are enabled on import, window-only wins with a message.
+
+## DMTS sound/light selection in v8
+
+In **Closed Loop Sequence**, **Sound / Light probabilities** takes two space-separated probabilities, in that order. Each must be finite and between 0 and 1, and their sum must be 1 (decimal tolerance 1e-9). Default: `1 0`. Use `0.5 0.5` for equal probability or `0 1` for lights only. Invalid inputs block sequence regeneration and session startup.
+
+The existing Match / Non-match / Blank weights choose the trial type first. Nonblank trials then select one modality for both sample and test. Blanks present neither modality. Sound trials do not prepare LED stimuli or send LED triggers; sample/test light IDs are zero. Light trials suppress audio and save sound, sample sound, and test sound IDs as zero. Shared response and reward rules are unchanged.
+
+A positive light probability requires DMTS patterns configured in Braincodec and the remote driver running. A positive sound probability requires the usual audio setup. The field is saved/imported as `DMTSModalityProbabilities`. Modality is drawn per trial; the existing sequence seed controls trial types.

@@ -6,7 +6,7 @@ import unittest
 from test_lever_modes import load_methods, Var, LeverHarness
 
 
-METHODS = load_methods("pyBEHAVIOR_v7.py", {"get_reward_pulse_s", "send_output_pulse", "send_reward_pulses"})
+METHODS = load_methods("pyBEHAVIOR_v8.py", {"get_reward_pulse_s", "send_output_pulse", "send_reward_pulses"})
 
 
 class RewardDurationTests(unittest.TestCase):

@@ -3,6 +3,7 @@ import csv
 import importlib.util
 from pathlib import Path
 import queue
+import random
 import threading
 import tempfile
 from types import MethodType, SimpleNamespace
@@ -243,7 +244,7 @@ class DriverLoopTests(unittest.IsolatedAsyncioTestCase):
 
 class BehaviorTests(unittest.TestCase):
     def test_led_start_skips_sound_file_but_audio_start_keeps_it(self):
-        methods = load_methods('pyBEHAVIOR_v7.py', {'session_requires_sound_file'})
+        methods = load_methods('pyBEHAVIOR_v8.py', {'session_requires_sound_file'})
         app = SimpleNamespace(is_dmts_task=lambda: True, dmts_light_client=Mock(),
                               play_sound_on_crossing=SimpleNamespace(get=lambda: True),
                               is_tac_pretraining_task=lambda: False,
@@ -256,7 +257,7 @@ class BehaviorTests(unittest.TestCase):
         self.assertFalse(check(app))
 
     def test_start_failure_closes_files_and_ni_and_allows_retry(self):
-        methods = load_methods('pyBEHAVIOR_v7.py', {'start_live'})
+        methods = load_methods('pyBEHAVIOR_v8.py', {'start_live'})
         app = SimpleNamespace(running=False,
                               _start_live_session=Mock(side_effect=OSError('folder unavailable')),
                               close_tasks=Mock(), close_behavior_signal_file=Mock(),
@@ -270,7 +271,9 @@ class BehaviorTests(unittest.TestCase):
     def attach(self, app):
         names = {'prepare_next_dmts_light_trial', 'trigger_dmts_light_phase', 'fail_dmts_light_trial',
                  'extend_dmts_light_timeline'}
-        for name, method in load_methods('pyBEHAVIOR_v7.py', names).items():
+        methods = load_methods('pyBEHAVIOR_v8.py', names)
+        methods['prepare_next_dmts_light_trial'].__globals__['random'] = random
+        for name, method in methods.items():
             if name in names:
                 setattr(app, name, MethodType(method, app))
         app._dmts_light_pending = None
@@ -282,6 +285,7 @@ class BehaviorTests(unittest.TestCase):
 
     def test_prepare_during_iti_and_use_same_ids_at_start(self):
         app = self.attach(harness())
+        app.dmts_modality_probabilities = SimpleNamespace(get=lambda: '0 1')
         app.next_trial_allowed_time_s = 2
         app.consume_next_dmts_trial_type.return_value = 2
         app.check_trigger([0, 1], [0, 0])
@@ -293,6 +297,7 @@ class BehaviorTests(unittest.TestCase):
 
     def test_ni_failure_marks_error_and_stops(self):
         app = self.attach(harness())
+        app.dmts_modality_probabilities = SimpleNamespace(get=lambda: '0 1')
         row = {'trial': 1}
         app.get_active_trial_row = Mock(return_value=row)
         app.send_light_trigger_pulse = Mock(return_value=False)

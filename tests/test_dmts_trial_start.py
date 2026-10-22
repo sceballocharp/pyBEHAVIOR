@@ -1,5 +1,7 @@
 """Hardware-free regression checks for DMTS initiation and timeout handling."""
 import queue
+import math
+import random
 from types import SimpleNamespace, MethodType
 import unittest
 from unittest.mock import Mock
@@ -7,11 +9,12 @@ from unittest.mock import Mock
 from test_lever_modes import load_methods, Var
 
 
-METHODS = load_methods("pyBEHAVIOR_v7.py", {
+METHODS = load_methods("pyBEHAVIOR_v8.py", {
     "check_trigger", "apply_trial_timeout", "finish_active_dmts_timeline",
-    "update_dmts_lapse_state",
+    "update_dmts_lapse_state", "prepare_next_dmts_light_trial", "get_dmts_modality_probabilities",
 })
 
+METHODS.update(math=math, random=random)
 
 def harness(lick=True):
     app = SimpleNamespace(

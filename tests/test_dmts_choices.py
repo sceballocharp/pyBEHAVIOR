@@ -12,7 +12,7 @@ NAMES = {
     "get_reward_output_side", "apply_trial_timeout",
     "is_active_dmts_blank",
 }
-METHODS = load_methods("pyBEHAVIOR_v7.py", NAMES)
+METHODS = load_methods("pyBEHAVIOR_v8.py", NAMES)
 
 
 def harness(match=True, lick=True, minimum=2):

@@ -13,9 +13,9 @@ import protocol_generator as pg
 
 
 NAMES = {"start_active_dmts_trial", "choose_dmts_trial_sound_ids", "get_reward_pulse_s",
-         "generate_sequence", "_parse_number_list", "consume_next_dmts_trial_type",
+         "generate_sequence", "_parse_number_list", "get_dmts_modality_probabilities", "consume_next_dmts_trial_type",
          "nwb_contract_trial_anchor_s", "nwb_contract_hmcf", "nwb_contract_trial_type"}
-METHODS = load_methods("pyBEHAVIOR_v7.py", NAMES)
+METHODS = load_methods("pyBEHAVIOR_v8.py", NAMES)
 METHODS.update(math=math, random=random)
 
 
@@ -77,7 +77,7 @@ class DMTSBlankTests(unittest.TestCase):
                     update_sequence_display=Mock(), log=Mock(),
                     ensure_sequence_controls=Mock(),
                 )
-                for name in ("generate_sequence", "_parse_number_list"):
+                for name in ("generate_sequence", "_parse_number_list", "get_dmts_modality_probabilities"):
                     setattr(app, name, MethodType(METHODS[name], app))
                 app.generate_sequence()
                 self.assertEqual(set(app.sound_sequence), expected)

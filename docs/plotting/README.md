@@ -1,6 +1,6 @@
 # Plotting
 
-This document describes live plotting and result visualization in `pyBEHAVIOR_v7.py`.
+This document describes live plotting and result visualization in `pyBEHAVIOR_v8.py`.
 
 ## Responsibilities
 

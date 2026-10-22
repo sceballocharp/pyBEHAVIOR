@@ -1,6 +1,6 @@
 # GUI
 
-This document describes how the main `pyBEHAVIOR_v7.py` Tkinter GUI is built and how to change the visual structure without changing acquisition, task rules, or saved-data behavior.
+This document describes how the main `pyBEHAVIOR_v8.py` Tkinter GUI is built and how to change the visual structure without changing acquisition, task rules, or saved-data behavior.
 
 ## Core Principle
 
@@ -59,13 +59,13 @@ The root frame is split into two main columns. `parameter_column` is placed at r
 
 `_build_braincodec_tab(parent)` creates the Braincodec tab. It imports and embeds `BraincodecTkPanel` from `braincodec.tk_panel`.
 
-The embedded panel receives three callbacks from `pyBEHAVIOR_v7.py`:
+The embedded panel receives three callbacks from `pyBEHAVIOR_v8.py`:
 
 - `session_metadata_provider=self.get_braincodec_session_metadata`
 - `on_trials_generated=self.use_braincodec_trials`
 - `local_log_dir_provider=self.get_braincodec_log_download_dir`
 
-`use_braincodec_trials(codes, path)` is the bridge from Braincodec trial generation to the Behavior tab. In v7, Braincodec light identity and acoustic sound identity are intentionally separate. The generated trial file uses two columns:
+`use_braincodec_trials(codes, path)` is the bridge from Braincodec trial generation to the Behavior tab. In v8, Braincodec light identity and acoustic sound identity are intentionally separate. The generated trial file uses two columns:
 
 | Column | Meaning |
 | --- | --- |
@@ -288,7 +288,7 @@ Before finishing a GUI restructuring change:
 5. Run:
 
 ```powershell
-.venv\Scripts\python.exe -m py_compile pyBEHAVIOR_v7.py
+.venv\Scripts\python.exe -m py_compile pyBEHAVIOR_v8.py
 ```
 
 6. If possible on the rig computer, open the GUI and switch/import all four protocol families to check layout.

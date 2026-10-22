@@ -7,7 +7,7 @@ from unittest.mock import Mock
 from test_lever_modes import load_methods, Var
 from test_dmts_pavlov import pavlov_harness
 
-METHODS = load_methods("pyBEHAVIOR_v7.py", {
+METHODS = load_methods("pyBEHAVIOR_v8.py", {
     "update_dmts_lapse_state", "consume_next_dmts_trial_type",
 })
 
