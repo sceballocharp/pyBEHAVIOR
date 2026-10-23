@@ -105,3 +105,5 @@ The existing Match / Non-match / Blank weights choose the trial type first. Nonb
 A positive light probability requires DMTS patterns configured in Braincodec and the remote driver running. A positive sound probability requires the usual audio setup. The field is saved/imported as `DMTSModalityProbabilities`. Modality is drawn per trial; the existing sequence seed controls trial types.
 
 **NonMatch Only Sounds** (default unchecked) overrides modality selection for non-match trials: both sample and test are sounds, regardless of Sound / Light probabilities. Match and blank selection is unchanged, as are the overall trial-type weights. The option is saved/imported as `DMTSNonMatchOnlySounds`. With this option enabled, an audio file is required even when Sound / Light probabilities are `0 1`.
+
+During acquisition, incomplete or invalid edits to Sound / Light probabilities keep the last valid pair active. A new valid pair is used at the next trial preparation; a trial already prepared keeps its selected modality. Session startup still requires valid probabilities.

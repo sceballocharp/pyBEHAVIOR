@@ -124,3 +124,25 @@ class ModalityTests(unittest.TestCase):
         app.is_tac_pretraining_task = lambda: False
         app.sequence_has_sound = lambda: True
         self.assertTrue(app.session_requires_sound_file())
+
+    def test_live_partial_edit_keeps_previous_pair_until_new_pair_is_valid(self):
+        app = self.app('0.5 0.5')
+        app.running = True
+        self.assertEqual(app.get_dmts_modality_probabilities(), [0.5, 0.5])
+        for text in ('', '0.', '0.8 0.5', '0.8 ', 'nan 0.2'):
+            app.dmts_modality_probabilities.set(text)
+            app._dmts_trial_pending = None
+            app._dmts_light_pending = None
+            with patch.object(random, 'choices', return_value=['sound']) as draw:
+                self.assertTrue(app.prepare_next_dmts_light_trial())
+            self.assertEqual(draw.call_args.kwargs['weights'], [0.5, 0.5])
+            app.fail_dmts_light_trial.assert_not_called()
+        app.dmts_modality_probabilities.set('0.8 0.2')
+        self.assertEqual(app.get_dmts_modality_probabilities(), [0.8, 0.2])
+        app.dmts_modality_probabilities.set('0.8')
+        self.assertEqual(app.get_dmts_modality_probabilities(), [0.8, 0.2])
+        with self.assertRaises(ValueError):
+            app.get_dmts_modality_probabilities(strict=True)
+        app.running = False
+        with self.assertRaises(ValueError):
+            app.get_dmts_modality_probabilities()

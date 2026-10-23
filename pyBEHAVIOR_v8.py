@@ -2373,7 +2373,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def is_dmts_task(self):
         return self.task_type.get().strip().lower() == "dmts"
 
-    def get_dmts_modality_probabilities(self):
+    def get_dmts_modality_probabilities(self, strict=False):
         var = getattr(self, 'dmts_modality_probabilities', None)
         text = var.get() if var is not None else '1 0'
         try:
@@ -2382,7 +2382,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             values = []
         if (len(values) != 2 or any(not math.isfinite(v) or not 0 <= v <= 1 for v in values)
                 or not math.isclose(sum(values), 1.0, rel_tol=0, abs_tol=1e-9)):
+            previous = getattr(self, '_valid_dmts_modality_probabilities', None)
+            if not strict and getattr(self, 'running', False) and previous is not None:
+                return list(previous)
             raise ValueError('Sound / Light probabilities must be two numbers between 0 and 1 summing to 1 (e.g. 0.5 0.5).')
+        self._valid_dmts_modality_probabilities = tuple(values)
         return values
 
     def configure_dmts_light_session(self):
@@ -2392,7 +2396,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self._dmts_trial_pending = None
         self._dmts_trial_modality = 'sound'
         try:
-            probabilities = self.get_dmts_modality_probabilities() if self.is_dmts_task() else [1, 0]
+            probabilities = self.get_dmts_modality_probabilities(strict=True) if self.is_dmts_task() else [1, 0]
         except ValueError as exc:
             self.log(str(exc))
             return False
