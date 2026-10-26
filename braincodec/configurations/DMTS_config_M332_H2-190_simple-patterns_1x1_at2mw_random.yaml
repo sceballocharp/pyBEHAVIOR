@@ -1,0 +1,32 @@
+# Named patterns require the corresponding updated driver on PYNQ.
+mouse_id: "332"
+device_id: "H2-190"
+GO: "P2N7"
+GO irradiance (mW/mm2): 2.0
+GO stimuli: ["STIM1", "STIM2", "STIM3", "STIM4", "STIM5", "STIM6", "STIM7", "STIM8", "STIM9", "STIM10"]
+GO stimulus selection: "random"
+STIM1: "P2N7"
+STIM1 irradiance (mW/mm2): 2.0
+STIM2: "P4N9"
+STIM2 irradiance (mW/mm2): 2.0
+STIM3: "P6N7"
+STIM3 irradiance (mW/mm2): 2.0
+STIM4: "P4N5"
+STIM4 irradiance (mW/mm2): 2.0
+STIM5: "P9N5"
+STIM5 irradiance (mW/mm2): 2.0
+STIM6: "P2N3"
+STIM6 irradiance (mW/mm2): 2.0
+STIM7: "P4N3"
+STIM7 irradiance (mW/mm2): 2.0
+STIM8: "P6N3"
+STIM8 irradiance (mW/mm2): 2.0
+STIM9: "P3N2"
+STIM9 irradiance (mW/mm2): 2.0
+STIM10: "P10N2"
+STIM10 irradiance (mW/mm2): 2.0
+NOGO: "P8N1 P9N1 P10N1 P8N2 P9N2 P10N2 P8N3 P9N3 P10N3"
+NOGO irradiance (mW/mm2): 2.0
+Pulse duration (ms): 25.0
+Pulse frequency (Hz): 20.0
+Number of pulses: 10
