@@ -19,3 +19,4 @@ braincodec/__pycache__/tk_panel.cpython-314.pyc
 
 /session_history_*.json
 /session_history_*.json.tmp
+/braincodec/__pycache__
