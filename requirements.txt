@@ -6,3 +6,4 @@ sounddevice
 pynwb
 h5py
 pandas
+openpyxl
