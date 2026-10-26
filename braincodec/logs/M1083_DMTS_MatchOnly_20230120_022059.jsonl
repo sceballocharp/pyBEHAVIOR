@@ -1,0 +1,345 @@
+{"event": "startup_started", "working_directory": "/home/xilinx/jupyter_notebooks/sc_remote", "config_file": "DMTS_config_M332_H2-190_simple-patterns_2x2_zerocinq_v2.yaml", "timestamp": "2023-01-20T02:20:59.074"}
+{"event": "library", "config": {"mouse_id": "332", "device_id": "H2-190", "GO": "P2N8 P3N8 P2N9 P3N9", "GO irradiance (mW/mm2)": 0.5, "GO stimuli": ["STIM1", "STIM2", "STIM3", "STIM4", "STIM5", "STIM6", "STIM7", "STIM8", "STIM9", "STIM10", "STIM11", "STIM12", "STIM13", "STIM14", "STIM15", "STIM16"], "GO stimulus selection": "random", "STIM1": "P2N8 P3N8 P2N9 P3N9", "STIM1 irradiance (mW/mm2)": 0.5, "STIM2": "P4N8 P5N8 P4N9 P5N9", "STIM2 irradiance (mW/mm2)": 0.5, "STIM3": "P6N8 P7N8 P6N9 P7N9", "STIM3 irradiance (mW/mm2)": 0.5, "STIM4": "P8N8 P9N8 P8N9 P9N9", "STIM4 irradiance (mW/mm2)": 0.5, "STIM5": "P8N6 P9N6 P8N7 P9N7", "STIM5 irradiance (mW/mm2)": 0.5, "STIM6": "P6N6 P7N6 P6N7 P7N7", "STIM6 irradiance (mW/mm2)": 0.5, "STIM7": "P4N6 P5N6 P4N7 P5N7", "STIM7 irradiance (mW/mm2)": 0.5, "STIM8": "P2N6 P3N6 P2N7 P3N7", "STIM8 irradiance (mW/mm2)": 0.5, "STIM9": "P2N4 P3N4 P2N5 P3N5", "STIM9 irradiance (mW/mm2)": 0.5, "STIM10": "P4N4 P5N4 P4N5 P5N5", "STIM10 irradiance (mW/mm2)": 0.5, "STIM11": "P6N4 P7N4 P6N5 P7N5", "STIM11 irradiance (mW/mm2)": 0.5, "STIM12": "P8N4 P9N4 P8N5 P9N5", "STIM12 irradiance (mW/mm2)": 0.5, "STIM13": "P8N2 P9N2 P8N3 P9N3", "STIM13 irradiance (mW/mm2)": 0.5, "STIM14": "P6N2 P7N2 P6N3 P7N3", "STIM14 irradiance (mW/mm2)": 0.5, "STIM15": "P4N2 P5N2 P4N3 P5N3", "STIM15 irradiance (mW/mm2)": 0.5, "STIM16": "P2N2 P3N2 P2N3 P3N3", "STIM16 irradiance (mW/mm2)": 0.5, "NOGO": "P8N1 P9N1 P10N1 P8N2 P9N2 P10N2 P8N3 P9N3 P10N3", "NOGO irradiance (mW/mm2)": 2.0, "Pulse duration (ms)": 25.0, "Pulse frequency (Hz)": 20.0, "Number of pulses": 10}, "fingerprint": "6ab69d862c44c2fee3204ef5d80f94a14e6966e68b4ca76ddfec7152b64a16c3", "timestamp": "2023-01-20T02:21:54.245"}
+{"event": "reset", "timestamp": "2023-01-20T02:24:48.929"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-1", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:24:52.841"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-1", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:24:59.481"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-1", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:24:59.989"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-1", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:25:00.831"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-1", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:25:01.338"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:02.803"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-2", "sample_id": 12, "test_id": 12, "timestamp": "2023-01-20T02:25:02.823"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-2", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:06.016"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-2", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:06.524"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-2", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:07.424"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-2", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:07.935"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:09.302"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-3", "sample_id": 15, "test_id": 15, "timestamp": "2023-01-20T02:25:09.322"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-3", "phase": "sample", "stimulus_id": 15, "timestamp": "2023-01-20T02:25:14.374"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-3", "phase": "sample", "stimulus_id": 15, "timestamp": "2023-01-20T02:25:14.888"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-3", "phase": "test", "stimulus_id": 15, "timestamp": "2023-01-20T02:25:15.732"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-3", "phase": "test", "stimulus_id": 15, "timestamp": "2023-01-20T02:25:16.246"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:17.639"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-4", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:25:17.647"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-4", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:25:22.527"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-4", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:25:23.039"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-4", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:25:23.931"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-4", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:25:24.444"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:25.893"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-5", "sample_id": 13, "test_id": 13, "timestamp": "2023-01-20T02:25:25.909"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-5", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:25:28.789"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-5", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:25:29.303"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-5", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:25:30.128"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-5", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:25:30.635"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:32.089"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-6", "sample_id": 8, "test_id": 8, "timestamp": "2023-01-20T02:25:32.098"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-6", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:25:38.231"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-6", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:25:38.740"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-6", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:25:39.633"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-6", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:25:40.146"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:41.472"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-7", "sample_id": 12, "test_id": 12, "timestamp": "2023-01-20T02:25:41.480"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-7", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:47.254"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-7", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:47.762"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-7", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:48.614"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-7", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:25:49.126"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:50.450"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-8", "sample_id": 3, "test_id": 3, "timestamp": "2023-01-20T02:25:50.477"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-8", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:25:54.094"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-8", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:25:54.607"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-8", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:25:55.468"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-8", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:25:55.978"}
+{"event": "reset", "timestamp": "2023-01-20T02:25:57.368"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-9", "sample_id": 4, "test_id": 4, "timestamp": "2023-01-20T02:25:57.377"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-9", "phase": "sample", "stimulus_id": 4, "timestamp": "2023-01-20T02:26:04.008"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-9", "phase": "sample", "stimulus_id": 4, "timestamp": "2023-01-20T02:26:04.515"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-9", "phase": "test", "stimulus_id": 4, "timestamp": "2023-01-20T02:26:05.331"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-9", "phase": "test", "stimulus_id": 4, "timestamp": "2023-01-20T02:26:05.838"}
+{"event": "reset", "timestamp": "2023-01-20T02:26:07.252"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-10", "sample_id": 3, "test_id": 3, "timestamp": "2023-01-20T02:26:17.159"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-10", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:26:21.004"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-10", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:26:21.517"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-10", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:26:22.447"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-10", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:26:22.961"}
+{"event": "reset", "timestamp": "2023-01-20T02:26:24.347"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-11", "sample_id": 8, "test_id": 8, "timestamp": "2023-01-20T02:26:24.365"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-11", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:26:28.423"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-11", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:26:28.930"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-11", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:26:29.823"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-11", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:26:30.337"}
+{"event": "reset", "timestamp": "2023-01-20T02:26:31.683"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-12", "sample_id": 10, "test_id": 10, "timestamp": "2023-01-20T02:26:31.710"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-12", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:26:38.008"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-12", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:26:38.515"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-12", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:26:39.341"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-12", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:26:39.849"}
+{"event": "reset", "timestamp": "2023-01-20T02:26:41.280"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-13", "sample_id": 11, "test_id": 11, "timestamp": "2023-01-20T02:26:41.289"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-13", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:26:44.700"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-13", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:26:45.207"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-13", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:26:46.043"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-13", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:26:46.550"}
+{"event": "reset", "timestamp": "2023-01-20T02:26:47.954"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-14", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:26:47.970"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-14", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:26:52.903"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-14", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:26:53.415"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-14", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:26:54.333"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-14", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:26:54.840"}
+{"event": "reset", "timestamp": "2023-01-20T02:26:56.197"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-15", "sample_id": 16, "test_id": 16, "timestamp": "2023-01-20T02:27:45.228"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-15", "phase": "sample", "stimulus_id": 16, "timestamp": "2023-01-20T02:27:51.310"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-15", "phase": "sample", "stimulus_id": 16, "timestamp": "2023-01-20T02:27:51.823"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-15", "phase": "test", "stimulus_id": 16, "timestamp": "2023-01-20T02:27:52.660"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-15", "phase": "test", "stimulus_id": 16, "timestamp": "2023-01-20T02:27:53.173"}
+{"event": "reset", "timestamp": "2023-01-20T02:27:54.538"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-16", "sample_id": 2, "test_id": 2, "timestamp": "2023-01-20T02:27:54.557"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-16", "phase": "sample", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:00.903"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-16", "phase": "sample", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:01.416"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-16", "phase": "test", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:02.276"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-16", "phase": "test", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:02.783"}
+{"event": "reset", "timestamp": "2023-01-20T02:28:04.137"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-17", "sample_id": 6, "test_id": 6, "timestamp": "2023-01-20T02:28:11.396"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-17", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:15.908"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-17", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:16.416"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-17", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:17.254"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-17", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:17.763"}
+{"event": "reset", "timestamp": "2023-01-20T02:28:19.129"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-18", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:28:19.139"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-18", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:28:24.188"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-18", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:28:24.695"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-18", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:28:25.562"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-18", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:28:26.069"}
+{"event": "reset", "timestamp": "2023-01-20T02:28:27.470"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-19", "sample_id": 2, "test_id": 2, "timestamp": "2023-01-20T02:28:27.492"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-19", "phase": "sample", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:31.482"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-19", "phase": "sample", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:31.994"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-19", "phase": "test", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:32.886"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-19", "phase": "test", "stimulus_id": 2, "timestamp": "2023-01-20T02:28:33.396"}
+{"event": "reset", "timestamp": "2023-01-20T02:28:34.753"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-20", "sample_id": 6, "test_id": 6, "timestamp": "2023-01-20T02:28:34.772"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-20", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:40.400"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-20", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:40.914"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-20", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:41.723"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-20", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:28:42.229"}
+{"event": "reset", "timestamp": "2023-01-20T02:28:43.655"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-21", "sample_id": 11, "test_id": 11, "timestamp": "2023-01-20T02:28:43.675"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-21", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:28:49.790"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-21", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:28:50.296"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-21", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:28:51.139"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-21", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:28:51.652"}
+{"event": "reset", "timestamp": "2023-01-20T02:28:53.063"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-22", "sample_id": 9, "test_id": 9, "timestamp": "2023-01-20T02:29:16.857"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-22", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:21.414"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-22", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:21.925"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-22", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:22.873"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-22", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:23.384"}
+{"event": "reset", "timestamp": "2023-01-20T02:29:24.762"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-23", "sample_id": 9, "test_id": 9, "timestamp": "2023-01-20T02:29:31.069"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-23", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:37.110"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-23", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:37.623"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-23", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:38.425"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-23", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:29:38.938"}
+{"event": "reset", "timestamp": "2023-01-20T02:29:40.337"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-24", "sample_id": 3, "test_id": 3, "timestamp": "2023-01-20T02:29:47.593"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-24", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:29:53.709"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-24", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:29:54.216"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-24", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:29:55.057"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-24", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:29:55.570"}
+{"event": "reset", "timestamp": "2023-01-20T02:29:56.958"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-25", "sample_id": 10, "test_id": 10, "timestamp": "2023-01-20T02:29:56.966"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-25", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:30:02.828"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-25", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:30:03.336"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-25", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:30:04.235"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-25", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:30:04.742"}
+{"event": "reset", "timestamp": "2023-01-20T02:30:06.096"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-26", "sample_id": 16, "test_id": 16, "timestamp": "2023-01-20T02:30:06.117"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-26", "phase": "sample", "stimulus_id": 16, "timestamp": "2023-01-20T02:30:10.121"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-26", "phase": "sample", "stimulus_id": 16, "timestamp": "2023-01-20T02:30:10.631"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-26", "phase": "test", "stimulus_id": 16, "timestamp": "2023-01-20T02:30:11.479"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-26", "phase": "test", "stimulus_id": 16, "timestamp": "2023-01-20T02:30:11.992"}
+{"event": "reset", "timestamp": "2023-01-20T02:30:13.368"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-27", "sample_id": 9, "test_id": 9, "timestamp": "2023-01-20T02:30:13.377"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-27", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:30:17.401"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-27", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:30:17.908"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-27", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:30:18.732"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-27", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:30:19.239"}
+{"event": "reset", "timestamp": "2023-01-20T02:30:20.668"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-28", "sample_id": 8, "test_id": 8, "timestamp": "2023-01-20T02:30:28.549"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-28", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:30:34.395"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-28", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:30:34.902"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-28", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:30:35.848"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-28", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:30:36.361"}
+{"event": "reset", "timestamp": "2023-01-20T02:30:37.755"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-29", "sample_id": 5, "test_id": 5, "timestamp": "2023-01-20T02:30:37.763"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-29", "phase": "sample", "stimulus_id": 5, "timestamp": "2023-01-20T02:30:43.898"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-29", "phase": "sample", "stimulus_id": 5, "timestamp": "2023-01-20T02:30:44.405"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-29", "phase": "test", "stimulus_id": 5, "timestamp": "2023-01-20T02:30:45.333"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-29", "phase": "test", "stimulus_id": 5, "timestamp": "2023-01-20T02:30:45.840"}
+{"event": "reset", "timestamp": "2023-01-20T02:30:47.265"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-30", "sample_id": 12, "test_id": 12, "timestamp": "2023-01-20T02:30:47.273"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-30", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:30:51.261"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-30", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:30:51.768"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-30", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:30:52.642"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-30", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:30:53.155"}
+{"event": "reset", "timestamp": "2023-01-20T02:30:54.574"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-31", "sample_id": 11, "test_id": 11, "timestamp": "2023-01-20T02:31:00.868"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-31", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:11.333"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-31", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:11.846"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-31", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:12.644"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-31", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:13.154"}
+{"event": "reset", "timestamp": "2023-01-20T02:31:14.576"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-32", "sample_id": 3, "test_id": 3, "timestamp": "2023-01-20T02:31:14.600"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-32", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:31:18.697"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-32", "phase": "sample", "stimulus_id": 3, "timestamp": "2023-01-20T02:31:19.205"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-32", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:31:20.058"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-32", "phase": "test", "stimulus_id": 3, "timestamp": "2023-01-20T02:31:20.565"}
+{"event": "reset", "timestamp": "2023-01-20T02:31:22.009"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-33", "sample_id": 15, "test_id": 15, "timestamp": "2023-01-20T02:31:29.424"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-33", "phase": "sample", "stimulus_id": 15, "timestamp": "2023-01-20T02:31:35.487"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-33", "phase": "sample", "stimulus_id": 15, "timestamp": "2023-01-20T02:31:35.994"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-33", "phase": "test", "stimulus_id": 15, "timestamp": "2023-01-20T02:31:36.851"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-33", "phase": "test", "stimulus_id": 15, "timestamp": "2023-01-20T02:31:37.358"}
+{"event": "reset", "timestamp": "2023-01-20T02:31:38.757"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-34", "sample_id": 11, "test_id": 11, "timestamp": "2023-01-20T02:31:38.783"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-34", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:45.276"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-34", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:45.783"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-34", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:46.648"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-34", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:31:47.155"}
+{"event": "reset", "timestamp": "2023-01-20T02:31:48.560"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-35", "sample_id": 6, "test_id": 6, "timestamp": "2023-01-20T02:31:48.592"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-35", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:31:53.594"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-35", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:31:54.106"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-35", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:31:55.035"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-35", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:31:55.541"}
+{"event": "reset", "timestamp": "2023-01-20T02:31:56.853"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-36", "sample_id": 1, "test_id": 1, "timestamp": "2023-01-20T02:32:18.994"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-36", "phase": "sample", "stimulus_id": 1, "timestamp": "2023-01-20T02:32:29.947"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-36", "phase": "sample", "stimulus_id": 1, "timestamp": "2023-01-20T02:32:30.454"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-36", "phase": "test", "stimulus_id": 1, "timestamp": "2023-01-20T02:32:31.244"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-36", "phase": "test", "stimulus_id": 1, "timestamp": "2023-01-20T02:32:31.751"}
+{"event": "reset", "timestamp": "2023-01-20T02:32:33.205"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-37", "sample_id": 9, "test_id": 9, "timestamp": "2023-01-20T02:32:33.239"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-37", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:32:36.112"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-37", "phase": "sample", "stimulus_id": 9, "timestamp": "2023-01-20T02:32:36.619"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-37", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:32:37.437"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-37", "phase": "test", "stimulus_id": 9, "timestamp": "2023-01-20T02:32:37.950"}
+{"event": "reset", "timestamp": "2023-01-20T02:32:39.378"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-38", "sample_id": 6, "test_id": 6, "timestamp": "2023-01-20T02:32:39.400"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-38", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:43.432"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-38", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:43.944"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-38", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:44.736"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-38", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:45.250"}
+{"event": "reset", "timestamp": "2023-01-20T02:32:46.612"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-39", "sample_id": 6, "test_id": 6, "timestamp": "2023-01-20T02:32:46.644"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-39", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:52.203"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-39", "phase": "sample", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:52.713"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-39", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:53.642"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-39", "phase": "test", "stimulus_id": 6, "timestamp": "2023-01-20T02:32:54.154"}
+{"event": "reset", "timestamp": "2023-01-20T02:32:55.561"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-40", "sample_id": 12, "test_id": 12, "timestamp": "2023-01-20T02:33:04.265"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-40", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:33:17.141"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-40", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:33:17.654"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-40", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:33:18.522"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-40", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:33:19.036"}
+{"event": "reset", "timestamp": "2023-01-20T02:33:20.463"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-41", "sample_id": 5, "test_id": 5, "timestamp": "2023-01-20T02:33:20.485"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-41", "phase": "sample", "stimulus_id": 5, "timestamp": "2023-01-20T02:33:24.112"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-41", "phase": "sample", "stimulus_id": 5, "timestamp": "2023-01-20T02:33:24.626"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-41", "phase": "test", "stimulus_id": 5, "timestamp": "2023-01-20T02:33:25.437"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-41", "phase": "test", "stimulus_id": 5, "timestamp": "2023-01-20T02:33:25.948"}
+{"event": "reset", "timestamp": "2023-01-20T02:33:27.395"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-42", "sample_id": 8, "test_id": 8, "timestamp": "2023-01-20T02:33:27.415"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-42", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:31.157"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-42", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:31.670"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-42", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:32.514"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-42", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:33.023"}
+{"event": "reset", "timestamp": "2023-01-20T02:33:34.547"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-43", "sample_id": 8, "test_id": 8, "timestamp": "2023-01-20T02:33:34.567"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-43", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:39.732"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-43", "phase": "sample", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:40.246"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-43", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:41.155"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-43", "phase": "test", "stimulus_id": 8, "timestamp": "2023-01-20T02:33:41.664"}
+{"event": "reset", "timestamp": "2023-01-20T02:33:43.055"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-44", "sample_id": 10, "test_id": 10, "timestamp": "2023-01-20T02:33:49.537"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-44", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:00.605"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-44", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:01.112"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-44", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:01.935"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-44", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:02.448"}
+{"event": "reset", "timestamp": "2023-01-20T02:34:03.879"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-45", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:34:12.587"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-45", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:34:25.046"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-45", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:34:25.559"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-45", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:34:26.435"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-45", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:34:26.945"}
+{"event": "reset", "timestamp": "2023-01-20T02:34:28.392"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-46", "sample_id": 13, "test_id": 13, "timestamp": "2023-01-20T02:34:28.418"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-46", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:34:35.103"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-46", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:34:35.616"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-46", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:34:36.457"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-46", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:34:36.970"}
+{"event": "reset", "timestamp": "2023-01-20T02:34:38.352"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-47", "sample_id": 15, "test_id": 15, "timestamp": "2023-01-20T02:34:38.373"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-47", "phase": "sample", "stimulus_id": 15, "timestamp": "2023-01-20T02:34:42.618"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-47", "phase": "sample", "stimulus_id": 15, "timestamp": "2023-01-20T02:34:43.131"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-47", "phase": "test", "stimulus_id": 15, "timestamp": "2023-01-20T02:34:43.926"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-47", "phase": "test", "stimulus_id": 15, "timestamp": "2023-01-20T02:34:44.439"}
+{"event": "reset", "timestamp": "2023-01-20T02:34:45.873"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-48", "sample_id": 10, "test_id": 10, "timestamp": "2023-01-20T02:34:45.893"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-48", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:50.521"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-48", "phase": "sample", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:51.028"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-48", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:51.934"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-48", "phase": "test", "stimulus_id": 10, "timestamp": "2023-01-20T02:34:52.441"}
+{"event": "reset", "timestamp": "2023-01-20T02:34:53.777"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-49", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:34:53.785"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-49", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:34:58.732"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-49", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:34:59.245"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-49", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:35:00.039"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-49", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:35:00.551"}
+{"event": "reset", "timestamp": "2023-01-20T02:35:01.994"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-50", "sample_id": 12, "test_id": 12, "timestamp": "2023-01-20T02:35:02.011"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-50", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:35:09.342"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-50", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:35:09.855"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-50", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:35:10.657"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-50", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:35:11.164"}
+{"event": "reset", "timestamp": "2023-01-20T02:35:12.567"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-51", "sample_id": 7, "test_id": 7, "timestamp": "2023-01-20T02:35:12.576"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-51", "phase": "sample", "stimulus_id": 7, "timestamp": "2023-01-20T02:35:17.901"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-51", "phase": "sample", "stimulus_id": 7, "timestamp": "2023-01-20T02:35:18.408"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-51", "phase": "test", "stimulus_id": 7, "timestamp": "2023-01-20T02:35:19.322"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-51", "phase": "test", "stimulus_id": 7, "timestamp": "2023-01-20T02:35:19.828"}
+{"event": "reset", "timestamp": "2023-01-20T02:35:21.259"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-52", "sample_id": 14, "test_id": 14, "timestamp": "2023-01-20T02:35:21.293"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-52", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:35:27.634"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-52", "phase": "sample", "stimulus_id": 14, "timestamp": "2023-01-20T02:35:28.147"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-52", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:35:29.031"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-52", "phase": "test", "stimulus_id": 14, "timestamp": "2023-01-20T02:35:29.541"}
+{"event": "reset", "timestamp": "2023-01-20T02:35:31.022"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-53", "sample_id": 13, "test_id": 13, "timestamp": "2023-01-20T02:35:40.405"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-53", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:35:45.689"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-53", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:35:46.201"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-53", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:35:47.118"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-53", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:35:47.630"}
+{"event": "reset", "timestamp": "2023-01-20T02:35:49.001"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-54", "sample_id": 2, "test_id": 2, "timestamp": "2023-01-20T02:35:49.010"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-54", "phase": "sample", "stimulus_id": 2, "timestamp": "2023-01-20T02:35:55.523"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-54", "phase": "sample", "stimulus_id": 2, "timestamp": "2023-01-20T02:35:56.036"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-54", "phase": "test", "stimulus_id": 2, "timestamp": "2023-01-20T02:35:56.960"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-54", "phase": "test", "stimulus_id": 2, "timestamp": "2023-01-20T02:35:57.473"}
+{"event": "reset", "timestamp": "2023-01-20T02:35:58.917"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-55", "sample_id": 12, "test_id": 12, "timestamp": "2023-01-20T02:35:58.937"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-55", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:36:06.426"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-55", "phase": "sample", "stimulus_id": 12, "timestamp": "2023-01-20T02:36:06.935"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-55", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:36:07.755"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-55", "phase": "test", "stimulus_id": 12, "timestamp": "2023-01-20T02:36:08.264"}
+{"event": "reset", "timestamp": "2023-01-20T02:36:09.690"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-56", "sample_id": 13, "test_id": 13, "timestamp": "2023-01-20T02:36:09.712"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-56", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:36:15.092"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-56", "phase": "sample", "stimulus_id": 13, "timestamp": "2023-01-20T02:36:15.605"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-56", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:36:16.425"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-56", "phase": "test", "stimulus_id": 13, "timestamp": "2023-01-20T02:36:16.934"}
+{"event": "reset", "timestamp": "2023-01-20T02:36:18.310"}
+{"event": "prepared", "trial_id": "03f20256e6c24fef93d68c46488707f7-57", "sample_id": 11, "test_id": 11, "timestamp": "2023-01-20T02:36:18.334"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-57", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:36:23.233"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-57", "phase": "sample", "stimulus_id": 11, "timestamp": "2023-01-20T02:36:23.743"}
+{"event": "presentation_started", "trial_id": "03f20256e6c24fef93d68c46488707f7-57", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:36:24.624"}
+{"event": "presentation_completed", "trial_id": "03f20256e6c24fef93d68c46488707f7-57", "phase": "test", "stimulus_id": 11, "timestamp": "2023-01-20T02:36:25.134"}
+{"event": "reset", "timestamp": "2023-01-20T02:36:37.576"}
