@@ -1,0 +1,385 @@
+[
+  {
+    "session_id": "734c7cee-217d-4595-b2c1-38357d27b157",
+    "user": "Sebastian",
+    "animal_id": "988",
+    "project": "DMTS_Full",
+    "sound_ids": [
+      1,
+      4,
+      10,
+      29,
+      37,
+      42,
+      51,
+      63,
+      102,
+      104,
+      108,
+      145,
+      153
+    ],
+    "started_at": "2026-10-23T10:05:59+02:00",
+    "stopped_at": "2026-10-23T10:19:31+02:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 79,
+    "rewards": 42,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.7 0.2 0.1",
+      "sound_light_probabilities": "1 0",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "cefc4578-729c-4463-b4da-4b7e6a834a32",
+    "user": "Sebastian",
+    "animal_id": "988",
+    "project": "DMTS_Full",
+    "sound_ids": [
+      1,
+      4,
+      10,
+      29,
+      37,
+      42,
+      51,
+      63,
+      102,
+      104,
+      108,
+      145,
+      153
+    ],
+    "started_at": "2026-10-23T10:21:31+02:00",
+    "stopped_at": "2026-10-23T10:35:40+02:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 91,
+    "rewards": 65,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.6 0.3 0.1",
+      "sound_light_probabilities": "1 0",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "3f4e7da3-b4a7-4fbc-a846-656342f210cc",
+    "user": "Sebastian",
+    "animal_id": "988",
+    "project": "DMTS_Full",
+    "sound_ids": [
+      1,
+      4,
+      10,
+      29,
+      37,
+      42,
+      51,
+      63,
+      102,
+      104,
+      108,
+      145,
+      153
+    ],
+    "started_at": "2026-10-23T10:36:33+02:00",
+    "stopped_at": "2026-10-23T10:37:10+02:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 5,
+    "rewards": 1,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.0 0.2",
+      "sound_light_probabilities": "1 0",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "51cdad87-c85d-4ecb-9149-6b04578a90ee",
+    "user": "Sebastian",
+    "animal_id": "1083",
+    "project": "DMTS_MatchOnly",
+    "sound_ids": [
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "started_at": "2026-10-23T11:03:43+02:00",
+    "stopped_at": "2026-10-23T11:08:14+02:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 34,
+    "rewards": 18,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.0 0.2",
+      "sound_light_probabilities": "0.5 ",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "5a4d4a2f-ea4c-4cd7-bf77-98390cd3b5a5",
+    "user": "Sebastian",
+    "animal_id": "1083",
+    "project": "DMTS_MatchOnly",
+    "sound_ids": [
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "started_at": "2026-10-23T11:09:47+02:00",
+    "stopped_at": "2026-10-23T11:10:32+02:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 4,
+    "rewards": 2,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.0 0.2",
+      "sound_light_probabilities": "0.5 0.5",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "81099d41-e738-4146-9c81-78e37432f38c",
+    "user": "Sebastian",
+    "animal_id": "1083",
+    "project": "DMTS_MatchOnly",
+    "sound_ids": [
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "started_at": "2026-10-23T11:11:39+02:00",
+    "stopped_at": "2026-10-23T11:53:04+02:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 282,
+    "rewards": 159,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.9 0.0 0.1",
+      "sound_light_probabilities": "0.5 0.5",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "773cc1c0-fa37-4c9b-8250-1d87d4bf1649",
+    "user": "Sebastian",
+    "animal_id": "988",
+    "project": "DMTS_Full",
+    "sound_ids": [
+      1,
+      4,
+      10,
+      29,
+      37,
+      42,
+      51,
+      63,
+      102,
+      104,
+      108,
+      145,
+      153
+    ],
+    "started_at": "2026-10-26T09:40:30+01:00",
+    "stopped_at": "2026-10-26T10:15:09+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 210,
+    "rewards": 106,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.6 0.0 0.4",
+      "sound_light_probabilities": "1 0",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "920dc46a-8eba-4954-aef8-57f08d560182",
+    "user": "Sebastian",
+    "animal_id": "1083",
+    "project": "DMTS_MatchOnly",
+    "sound_ids": [
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "started_at": "2026-10-26T10:37:44+01:00",
+    "stopped_at": "2026-10-26T10:50:16+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 77,
+    "rewards": 43,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.0 0.2",
+      "sound_light_probabilities": "0.2 0.8",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "0c69eafb-1387-43b1-953c-6915e3850927",
+    "user": "Sebastian",
+    "animal_id": "1083",
+    "project": "DMTS_MatchOnly",
+    "sound_ids": [
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "started_at": "2026-10-26T10:51:03+01:00",
+    "stopped_at": "2026-10-26T11:10:29+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 131,
+    "rewards": 71,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.0 0.2",
+      "sound_light_probabilities": "0 1",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "3bbc3be2-5050-46c8-911f-f7b5ace0f302",
+    "user": "Sebastian",
+    "animal_id": "1083",
+    "project": "DMTS_MatchOnly",
+    "sound_ids": [
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109
+    ],
+    "started_at": "2026-10-26T11:13:29+01:00",
+    "stopped_at": "2026-10-26T11:13:33+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 1,
+    "rewards": 0,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.0 0.2",
+      "sound_light_probabilities": "0 1",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "c274ed90-8896-4712-8741-1313d7394997",
+    "user": "Sebastian",
+    "animal_id": "5743",
+    "project": "FM_WT_PTs_GoOnly",
+    "sound_ids": [
+      1
+    ],
+    "started_at": "2026-10-26T11:46:08+01:00",
+    "stopped_at": "2026-10-26T11:52:56+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 44,
+    "rewards": 39,
+    "weights": {
+      "sequence_values": "1 10",
+      "sequence_weights": "1 0"
+    }
+  },
+  {
+    "session_id": "aa819b6b-14ef-4bd6-8035-45d56e4c69f2",
+    "user": "Sebastian",
+    "animal_id": "5743",
+    "project": "FM_WT_PTs_GoNoGo",
+    "sound_ids": [
+      1,
+      10
+    ],
+    "started_at": "2026-10-26T11:54:11+01:00",
+    "stopped_at": "2026-10-26T11:55:04+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 5,
+    "rewards": 2,
+    "weights": {
+      "sequence_values": "1 10",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "554e9611-a31d-47f0-9cee-8b8ef0691123",
+    "user": "Sebastian",
+    "animal_id": "5743",
+    "project": "FM_WT_PTs_GoNoGo",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-10-26T11:56:33+01:00",
+    "stopped_at": "2026-10-26T12:47:56+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 237,
+    "rewards": 93,
+    "weights": {
+      "sequence_values": "1 15",
+      "sequence_weights": "0.6 0.4"
+    }
+  }
+]
