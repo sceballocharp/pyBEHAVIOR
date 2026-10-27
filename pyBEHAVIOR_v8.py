@@ -356,6 +356,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.max_trials = tk.StringVar(value="0")
         self.dmts_modality_probabilities = tk.StringVar(value="1 0")
         self.dmts_nonmatch_only_sounds = tk.BooleanVar(value=False)
+        self.dmts_nonmatch_fa_noise = tk.BooleanVar(value=False)
         self._entry(seq, 0, "Length", self.sequence_length, width=6)
         self._entry(seq, 2, "Values", self.sequence_values, width=10)
         self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
@@ -371,6 +372,9 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         self.dmts_nonmatch_only_sounds_check = ttk.Checkbutton(seq, text="NonMatch Only Sounds", variable=self.dmts_nonmatch_only_sounds)
         self.dmts_nonmatch_only_sounds_check.grid(row=6, column=0, columnspan=4, sticky="w", padx=6, pady=4)
+
+        self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(seq, text="NonMatch FA noise (110)", variable=self.dmts_nonmatch_fa_noise)
+        self.dmts_nonmatch_fa_noise_check.grid(row=7, column=0, columnspan=4, sticky="w", padx=6, pady=4)
 
         acq = ttk.LabelFrame(parameter_column, text="Acquisition")
         acq.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -707,8 +711,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.dmts_modality_widgets, is_dmts, row=5, col=0)
         if is_dmts:
             self.dmts_nonmatch_only_sounds_check.grid()
+            self.dmts_nonmatch_fa_noise_check.grid()
         else:
             self.dmts_nonmatch_only_sounds_check.grid_remove()
+            self.dmts_nonmatch_fa_noise_check.grid_remove()
         self.set_widget_pair_visible(self.sample_sound_widgets, is_dmts, row=10, col=0)
         self.set_widget_pair_visible(self.test_sound_widgets, is_dmts, row=10, col=2)
         self.set_widget_pair_visible(self.dmts_fork_grace_widgets, is_dmts, row=11, col=0)
@@ -1133,6 +1139,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSSoundIds": self.dmts_sound_ids,
             "DMTSModalityProbabilities": self.dmts_modality_probabilities,
             "DMTSNonMatchOnlySounds": self.dmts_nonmatch_only_sounds,
+            "DMTSNonMatchFANoise": self.dmts_nonmatch_fa_noise,
             "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
             "DMTSReminderTrials": self.dmts_reminder_trials,
             "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
@@ -1442,7 +1449,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.setup_tasks()
         if self.session_requires_sound_file():
             self.startup_message('Starting session: loading sound MAT file.')
-            self.load_sound_file()
+            loaded = self.load_sound_file()
+            if self.is_dmts_task() and self.dmts_nonmatch_fa_noise.get():
+                if not loaded or self.get_sound_by_id(110) is None:
+                    raise ValueError('NonMatch FA noise requires sound ID 110 in the selected sound bank.')
         self.startup_message('Starting session: starting acquisition.')
         self.begin_session_history()
         self.acq_thread = threading.Thread(target=self.acquisition_loop, daemon=True)
@@ -1551,6 +1561,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         return True
 
     def session_requires_sound_file(self):
+        noise = getattr(self, "dmts_nonmatch_fa_noise", None)
+        if self.is_dmts_task() and noise is not None and noise.get():
+            return True
         if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
             var = getattr(self, 'dmts_modality_probabilities', None)
             override = getattr(self, 'dmts_nonmatch_only_sounds', None)
@@ -1995,6 +2008,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSSoundIds": self.dmts_sound_ids.get(),
             "DMTSModalityProbabilities": self.dmts_modality_probabilities.get(),
             "DMTSNonMatchOnlySounds": int(self.dmts_nonmatch_only_sounds.get()),
+            "DMTSNonMatchFANoise": int(self.dmts_nonmatch_fa_noise.get()),
             "DMTSStimulusSource": ("mixed" if self.get_dmts_modality_probabilities()[0] > 0 else "LED") if getattr(self, "dmts_light_client", None) is not None else "sound",
             "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
                 if getattr(self, 'dmts_light_client', None) is not None else '',
@@ -2126,6 +2140,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "FA": "",
             "ResultType": "",
             "dmts_reminder": 0,
+            "punishment_sound_id": 0,
             "lever_reward_test_trials": int(params["LeverRewardTestTrials"]),
             "light_code": light_code,
             "sound_id": sound_id,
@@ -3029,6 +3044,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             for outcome in ("HIT", "MISS", "CR", "FA"):
                 row[outcome] = 0
             row["ResultType"] = "BLANK"
+        noise = getattr(self, 'dmts_nonmatch_fa_noise', None)
+        if fa and not same_sound and noise is not None and noise.get():
+            duration = self.play_loaded_sound(sound_id=110, from_worker=True, start_s=reward_start_s, level_multiplier=1.25)
+            if duration is not None:
+                row['punishment_sound_id'] = 110
         if (hit or (cr and self.is_lick_trigger())) and not self.active_reward_decided:
             measure = float(row.get("lick_count") or self.active_crossing_total_s)
             self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
@@ -3981,7 +4001,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def get_sound_level_gain(self):
         return self.parse_float(self.sound_level, 1.0)
 
-    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None):
+    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None, level_multiplier=1.0):
         if sound_id is None:
             sound_id = self.consume_next_sound_id() if use_sequence else self.parse_int(self.sound_id, 1)
         if int(sound_id or 0) <= 0:
@@ -3989,7 +4009,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         signal = self.get_sound_by_id(sound_id)
         if signal is None:
             return None
-        gain = self.get_sound_level_gain()
+        gain = self.get_sound_level_gain() * level_multiplier
         signal = signal * gain
         fs = 192000
         duration_s = len(signal) / fs if len(signal) else 0.0

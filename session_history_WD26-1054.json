@@ -243,6 +243,39 @@
       153
     ],
     "started_at": "2026-10-27T09:44:52+01:00",
+    "stopped_at": "2026-10-27T10:29:00+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 241,
+    "rewards": 120,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.5 0.5 0.0",
+      "sound_light_probabilities": "1 0",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "ab5066dc-3831-47c9-a9f4-efabe16c1155",
+    "user": "Sebastian",
+    "animal_id": "986",
+    "project": "DMTS_Full",
+    "sound_ids": [
+      1,
+      4,
+      10,
+      29,
+      37,
+      42,
+      51,
+      63,
+      102,
+      104,
+      108,
+      145,
+      153
+    ],
+    "started_at": "2026-10-27T10:56:48+01:00",
     "stopped_at": null,
     "status": "running",
     "simulation": false,

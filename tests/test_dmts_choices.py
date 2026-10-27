@@ -180,3 +180,25 @@ class DMTSChoiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DMTSFANoiseTests(unittest.TestCase):
+    def test_noise_only_on_enabled_nonmatch_fa_and_only_once(self):
+        for enabled in (False, True):
+            for match in (False, True):
+                for response in (False, True):
+                    with self.subTest(enabled=enabled, match=match, response=response):
+                        app, row = harness(match=match)
+                        app.dmts_nonmatch_fa_noise = SimpleNamespace(get=lambda: enabled)
+                        app.play_loaded_sound = Mock(return_value=0.1)
+                        app.active_dmts_response_evaluated = True
+                        app.active_dmts_response_met = response
+                        app.active_choice_side = 'right' if match and response else ''
+                        app.finish_active_dmts_reward_period(2.5)
+                        app.finish_active_dmts_reward_period(2.5)
+                        if enabled and not match and response:
+                            app.play_loaded_sound.assert_called_once_with(sound_id=110, from_worker=True, start_s=2.5, level_multiplier=1.25)
+                            self.assertEqual(row['punishment_sound_id'], 110)
+                            self.assertEqual(row['ResultType'], 'FA')
+                        else:
+                            app.play_loaded_sound.assert_not_called()
