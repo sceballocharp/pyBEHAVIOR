@@ -1304,6 +1304,10 @@ class BehaviorAcquisitionApp(tk.Tk):
     def start_live(self):
         if self.running:
             return
+        previous_thread = getattr(self, 'acq_thread', None)
+        if previous_thread is not None and previous_thread.is_alive():
+            self.log("Previous acquisition is still stopping. Please press Start again once it has stopped.")
+            return
         try:
             self._start_live_session()
         except Exception as exc:
@@ -1579,6 +1583,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                 else:
                     data, times = self.simulate_data(count, rate)
                     time.sleep(callback_s)
+                if not self.running:
+                    break
                 self.handle_data(times, data)
                 callback_elapsed = time.perf_counter() - callback_start
                 observed_rate = (len(data) / callback_elapsed) if callback_elapsed > 0 else 0.0
@@ -1834,23 +1840,36 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.plot_queue.put(("log", f"{start_reason}. Trial {self.trial_index} is type {trial_type_id} {trial_type}, sound id {sound_id}."))
 
     def build_session_folder_path(self):
-        date_folder = datetime.now().strftime("%Y%m%d")
-        time_folder = datetime.now().strftime("%H%M%S") + "_Data"
+        now = datetime.now()
+        date_folder = now.strftime("%Y%m%d")
+        project_name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", self.project_name.get()).strip(" .")
+        project_name = project_name or "UnnamedProject"
+        time_folder = now.strftime("%H%M%S") + f"_{project_name}_Data"
         user_folder = os.path.join(self.save_root.get(), self.user_name.get())
         behavior_folder = os.path.join(user_folder, "behavior_data")
         mouse_folder = os.path.join(behavior_folder, "M" + self.mouse_id.get())
         exp_folder = os.path.join(mouse_folder, date_folder, time_folder)
         return behavior_folder, exp_folder
 
-    def ensure_session_folder(self, *, write_parameters=False, log_message=False):
-        if self.exp_folder and os.path.isdir(self.exp_folder):
+    def ensure_session_folder(self, *, write_parameters=False, log_message=False, new_session=False):
+        if not new_session and self.exp_folder and os.path.isdir(self.exp_folder):
             if write_parameters:
                 self.write_parameters_dat()
             return self.exp_folder
         behavior_folder, exp_folder = self.build_session_folder_path()
-        self.exp_folder = exp_folder
         os.makedirs(behavior_folder, exist_ok=True)
-        os.makedirs(self.exp_folder, exist_ok=True)
+        # Claim a new directory atomically; never reuse an existing session,
+        # even when two starts have the same timestamp.
+        candidate = exp_folder
+        suffix = 0
+        while True:
+            try:
+                os.makedirs(candidate, exist_ok=False)
+                break
+            except FileExistsError:
+                suffix += 1
+                candidate = f"{exp_folder[:-5]}_{suffix:03d}_Data"
+        self.exp_folder = candidate
         self.trial_log_path = os.path.join(self.exp_folder, "TrialLog.csv")
         self.parameters_log_path = os.path.join(self.exp_folder, "Parameters.csv")
         if log_message:
@@ -1860,7 +1879,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         return self.exp_folder
 
     def prepare_session_folder(self):
-        self.ensure_session_folder(write_parameters=True, log_message=True)
+        self.ensure_session_folder(write_parameters=True, log_message=True, new_session=True)
 
     def open_behavior_signal_file(self):
         self.close_behavior_signal_file()
@@ -1868,12 +1887,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             return
         if not self.exp_folder:
             self.prepare_session_folder()
-        self.behavior_signal_file = open(os.path.join(self.exp_folder, "BehaviorSignal.bin"), "wb")
+        self.behavior_signal_file = open(os.path.join(self.exp_folder, "BehaviorSignal.bin"), "xb")
         if self.uses_dual_lick_channels():
-            self.left_lick_file = open(os.path.join(self.exp_folder, "LeftLick.bin"), "wb")
-            self.right_lick_file = open(os.path.join(self.exp_folder, "RightLick.bin"), "wb")
-        self.soundcopy_file = open(os.path.join(self.exp_folder, "SoundCopy.bin"), "wb")
-        self.trial_state_file = open(os.path.join(self.exp_folder, "TrialState.bin"), "wb")
+            self.left_lick_file = open(os.path.join(self.exp_folder, "LeftLick.bin"), "xb")
+            self.right_lick_file = open(os.path.join(self.exp_folder, "RightLick.bin"), "xb")
+        self.soundcopy_file = open(os.path.join(self.exp_folder, "SoundCopy.bin"), "xb")
+        self.trial_state_file = open(os.path.join(self.exp_folder, "TrialState.bin"), "xb")
         if self.uses_dual_lick_channels():
             self.log(f"Writing BehaviorSignal.bin, LeftLick.bin, RightLick.bin, SoundCopy.bin, and TrialState.bin: {self.exp_folder}")
         else:

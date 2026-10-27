@@ -1,0 +1,16 @@
+# Two-pattern DMTS library. Set mouse/device IDs for your actual setup.
+experiment_mode: "dmts_patterns"
+mouse_id: "332"
+device_id: "H2-190"
+DMTS stimuli: ["STIM1", "STIM2", "STIM3", "STIM4"]
+STIM1: "P2N7 P3N7 P2N6 P2N7"
+STIM1 irradiance (mW/mm2): 1.0
+STIM2: "P6N7 P7N7 P6N6 P7N7"
+STIM2 irradiance (mW/mm2): 1.0
+STIM3: "P4N3 P5N3 P4N2 P5N2"
+STIM3 irradiance (mW/mm2): 1.0
+STIM4: "P8N3 P9N3 P8N2 P9sN2"
+STIM4 irradiance (mW/mm2): 1.0
+Pulse duration (ms): 25
+Pulse frequency (Hz): 20
+Number of pulses: 10
