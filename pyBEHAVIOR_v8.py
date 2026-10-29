@@ -2141,6 +2141,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "ResultType": "",
             "dmts_reminder": 0,
             "punishment_sound_id": 0,
+            "punishment_sound_repeats": 0,
             "lever_reward_test_trials": int(params["LeverRewardTestTrials"]),
             "light_code": light_code,
             "sound_id": sound_id,
@@ -3046,9 +3047,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             row["ResultType"] = "BLANK"
         noise = getattr(self, 'dmts_nonmatch_fa_noise', None)
         if fa and not same_sound and noise is not None and noise.get():
-            duration = self.play_loaded_sound(sound_id=110, from_worker=True, start_s=reward_start_s, level_multiplier=1.25)
+            duration = self.play_loaded_sound(sound_id=110, from_worker=True, start_s=reward_start_s, level_multiplier=1.25, repeats=3)
             if duration is not None:
                 row['punishment_sound_id'] = 110
+                row['punishment_sound_repeats'] = 3
         if (hit or (cr and self.is_lick_trigger())) and not self.active_reward_decided:
             measure = float(row.get("lick_count") or self.active_crossing_total_s)
             self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
@@ -4001,7 +4003,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def get_sound_level_gain(self):
         return self.parse_float(self.sound_level, 1.0)
 
-    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None, level_multiplier=1.0):
+    def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None, level_multiplier=1.0, repeats=1):
         if sound_id is None:
             sound_id = self.consume_next_sound_id() if use_sequence else self.parse_int(self.sound_id, 1)
         if int(sound_id or 0) <= 0:
@@ -4011,6 +4013,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             return None
         gain = self.get_sound_level_gain() * level_multiplier
         signal = signal * gain
+        if repeats > 1:
+            signal = np.tile(signal, int(repeats))
         fs = 192000
         duration_s = len(signal) / fs if len(signal) else 0.0
         peak_v = 0.0
@@ -4018,7 +4022,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             peak_v = float(np.max(np.abs(signal))) if np is not None and len(signal) else max(abs(float(value)) for value in signal)
         except Exception:
             peak_v = 0.0
-        msg = f"Played sound id {sound_id}, level {gain:g}, peak {peak_v:.3g} V."
+        msg = f"Played sound id {sound_id}, repeats {repeats}, level {gain:g}, peak {peak_v:.3g} V."
         try:
             self.record_sound_output(signal, fs, sound_id, start_s=start_s)
             if nidaqmx is not None:

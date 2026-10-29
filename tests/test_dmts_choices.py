@@ -197,8 +197,24 @@ class DMTSFANoiseTests(unittest.TestCase):
                         app.finish_active_dmts_reward_period(2.5)
                         app.finish_active_dmts_reward_period(2.5)
                         if enabled and not match and response:
-                            app.play_loaded_sound.assert_called_once_with(sound_id=110, from_worker=True, start_s=2.5, level_multiplier=1.25)
+                            app.play_loaded_sound.assert_called_once_with(sound_id=110, from_worker=True, start_s=2.5, level_multiplier=1.25, repeats=3)
                             self.assertEqual(row['punishment_sound_id'], 110)
+                            self.assertEqual(row['punishment_sound_repeats'], 3)
                             self.assertEqual(row['ResultType'], 'FA')
                         else:
                             app.play_loaded_sound.assert_not_called()
+
+    def test_repeats_are_concatenated_for_one_contiguous_playback(self):
+        import numpy as np
+        methods = load_methods('pyBEHAVIOR_v8.py', {'play_loaded_sound'})
+        backend = SimpleNamespace(play=Mock())
+        methods.update(np=np, nidaqmx=None, sd=backend)
+        app = SimpleNamespace(get_sound_by_id=lambda sound_id: np.array([1.0, -1.0]),
+                              get_sound_level_gain=lambda: 2.0,
+                              record_sound_output=Mock(), log=Mock())
+        duration = methods['play_loaded_sound'](app, sound_id=110, level_multiplier=1.25, repeats=3)
+        expected = np.array([2.5, -2.5] * 3)
+        np.testing.assert_array_equal(backend.play.call_args.args[0], expected)
+        np.testing.assert_array_equal(app.record_sound_output.call_args.args[0], expected)
+        self.assertEqual(backend.play.call_count, 1)
+        self.assertAlmostEqual(duration, 6 / 192000)
