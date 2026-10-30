@@ -95,12 +95,12 @@ class DMTSTrialStartTests(unittest.TestCase):
         app.check_trigger([0, 1], [0, 0])
         app.create_trial.assert_not_called()
 
-    def test_reminder_can_complete_at_max_trials(self):
+    def test_reminder_cannot_start_beyond_max_trials(self):
         app = harness()
         app.trial_index = 3
         app.dmts_reminder_remaining = 3
         app.check_trigger([0], [0])
-        app.create_trial.assert_called_once()
+        app.create_trial.assert_not_called()
 
     def test_final_unresponsive_reminder_finishes_then_requests_stop(self):
         app = harness()

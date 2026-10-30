@@ -1573,6 +1573,15 @@ class BehaviorAcquisitionApp(tk.Tk):
         return (self.play_sound_on_crossing.get() and not self.is_tac_pretraining_task()
                 and self.sequence_has_sound())
 
+    def stop_at_trial_limit(self):
+        # Trial indices advance at trial start; let the last trial finish first.
+        max_trials = max(0, self.parse_int(self.max_trials, 0))
+        if (self.running and max_trials and self.trial_index >= max_trials
+                and self.active_trial_index is None):
+            self.running = False
+            self.plot_queue.put(("log", f"Max trials {max_trials} reached; stopping session."))
+            self.plot_queue.put(("stop_session", None))
+
     def acquisition_loop(self):
         rate = self.parse_float(self.rate_hz, 1000)
         callback_s = self.parse_float(self.callback_s, 0.1)
@@ -1599,6 +1608,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                 if not self.running:
                     break
                 self.handle_data(times, data)
+                # Queue GUI cleanup only after the final data chunk is written.
+                self.stop_at_trial_limit()
                 callback_elapsed = time.perf_counter() - callback_start
                 observed_rate = (len(data) / callback_elapsed) if callback_elapsed > 0 else 0.0
                 self.plot_queue.put(("health", {"rate_hz": observed_rate, "callback_s": callback_elapsed}))
@@ -1787,7 +1798,7 @@ class BehaviorAcquisitionApp(tk.Tk):
 
             if self.is_dmts_task():
                 max_trials = max(0, self.parse_int(self.max_trials, 0))
-                if not max_trials or self.trial_index < max_trials or getattr(self, 'dmts_reminder_remaining', 0):
+                if not max_trials or self.trial_index < max_trials:
                     if not self.prepare_next_dmts_light_trial():
                         break
 
@@ -1814,7 +1825,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                     continue
 
             max_trials = max(0, self.parse_int(self.max_trials, 0))
-            if max_trials and self.trial_index >= max_trials and not (auto_start_dmts and getattr(self, "dmts_reminder_remaining", 0)):
+            if max_trials and self.trial_index >= max_trials:
                 if not auto_start_dmts:
                     self.plot_queue.put(("log", f"Accepted crossing ignored: max trials {max_trials} reached."))
                 continue
