@@ -357,6 +357,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_modality_probabilities = tk.StringVar(value="1 0")
         self.dmts_nonmatch_only_sounds = tk.BooleanVar(value=False)
         self.dmts_nonmatch_fa_noise = tk.BooleanVar(value=False)
+        self.smart_task = tk.BooleanVar(value=False)
+        self.smart_task_active = False
+        self.smart_task_pavlov_remaining = 0
         self._entry(seq, 0, "Length", self.sequence_length, width=6)
         self._entry(seq, 2, "Values", self.sequence_values, width=10)
         self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
@@ -375,6 +378,8 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(seq, text="NonMatch FA noise (110)", variable=self.dmts_nonmatch_fa_noise)
         self.dmts_nonmatch_fa_noise_check.grid(row=7, column=0, columnspan=4, sticky="w", padx=6, pady=4)
+        ttk.Checkbutton(seq, text="SmartTask", variable=self.smart_task,
+                        command=self.update_smart_task).grid(row=8, column=0, columnspan=4, sticky="w", padx=6, pady=4)
 
         acq = ttk.LabelFrame(parameter_column, text="Acquisition")
         acq.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -1356,6 +1361,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_reminder_engaged = False
         self.dmts_lapse_stop_requested = False
         self.active_dmts_reminder = False
+        if getattr(self, "smart_task_active", False):
+            self.sequence_values.set("1 2 0")
+            self.sequence_weights.set("0.5 0.5 0.0")
+            self.pavlov.set("0")
+        self.smart_task_active = False
+        self.smart_task_pavlov_remaining = 0
         self.irfork_was_high = False
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
@@ -1366,6 +1377,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.trial_log_path = ""
         self.parameters_log_path = ""
         self.trial_rows = []
+        self.update_hit_performance_background()
         self.parameter_rows = []
         self.dict_across_trials = {}
         self.trial_crossing_duration_stored = set()
@@ -2146,6 +2158,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "crossing_duration_s": "",
             "TrialType": f"{trial_type_id} {trial_type}",
             "HIT": "",
+            "smart_task_pavlov": "",
             "MISS": "",
             "CR": "",
             "FA": "",
@@ -2359,6 +2372,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         row = self.get_active_trial_row()
         if row is not None:
             row["dmts_reminder"] = int(self.active_dmts_reminder)
+            if getattr(self, "smart_task", None) is not None and self.smart_task.get():
+                self.prepare_smart_task_trial(row)
         sound_duration_s = max(0.0, self.parse_float(self.sound_duration_s, 0))
         delay_s = max(0.0, self.parse_float(self.delay_s, 0))
         response_window_s = max(0.0, self.parse_float(self.response_window_s, 2))
@@ -2491,6 +2506,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.plot_queue.put(('stop_session', None))
 
     def prepare_next_dmts_light_trial(self):
+        if hasattr(self, "smart_task"):
+            self.update_smart_task()
         if getattr(self, '_dmts_trial_pending', None) is not None or getattr(self, '_dmts_light_pending', None) is not None:
             return True
         try:
@@ -3164,8 +3181,15 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.clear_active_trial()
         if getattr(self, "dmts_lapse_stop_requested", False):
             self.plot_queue.put(("stop_session", None))
+        if (getattr(self, "smart_task_active", False)
+                and not self.smart_task_pavlov_remaining):
+            self.pavlov.set("0")
+        if hasattr(self, "smart_task"):
+            self.update_smart_task()
 
     def update_dmts_lapse_state(self, row):
+        if getattr(self, "smart_task", None) is not None and self.smart_task.get():
+            return
         if not self.is_lick_trigger():
             return
         if getattr(self, "active_dmts_reminder", False):
@@ -3737,6 +3761,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         if self.active_reward_sent or self.active_pending_reward_due_s is not None:
             return
         pavlov_probability = 1.0 if getattr(self, "active_dmts_reminder", False) and "DMTS-match" in str(row.get("TrialType", "")) else self.get_pavlov_probability()
+        if row.get("smart_task_pavlov") not in (None, ""):
+            pavlov_probability = float(row["smart_task_pavlov"])
         if pavlov_probability <= 0:
             return
         draw = random.random()
@@ -4216,7 +4242,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         return sound_id
 
     def consume_next_dmts_trial_type(self):
-        if getattr(self, "dmts_reminder_remaining", 0) and self.is_lick_trigger():
+        if (getattr(self, "dmts_reminder_remaining", 0) and self.is_lick_trigger()
+                and not (getattr(self, "smart_task", None) is not None and self.smart_task.get())):
             return 1
         trial_type_id = int(self.consume_next_sound_id())
         return trial_type_id if trial_type_id in (0, 1, 2) else 1
@@ -4881,12 +4908,83 @@ class BehaviorAcquisitionApp(tk.Tk):
         except queue.Empty:
             pass
         if results_pending:
+            self.update_hit_performance_background()
             self.redraw_results_window()
         if latest_plot_payload is not None:
             self.draw_plot(*latest_plot_payload)
         if health_pending or latest_plot_payload is not None or results_pending:
             self.update_health_readouts(health_payload)
         self.after(50, self._drain_plot_queue)
+
+    def prepare_smart_task_trial(self, row):
+        boosted = (self.smart_task_active and self.smart_task_pavlov_remaining > 0
+                   and str(row.get("TrialType", "")).endswith("DMTS-match"))
+        row["smart_task_pavlov"] = int(boosted)
+        if boosted:
+            self.smart_task_pavlov_remaining -= 1
+
+    def update_smart_task(self):
+        # Decide between trials, before the next sound/LED pair is prepared.
+        if self.active_trial_index is not None:
+            return
+        enabled = self.smart_task.get() and self.is_dmts_task()
+        rate = self.get_match_go_hit_rate()
+        recovering = bool(enabled and rate is not None and rate < 0.65)
+        was_active = getattr(self, "smart_task_active", False)
+        if recovering == was_active:
+            return
+        self.smart_task_active = recovering
+        self.smart_task_pavlov_remaining = 5 if recovering else 0
+        self.pavlov.set("1" if recovering else "0")
+        self.dmts_reminder_remaining = 0
+        self.dmts_match_miss_streak = 0
+        self.sequence_values.set("1 2 0")
+        weights = [0.8, 0.2, 0.0] if recovering else [0.5, 0.5, 0.0]
+        self.sequence_weights.set(" ".join(str(value) for value in weights))
+        # Retain the sequence position, including when this sequence wraps.
+        length = max(1, len(self.sound_sequence))
+        self.sound_sequence = random.choices([1, 2, 0], weights=weights, k=length)
+        self.update_sequence_display()
+        self.plot_queue.put(("log", "SmartTask: " + (
+            "Match 0.8 / Nonmatch 0.2; Pavlov on for five match trials."
+            if recovering else "Match 0.5 / Nonmatch 0.5; Pavlov off.")))
+
+    def get_match_go_hit_rate(self):
+        eligible = [row for row in self.trial_rows
+                    if (str(row.get("TrialType", "")).endswith("DMTS-match")
+                        or str(row.get("TrialType", "")).endswith("GO"))
+                    and row.get("ResultType") in ("HIT", "MISS", "FA")
+                    and row.get("trial_end_s") not in (None, "")]
+        if not eligible:
+            return None
+        return sum(row.get("ResultType") == "HIT" for row in eligible) / len(eligible)
+
+    def update_hit_performance_background(self):
+        rate = self.get_match_go_hit_rate()
+        warning = rate is not None and rate < 0.65
+        if warning == getattr(self, "_hit_background_warning", False):
+            return
+        if not hasattr(self, "_hit_background_widgets"):
+            self._hit_background_normal = self.cget("background")
+            self._hit_background_widgets = []
+            def collect(parent):
+                for widget in parent.winfo_children():
+                    if isinstance(widget, tk.Toplevel):
+                        continue
+                    if widget.winfo_class() in ("TFrame", "TLabelframe", "TLabel", "TCheckbutton", "TRadiobutton"):
+                        self._hit_background_widgets.append((widget, widget.cget("style")))
+                    collect(widget)
+            collect(self)
+        style = ttk.Style(self)
+        self.configure(background="red" if warning else self._hit_background_normal)
+        for widget, original_style in self._hit_background_widgets:
+            if warning:
+                warning_style = "HitWarning." + (original_style or widget.winfo_class())
+                style.configure(warning_style, background="red")
+                widget.configure(style=warning_style)
+            else:
+                widget.configure(style=original_style)
+        self._hit_background_warning = warning
 
     def open_results_window(self):
         if self.results_window is not None and self.results_window.winfo_exists():
