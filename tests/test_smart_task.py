@@ -1,6 +1,7 @@
 """Hardware-free checks of SmartTask transitions and its five-match Pavlov block."""
 import queue
 import random
+import math
 import unittest
 from types import MethodType, SimpleNamespace
 from unittest.mock import Mock
@@ -10,9 +11,10 @@ from test_dmts_pavlov import pavlov_harness
 
 
 METHODS = load_methods("pyBEHAVIOR_v8.py", {
-    "update_smart_task", "prepare_smart_task_trial", "update_dmts_lapse_state",
+    "update_smart_task", "prepare_smart_task_trial", "update_dmts_lapse_state", "generate_sequence",
 })
 METHODS["random"] = random
+METHODS["math"] = math
 
 
 def harness():
@@ -25,8 +27,12 @@ def harness():
         sound_sequence=[1, 2] * 150, sound_sequence_index=20,
         update_sequence_display=Mock(), plot_queue=queue.Queue(),
         dmts_reminder_remaining=3, dmts_match_miss_streak=5,
+        sequence_length=Var("300"), random_seed=Var("42"),
+        ensure_sequence_controls=Mock(), get_dmts_modality_probabilities=lambda: [1, 0],
+        parse_int=lambda var, default: int(var.get()),
+        _parse_number_list=lambda text, default, cast: [cast(value) for value in text.split()],
     )
-    for name in ("update_smart_task", "prepare_smart_task_trial", "update_dmts_lapse_state"):
+    for name in ("update_smart_task", "prepare_smart_task_trial", "update_dmts_lapse_state", "generate_sequence"):
         setattr(app, name, MethodType(METHODS[name], app))
     return app
 
@@ -37,7 +43,9 @@ class SmartTaskTests(unittest.TestCase):
         app.update_smart_task()
         self.assertTrue(app.smart_task_active)
         self.assertEqual(app.sequence_weights.get(), "0.8 0.2 0.0")
-        self.assertEqual(app.sound_sequence_index, 20)
+        self.assertEqual(app.sound_sequence_index, 0)
+        expected = random.Random(42).choices([1, 2, 0], weights=[0.8, 0.2, 0], k=300)
+        self.assertEqual(app.sound_sequence, expected)
         self.assertEqual(app.pavlov.get(), "1")
         self.assertEqual(app.dmts_reminder_remaining, 0)
         app.smart_task_pavlov_remaining = 2
@@ -69,6 +77,8 @@ class SmartTaskTests(unittest.TestCase):
         self.assertTrue(app.smart_task.get())
         self.assertEqual(app.sequence_weights.get(), "0.5 0.5 0.0")
         self.assertEqual(app.pavlov.get(), "0")
+        expected = random.Random(42).choices([1, 2, 0], weights=[0.5, 0.5, 0], k=300)
+        self.assertEqual(app.sound_sequence, expected)
         app.get_match_go_hit_rate.return_value = 0.64
         app.update_smart_task()
         self.assertEqual(app.smart_task_pavlov_remaining, 5)
@@ -94,6 +104,16 @@ class SmartTaskTests(unittest.TestCase):
         app.update_smart_task()
         self.assertFalse(app.smart_task_active)
         self.assertEqual(app.sequence_weights.get(), "0.5 0.5 0.0")
+
+    def test_transition_discards_pair_prepared_with_old_weights(self):
+        app = harness()
+        app._dmts_trial_pending = {"trial_type": 2}
+        app._dmts_light_pending = {"trial_type": 2}
+        app.dmts_light_client = Mock()
+        app.update_smart_task()
+        app.dmts_light_client.reset.assert_called_once()
+        self.assertIsNone(app._dmts_trial_pending)
+        self.assertIsNone(app._dmts_light_pending)
 
     def test_legacy_reminders_do_not_override_smart_task(self):
         app = harness()

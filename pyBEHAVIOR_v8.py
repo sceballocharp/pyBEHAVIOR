@@ -374,12 +374,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_modality_widgets = self._entry(seq, 0, "Sound / Light probabilities", self.dmts_modality_probabilities, width=12, row=5)
 
         self.dmts_nonmatch_only_sounds_check = ttk.Checkbutton(seq, text="NonMatch Only Sounds", variable=self.dmts_nonmatch_only_sounds)
-        self.dmts_nonmatch_only_sounds_check.grid(row=6, column=0, columnspan=4, sticky="w", padx=6, pady=4)
+        self.dmts_nonmatch_only_sounds_check.grid(row=6, column=2, columnspan=2, sticky="w", padx=6, pady=4)
 
         self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(seq, text="NonMatch FA noise (110)", variable=self.dmts_nonmatch_fa_noise)
-        self.dmts_nonmatch_fa_noise_check.grid(row=7, column=0, columnspan=4, sticky="w", padx=6, pady=4)
+        self.dmts_nonmatch_fa_noise_check.grid(row=7, column=2, columnspan=2, sticky="w", padx=6, pady=4)
         ttk.Checkbutton(seq, text="SmartTask", variable=self.smart_task,
-                        command=self.update_smart_task).grid(row=8, column=0, columnspan=4, sticky="w", padx=6, pady=4)
+                        command=self.update_smart_task).grid(row=6, column=0, columnspan=2, sticky="w", padx=6, pady=4)
 
         acq = ttk.LabelFrame(parameter_column, text="Acquisition")
         acq.grid(row=1, column=0, sticky="ew", pady=(0, 6))
@@ -4941,13 +4941,18 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.sequence_values.set("1 2 0")
         weights = [0.8, 0.2, 0.0] if recovering else [0.5, 0.5, 0.0]
         self.sequence_weights.set(" ".join(str(value) for value in weights))
-        # Retain the sequence position, including when this sequence wraps.
-        length = max(1, len(self.sound_sequence))
-        self.sound_sequence = random.choices([1, 2, 0], weights=weights, k=length)
-        self.update_sequence_display()
+        # Use the same path as ReGenerate Sequence, including display/index reset.
+        self.generate_sequence(log=False)
+        # A pair prepared during the ITI still belongs to the previous weights.
+        if getattr(self, "_dmts_light_pending", None) is not None:
+            client = getattr(self, "dmts_light_client", None)
+            if client is not None:
+                client.reset()
+        self._dmts_trial_pending = None
+        self._dmts_light_pending = None
         self.plot_queue.put(("log", "SmartTask: " + (
-            "Match 0.8 / Nonmatch 0.2; Pavlov on for five match trials."
-            if recovering else "Match 0.5 / Nonmatch 0.5; Pavlov off.")))
+            "sequence regenerated: Match 0.8 / Nonmatch 0.2; Pavlov on for five match trials."
+            if recovering else "sequence regenerated: Match 0.5 / Nonmatch 0.5; Pavlov off.")))
 
     def get_match_go_hit_rate(self):
         eligible = [row for row in self.trial_rows
