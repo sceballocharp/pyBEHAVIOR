@@ -84,8 +84,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("pyBEHAVIOR_v8")
-        screen_height = self.winfo_screenheight()
-        self.geometry(f"1120x{int(screen_height * 0.90)}+0+0")
+        self.geometry("1200x1000+0+0")
 
         self.acq_thread = None
         self.running = False
@@ -116,6 +115,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
         self.next_trial_allowed_time_s = -1e12
+        self._no_lick_quiet_start_s = None
         self.current_behavior_baseline = 0.0
         self.sound_data = None
         self.sound_loaded = False
@@ -201,6 +201,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.reward_train_side = "left"
 
         self._build_ui()
+        self._window_resize_after_id = None
+        self._window_size = None
+        self.bind("<Configure>", self.on_window_resize, add="+")
         self.generate_sequence(log=False)
         self.after(50, self._drain_plot_queue)
         self.log("pyBEHAVIOR_v8 ready.")
@@ -210,6 +213,22 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.log("scipy not available: MATLAB .mat sound loading is disabled.")
         if NWBFile is None:
             self.log("pynwb not available: NWB export is disabled until pynwb is installed.")
+
+    def on_window_resize(self, event):
+        if event.widget is not self:
+            return
+        size = (event.width, event.height)
+        if size == self._window_size:
+            return
+        self._window_size = size
+        if self._window_resize_after_id is not None:
+            self.after_cancel(self._window_resize_after_id)
+        self._window_resize_after_id = self.after(250, self.log_window_size)
+
+    def log_window_size(self):
+        self._window_resize_after_id = None
+        width, height = self._window_size
+        self.log(f"Window size: {width} x {height} pixels.")
 
     def _build_ui(self):
         notebook = ttk.Notebook(self)
@@ -234,8 +253,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         parameter_column.columnconfigure(0, weight=1)
         parameter_column.rowconfigure(0, weight=0)
         parameter_column.rowconfigure(1, weight=0)
-        parameter_column.rowconfigure(2, weight=0)
-        parameter_column.rowconfigure(3, weight=1)
+        parameter_column.rowconfigure(2, weight=1)
 
         run_setup = ttk.LabelFrame(root, text="Control And Files")
         run_setup.grid(row=0, column=0, sticky="ew", pady=(0, 6))
@@ -285,9 +303,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self._entry(session, 4, "Project", self.project_name, width=18)
         ttk.Label(session, text="Output").grid(row=0, column=6, padx=(14, 4))
         ttk.Combobox(session, textvariable=self.output_format, values=("NWB", "BIDS", "No standard"), width=12).grid(row=0, column=7)
-        self._entry(session, 8, "Save root", self.save_root, width=32)
+        _, save_root_entry = self._entry(session, 0, "Save root", self.save_root, width=32, row=1)
+        save_root_entry.grid_configure(columnspan=7, sticky="ew")
 
-        trig = ttk.LabelFrame(root, text="Trigger And Sound")
+        trig = ttk.Frame(root)
         trig.grid(row=3, column=0, sticky="ew", pady=(0, 6))
         self.trigger_type = tk.StringVar(value="IRFork")
         self.write_behavior_signal_bin = tk.BooleanVar(value=True)
@@ -308,30 +327,26 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.left_valve_var = tk.StringVar(value="")
         self.right_valve_var = tk.StringVar(value="")
         self.light_ttl_var = tk.StringVar(value="")
-        ttk.Label(trig, text="Trigger").grid(row=0, column=0, padx=(4, 4))
-        ttk.Combobox(trig, textvariable=self.trigger_type, values=("IRFork", "Lick", "None"), width=9).grid(row=0, column=1)
-        ttk.Checkbutton(trig, text="Write BehaviorSignal.bin", variable=self.write_behavior_signal_bin).grid(row=0, column=2, padx=8)
-        ttk.Checkbutton(trig, text="Trigger reward", variable=self.trigger_output_on_crossing).grid(row=0, column=3, padx=8)
-        rewards = ttk.Frame(trig)
-        rewards.grid(row=0, column=4, rowspan=2, padx=4)
-        ttk.Button(rewards, text="Left Reward", command=lambda: self.send_output_pulse(reward_side="left")).grid(row=0, column=0, pady=4, sticky="ew")
-        ttk.Button(rewards, text="Right Reward", command=lambda: self.send_output_pulse(reward_side="right")).grid(row=1, column=0, pady=4, sticky="ew")
-        self._entry(rewards, 1, "Pulse ms", self.pulse_ms, width=6, row=0)
-        self._entry(rewards, 1, "Pulse ms", self.right_pulse_ms, width=6, row=1)
-        ttk.Checkbutton(trig, text="Play sound", variable=self.play_sound_on_crossing).grid(row=0, column=6, padx=8)
-        self._entry(trig, 7, "Threshold V", self.threshold_v, width=6)
-        self._entry(trig, 0, "Sound id", self.sound_id, width=6, row=1)
-        self._entry(trig, 2, "Level", self.sound_level, width=6, row=1)
-        self._entry(trig, 7, "Light TTL ms", self.light_ttl_pulse_ms, width=6, row=1)
-        ttk.Button(trig, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=0, column=5, padx=8, pady=4)
-        self.dmts_random_match_check = ttk.Checkbutton(trig, text="Random DMTS sounds", variable=self.dmts_random_match_trials)
-        self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
-        self.lever_reward_test_check = ttk.Checkbutton(trig, text="Reward Test/Probe Trials", variable=self.lever_reward_test_trials)
-        ttk.Label(trig, textvariable=self.behavior_channel_var).grid(row=2, column=0, columnspan=4, padx=6, pady=(2, 4), sticky="w")
-        ttk.Label(trig, textvariable=self.behavior_rule_var).grid(row=2, column=4, columnspan=6, padx=6, pady=(2, 4), sticky="w")
-        ttk.Label(trig, textvariable=self.left_valve_var).grid(row=3, column=0, columnspan=4, padx=6, pady=(0, 4), sticky="w")
-        ttk.Label(trig, textvariable=self.right_valve_var).grid(row=3, column=4, columnspan=6, padx=6, pady=(0, 4), sticky="w")
-        ttk.Label(trig, textvariable=self.light_ttl_var).grid(row=4, column=0, columnspan=6, padx=6, pady=(0, 4), sticky="w")
+        trigger_group = ttk.LabelFrame(trig, text="Trigger", padding=4)
+        rewards = ttk.LabelFrame(trig, text="Reward", padding=4)
+        sound_group = ttk.LabelFrame(trig, text="Sound / Light", padding=4)
+        for column, group in enumerate((trigger_group, rewards, sound_group)):
+            trig.columnconfigure(column, weight=1)
+            group.grid(row=0, column=column, sticky="nsew", padx=6, pady=6)
+        ttk.Label(trigger_group, text="Trigger").grid(row=0, column=0, padx=6, pady=4, sticky="w")
+        ttk.Combobox(trigger_group, textvariable=self.trigger_type, values=("IRFork", "Lick", "None"), width=9).grid(row=0, column=1, padx=6, pady=4, sticky="w")
+        self._entry(trigger_group, 0, "Threshold V", self.threshold_v, width=6, row=1)
+        ttk.Checkbutton(trigger_group, text="Write BehaviorSignal.bin", variable=self.write_behavior_signal_bin).grid(row=2, column=0, columnspan=2, padx=6, pady=4, sticky="w")
+        ttk.Checkbutton(rewards, text="Trigger reward", variable=self.trigger_output_on_crossing).grid(row=0, column=0, columnspan=3, padx=6, pady=4, sticky="w")
+        ttk.Button(rewards, text="Left Reward", command=lambda: self.send_output_pulse(reward_side="left")).grid(row=1, column=0, padx=6, pady=4, sticky="ew")
+        ttk.Button(rewards, text="Right Reward", command=lambda: self.send_output_pulse(reward_side="right")).grid(row=2, column=0, padx=6, pady=4, sticky="ew")
+        self._entry(rewards, 1, "Pulse ms", self.pulse_ms, width=6, row=1)
+        self._entry(rewards, 1, "Pulse ms", self.right_pulse_ms, width=6, row=2)
+        ttk.Checkbutton(sound_group, text="Play sound", variable=self.play_sound_on_crossing).grid(row=0, column=0, columnspan=2, padx=6, pady=4, sticky="w")
+        self._entry(sound_group, 0, "Sound id", self.sound_id, width=6, row=1)
+        self._entry(sound_group, 0, "Level", self.sound_level, width=6, row=2)
+        ttk.Button(sound_group, text="Test Sound", command=lambda: self.play_loaded_sound(use_sequence=False)).grid(row=2, column=2, padx=6, pady=4)
+        self._entry(sound_group, 2, "Light TTL ms", self.light_ttl_pulse_ms, width=6, row=0)
 
         body = ttk.Frame(root)
         body.grid(row=4, column=0, sticky="nsew")
@@ -345,6 +360,10 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         seq = ttk.LabelFrame(parameter_column, text="Closed Loop Sequence")
         seq.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+        sequence_options = ttk.Frame(seq)
+        sequence_options.grid(row=6, column=0, columnspan=4, sticky="ew", padx=6, pady=4)
+        self.dmts_random_match_check = ttk.Checkbutton(sequence_options, text="Random DMTS sounds", variable=self.dmts_random_match_trials)
+        self.lever_reward_test_check = ttk.Checkbutton(seq, text="Reward Test/Probe Trials", variable=self.lever_reward_test_trials)
         self.sequence_length = tk.StringVar(value="300")
         self.sequence_values = tk.StringVar(value="1 10")
         self.sequence_weights = tk.StringVar(value="0.5 0.5")
@@ -364,25 +383,25 @@ class BehaviorAcquisitionApp(tk.Tk):
         self._entry(seq, 2, "Values", self.sequence_values, width=10)
         self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
         self._entry(seq, 2, "Seed", self.random_seed, width=6, row=1)
-        self._entry(seq, 0, "Max trials", self.max_trials, width=6, row=2)
-        ttk.Button(seq, text="ReGenerate Sequence", command=self.generate_sequence).grid(row=2, column=2, columnspan=2, sticky="ew", padx=6, pady=6)
-        self._entry(seq, 0, "Index", self.sequence_index_var, width=6, row=3, state="readonly")
-        self._entry(seq, 2, "Next", self.sequence_next_var, width=6, row=3, state="readonly")
-        self._entry(seq, 0, "Last sound", self.last_trial_sound_var, width=7, row=4, state="readonly")
-        self._entry(seq, 2, "Last type", self.last_trial_type_var, width=7, row=4, state="readonly")
+        self._entry(seq, 2, "Max trials", self.max_trials, width=6, row=2)
+        self._entry(seq, 0, "Index", self.sequence_index_var, width=6, row=4, state="readonly")
+        self._entry(seq, 2, "Next", self.sequence_next_var, width=6, row=4, state="readonly")
+        self._entry(seq, 0, "Last sound", self.last_trial_sound_var, width=7, row=5, state="readonly")
+        self._entry(seq, 2, "Last type", self.last_trial_type_var, width=7, row=5, state="readonly")
 
-        self.dmts_modality_widgets = self._entry(seq, 0, "Sound / Light probabilities", self.dmts_modality_probabilities, width=12, row=5)
+        self.dmts_modality_widgets = self._entry(seq, 0, "Sound / Light probabilities", self.dmts_modality_probabilities, width=12, row=2)
 
-        self.dmts_nonmatch_only_sounds_check = ttk.Checkbutton(seq, text="NonMatch Only Sounds", variable=self.dmts_nonmatch_only_sounds)
-        self.dmts_nonmatch_only_sounds_check.grid(row=6, column=2, columnspan=2, sticky="w", padx=6, pady=4)
+        self.dmts_nonmatch_only_sounds_check = ttk.Checkbutton(sequence_options, text="NonMatch Only Sounds", variable=self.dmts_nonmatch_only_sounds)
+        self.dmts_nonmatch_only_sounds_check.grid(row=0, column=2, sticky="w", padx=(8, 0))
 
-        self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(seq, text="NonMatch FA noise (110)", variable=self.dmts_nonmatch_fa_noise)
-        self.dmts_nonmatch_fa_noise_check.grid(row=7, column=2, columnspan=2, sticky="w", padx=6, pady=4)
-        ttk.Checkbutton(seq, text="SmartTask", variable=self.smart_task,
-                        command=self.update_smart_task).grid(row=6, column=0, columnspan=2, sticky="w", padx=6, pady=4)
+        ttk.Checkbutton(sequence_options, text="SmartTask", variable=self.smart_task,
+                        command=self.update_smart_task).grid(row=0, column=0, sticky="w")
+        ttk.Button(seq, text="ReGenerate Sequence", command=self.generate_sequence).grid(row=9, column=0, columnspan=4, sticky="ew", padx=6, pady=6)
 
-        acq = ttk.LabelFrame(parameter_column, text="Acquisition")
-        acq.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        acquisition_row = ttk.Frame(parameter_column)
+        acquisition_row.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+        acq = ttk.LabelFrame(acquisition_row, text="Acquisition")
+        acq.grid(row=0, column=0, padx=(0, 6), sticky="nsew")
         self.device = tk.StringVar(value="Dev1")
         self.channels = tk.StringVar(value="ai6,ai5,ai1,ai0")
         self.rate_hz = tk.StringVar(value="1000")
@@ -396,19 +415,21 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.right_y_min = tk.StringVar(value="-1")
         self.right_y_max = tk.StringVar(value="5")
         self._entry(acq, 0, "Device", self.device, width=8)
-        self._entry(acq, 2, "Channels", self.channels, width=14)
+        self._entry(acq, 0, "Channels", self.channels, width=14, row=3)
         self._entry(acq, 0, "Rate Hz", self.rate_hz, width=8, row=1)
-        self._entry(acq, 2, "Window s", self.window_s, width=8, row=1)
         self._entry(acq, 0, "Callback s", self.callback_s, width=8, row=2)
-        self._entry(acq, 2, "Left ymin", self.left_y_min, width=7, row=2)
-        self._entry(acq, 0, "Left ymax", self.left_y_max, width=7, row=3)
-        self._entry(acq, 2, "Right ymin", self.right_y_min, width=7, row=3)
-        self._entry(acq, 0, "Right ymax", self.right_y_max, width=7, row=4)
-        ttk.Checkbutton(acq, text="Auto scale", variable=self.auto_scale).grid(row=4, column=2, columnspan=2, padx=(6, 4), pady=4, sticky="w")
-        ttk.Checkbutton(acq, text="Subtract baseline", variable=self.subtract_baseline).grid(row=5, column=0, columnspan=4, padx=(6, 4), pady=4, sticky="w")
+        axes = ttk.LabelFrame(acquisition_row, text="Plot axes")
+        axes.grid(row=0, column=1, padx=(0, 6), sticky="nsew")
+        self._entry(axes, 0, "Window s", self.window_s, width=7, row=0)
+        self._entry(axes, 0, "Left ymin", self.left_y_min, width=7, row=1)
+        self._entry(axes, 0, "Left ymax", self.left_y_max, width=7, row=2)
+        self._entry(axes, 0, "Right ymin", self.right_y_min, width=7, row=3)
+        self._entry(axes, 0, "Right ymax", self.right_y_max, width=7, row=4)
+        ttk.Checkbutton(axes, text="Auto scale", variable=self.auto_scale).grid(row=5, column=0, columnspan=2, padx=6, pady=4, sticky="w")
+        ttk.Checkbutton(axes, text="Subtract baseline", variable=self.subtract_baseline).grid(row=6, column=0, columnspan=2, padx=6, pady=4, sticky="w")
 
-        health = ttk.LabelFrame(parameter_column, text="Session Health")
-        health.grid(row=2, column=0, sticky="ew", pady=(0, 6))
+        health = ttk.LabelFrame(acquisition_row, text="Session Health")
+        health.grid(row=0, column=2, sticky="nsew")
         self.health_rate_var = tk.StringVar(value="Rate: - Hz")
         self.health_callback_var = tk.StringVar(value="Callback: - ms")
         self.health_dropped_plot_var = tk.StringVar(value="Dropped plots: 0")
@@ -424,11 +445,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.health_state_var,
         )
         for index, var in enumerate(health_vars):
-            ttk.Label(health, textvariable=var).grid(row=index // 2, column=index % 2, padx=8, pady=3, sticky="w")
-            health.columnconfigure(index % 2, weight=1)
+            ttk.Label(health, textvariable=var).grid(row=index, column=0, padx=8, pady=4, sticky="w")
+        health.columnconfigure(0, weight=1)
 
         trial = ttk.LabelFrame(parameter_column, text="Trial Structure")
-        trial.grid(row=3, column=0, sticky="nsew")
+        trial.grid(row=2, column=0, sticky="nsew")
         self.task_type = tk.StringVar(value="")
         self.iti_s = tk.StringVar(value="1")
         self.iti_rand_min_s = tk.StringVar(value="")
@@ -497,7 +518,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.sample_sound_widgets = self._entry(trial, 0, "Sample ID", self.sample_sound_id, width=6, row=10)
         self.test_sound_widgets = self._entry(trial, 2, "Test ID", self.test_sound_id, width=6, row=10)
         self.dmts_fork_grace_widgets = self._entry(trial, 0, "Fork grace s", self.dmts_fork_grace_s, width=6, row=11)
-        self.dmts_sound_ids_widgets = self._entry(trial, 2, "Sound IDs", self.dmts_sound_ids, width=16, row=11)
+        self.dmts_sound_ids_widgets = self._entry(trial, 0, "Sound IDs", self.dmts_sound_ids, width=16, row=16)
+        self.dmts_sound_ids_widgets[1].grid_configure(columnspan=3, sticky="ew")
         self.tac_left_channel_widgets = self._entry(trial, 0, "Left chan", self.tac_left_channel, width=6, row=12)
         self.tac_right_channel_widgets = self._entry(trial, 2, "Right chan", self.tac_right_channel, width=6, row=12)
         self.tac_left_threshold_widgets = self._entry(trial, 0, "Left thresh", self.tac_left_threshold, width=6, row=13)
@@ -506,6 +528,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_misses_widgets = self._entry(trial, 0, "Match misses", self.dmts_misses_before_reminder, width=6, row=15)
         self.dmts_reminders_widgets = self._entry(trial, 2, "Reminder trials", self.dmts_reminder_trials, width=6, row=15)
         self.dmts_blank_timeout_check = ttk.Checkbutton(trial, text="Timeout for licking during blank response window", variable=self.dmts_blank_lick_timeout)
+        self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(trial, text="NonMatch FA noise (110)", variable=self.dmts_nonmatch_fa_noise)
+        self.no_lick_period = tk.BooleanVar(value=False)
+        self.no_lick_period_check = ttk.Checkbutton(trial, text="NoLick period", variable=self.no_lick_period)
         for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms, self.right_pulse_ms):
             var.trace_add("write", lambda *_: self.update_trial_duration())
         self.task_type.trace_add("write", lambda *_: (self.update_task_parameter_visibility(), self.update_trial_duration(), self.update_behavior_readouts()))
@@ -706,24 +731,28 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.lever_release_check.grid_remove()
             self.lever_window_check.grid_remove()
         if is_lever:
-            self.lever_reward_test_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+            self.lever_reward_test_check.grid(row=8, column=0, columnspan=4, padx=6, pady=4, sticky="w")
         else:
             self.lever_reward_test_check.grid_remove()
         if is_dmts:
-            self.dmts_random_match_check.grid(row=1, column=5, padx=8, pady=4, sticky="w")
+            self.dmts_random_match_check.grid(row=0, column=1, padx=(8, 0), sticky="w")
         else:
             self.dmts_random_match_check.grid_remove()
-        self.set_widget_pair_visible(self.dmts_modality_widgets, is_dmts, row=5, col=0)
+        self.set_widget_pair_visible(self.dmts_modality_widgets, is_dmts, row=2, col=0)
         if is_dmts:
             self.dmts_nonmatch_only_sounds_check.grid()
-            self.dmts_nonmatch_fa_noise_check.grid()
+            self.dmts_nonmatch_fa_noise_check.grid(row=18, column=0, columnspan=2, padx=6, pady=4, sticky="w")
+            self.no_lick_period_check.grid(row=18, column=2, columnspan=2, padx=6, pady=4, sticky="w")
         else:
             self.dmts_nonmatch_only_sounds_check.grid_remove()
             self.dmts_nonmatch_fa_noise_check.grid_remove()
+            self.no_lick_period_check.grid_remove()
         self.set_widget_pair_visible(self.sample_sound_widgets, is_dmts, row=10, col=0)
         self.set_widget_pair_visible(self.test_sound_widgets, is_dmts, row=10, col=2)
         self.set_widget_pair_visible(self.dmts_fork_grace_widgets, is_dmts, row=11, col=0)
-        self.set_widget_pair_visible(self.dmts_sound_ids_widgets, is_dmts, row=11, col=2)
+        self.set_widget_pair_visible(self.dmts_sound_ids_widgets, is_dmts, row=16, col=0)
+        if is_dmts:
+            self.dmts_sound_ids_widgets[1].grid_configure(columnspan=3, sticky="ew")
         self.set_widget_pair_visible(self.tac_left_channel_widgets, self.uses_dual_lick_channels(), row=12, col=0)
         self.set_widget_pair_visible(self.tac_right_channel_widgets, self.uses_dual_lick_channels(), row=12, col=2)
         self.set_widget_pair_visible(self.tac_left_threshold_widgets, self.uses_dual_lick_channels(), row=13, col=0)
@@ -732,7 +761,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.dmts_misses_widgets, is_dmts, row=15, col=0)
         self.set_widget_pair_visible(self.dmts_reminders_widgets, is_dmts, row=15, col=2)
         if is_dmts:
-            self.dmts_blank_timeout_check.grid(row=16, column=0, columnspan=4, padx=6, pady=4, sticky="w")
+            self.dmts_blank_timeout_check.grid(row=17, column=0, columnspan=4, padx=6, pady=4, sticky="w")
         else:
             self.dmts_blank_timeout_check.grid_remove()
 
@@ -1371,6 +1400,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
         self.next_trial_allowed_time_s = -1e12
+        self._no_lick_quiet_start_s = None
         self.trial_index = 0
         self.acq_start_perf = None
         self.acq_sample_index = 0
@@ -1766,7 +1796,10 @@ class BehaviorAcquisitionApp(tk.Tk):
 
             self.process_pending_go_reward(sample_time_s)
             dmts_lick_crossings = ()
-            if self.is_dmts_task() and self.is_lick_trigger():
+            no_lick_enabled = (self.is_dmts_task()
+                               and getattr(self, "no_lick_period", None) is not None
+                               and self.no_lick_period.get())
+            if self.is_dmts_task() and (self.is_lick_trigger() or no_lick_enabled):
                 row = rows[sample_index] if rows is not None and sample_index < len(rows) else []
                 dmts_lick_crossings = self.get_dmts_lick_crossings(row)
 
@@ -1794,6 +1827,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.irfork_was_high = is_high
 
             if self.active_trial_index is not None:
+                self._no_lick_quiet_start_s = None
                 if self.is_dmts_task():
                     self.update_active_dmts_trial(sample_time_s, is_high, crossed_up, crossed_down, dmts_lick_crossings)
                 elif self.is_lick_trigger():
@@ -1815,8 +1849,25 @@ class BehaviorAcquisitionApp(tk.Tk):
                         break
 
             if sample_time_s < self.next_trial_allowed_time_s:
+                self._no_lick_quiet_start_s = None
                 self.trigger_reset_seen_for_new_trial = False
                 continue
+
+            if no_lick_enabled:
+                if (dmts_lick_crossings or getattr(self, "left_lick_was_high", False)
+                        or getattr(self, "right_lick_was_high", False)):
+                    self._no_lick_quiet_start_s = sample_time_s
+                    continue
+                quiet_start = getattr(self, "_no_lick_quiet_start_s", None)
+                if quiet_start is None:
+                    # Quiet time during the ITI never counts toward this second.
+                    quiet_start = (self.next_trial_allowed_time_s
+                                   if self.next_trial_allowed_time_s >= 0 else sample_time_s)
+                    self._no_lick_quiet_start_s = quiet_start
+                if sample_time_s - quiet_start < 1.0:
+                    continue
+            else:
+                self._no_lick_quiet_start_s = None
 
             if self.is_lick_trigger() and not self.is_dmts_task():
                 if self.start_classic_trial(sample_time_s, threshold, "ITI elapsed"):
@@ -2434,7 +2485,11 @@ class BehaviorAcquisitionApp(tk.Tk):
     def is_dmts_task(self):
         return self.task_type.get().strip().lower() == "dmts"
 
-    def get_dmts_modality_probabilities(self, strict=False):
+    def get_dmts_modality_probabilities(self, strict=False, applied=False):
+        if applied:
+            saved = getattr(self, '_sequence_dmts_modality_probabilities', None)
+            if saved is not None:
+                return list(saved)
         var = getattr(self, 'dmts_modality_probabilities', None)
         text = var.get() if var is not None else '1 0'
         try:
@@ -2516,7 +2571,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 self.dmts_light_client.reset()
                 self._dmts_light_active = None
             trial_type = self.consume_next_dmts_trial_type()
-            probabilities = self.get_dmts_modality_probabilities()
+            probabilities = self.get_dmts_modality_probabilities(applied=True)
             self._dmts_trial_modality = (random.choices(['sound', 'light'], weights=probabilities, k=1)[0]
                                          if trial_type != 0 else 'blank')
             sound_only = getattr(self, 'dmts_nonmatch_only_sounds', None)
@@ -4108,11 +4163,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         finally:
             task.close()
 
-    def generate_sequence(self, log=True):
+    def generate_sequence(self, log=True, apply_modality=True):
         self.ensure_sequence_controls()
         if self.is_dmts_task():
             try:
-                self.get_dmts_modality_probabilities()
+                probabilities = self.get_dmts_modality_probabilities(
+                    strict=apply_modality, applied=not apply_modality)
             except ValueError as exc:
                 self.log(str(exc))
                 return False
@@ -4149,6 +4205,15 @@ class BehaviorAcquisitionApp(tk.Tk):
             rng = random.Random(seed)
         self.sound_sequence = rng.choices(values, weights=weights, k=length)
         self.sound_sequence_index = 0
+        if self.is_dmts_task():
+            self._sequence_dmts_modality_probabilities = tuple(probabilities)
+            # Discard a next-trial pair prepared with the previous sequence.
+            if getattr(self, '_dmts_light_pending', None) is not None:
+                client = getattr(self, 'dmts_light_client', None)
+                if client is not None:
+                    client.reset()
+            self._dmts_trial_pending = None
+            self._dmts_light_pending = None
         self.update_sequence_display()
         if log:
             label = "DMTS trial-type" if self.is_dmts_task() else "sound"
@@ -4942,7 +5007,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         weights = [0.8, 0.2, 0.0] if recovering else [0.5, 0.5, 0.0]
         self.sequence_weights.set(" ".join(str(value) for value in weights))
         # Use the same path as ReGenerate Sequence, including display/index reset.
-        self.generate_sequence(log=False)
+        self.generate_sequence(log=False, apply_modality=False)
         # A pair prepared during the ITI still belongs to the previous weights.
         if getattr(self, "_dmts_light_pending", None) is not None:
             client = getattr(self, "dmts_light_client", None)

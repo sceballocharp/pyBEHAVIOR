@@ -28,7 +28,7 @@ def harness():
         update_sequence_display=Mock(), plot_queue=queue.Queue(),
         dmts_reminder_remaining=3, dmts_match_miss_streak=5,
         sequence_length=Var("300"), random_seed=Var("42"),
-        ensure_sequence_controls=Mock(), get_dmts_modality_probabilities=lambda: [1, 0],
+        ensure_sequence_controls=Mock(), get_dmts_modality_probabilities=lambda **kwargs: [1, 0],
         parse_int=lambda var, default: int(var.get()),
         _parse_number_list=lambda text, default, cast: [cast(value) for value in text.split()],
     )

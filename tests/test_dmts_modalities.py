@@ -8,7 +8,7 @@ from test_lever_modes import load_methods, Var
 from test_dmts_trial_start import harness
 
 NAMES = {'get_dmts_modality_probabilities', 'prepare_next_dmts_light_trial',
-         'start_active_dmts_trial', 'session_requires_sound_file'}
+         'start_active_dmts_trial', 'session_requires_sound_file', 'generate_sequence'}
 METHODS = load_methods('pyBEHAVIOR_v8.py', NAMES)
 METHODS.update(math=math, random=random)
 
@@ -25,6 +25,45 @@ class ModalityTests(unittest.TestCase):
         app.consume_next_dmts_trial_type.return_value = trial_type
         app.dmts_light_client.prepare.return_value = {'sample_id': 7, 'test_id': 7}
         return app
+
+    def regenerate(self, app, apply_modality=True):
+        app.ensure_sequence_controls = Mock()
+        app.sequence_length = Var('300')
+        app.sequence_values = Var('1 2 0')
+        app.sequence_weights = Var('0.5 0.5 0')
+        app.random_seed = Var('42')
+        app._parse_number_list = lambda text, default, cast: [cast(v) for v in text.split()]
+        app.update_sequence_display = Mock()
+        app.log = Mock()
+        return app.generate_sequence(log=False, apply_modality=apply_modality)
+
+    def test_edited_probabilities_only_apply_after_regeneration(self):
+        app = self.app('1 0')
+        self.regenerate(app)
+        app.dmts_modality_probabilities.set('0 1')
+        self.assertTrue(app.prepare_next_dmts_light_trial())
+        self.assertEqual(app._dmts_trial_modality, 'sound')
+        self.regenerate(app)
+        self.assertTrue(app.prepare_next_dmts_light_trial())
+        self.assertEqual(app._dmts_trial_modality, 'light')
+
+    def test_smart_task_regeneration_preserves_applied_probabilities(self):
+        app = self.app('1 0')
+        self.regenerate(app)
+        for text in ('0 1', 'invalid'):
+            app.dmts_modality_probabilities.set(text)
+            self.regenerate(app, apply_modality=False)
+            self.assertTrue(app.prepare_next_dmts_light_trial())
+            self.assertEqual(app._dmts_trial_modality, 'sound')
+
+    def test_invalid_regeneration_keeps_existing_sequence_and_probabilities(self):
+        app = self.app('1 0')
+        self.regenerate(app)
+        old_sequence = list(app.sound_sequence)
+        app.dmts_modality_probabilities.set('0.8 0.5')
+        self.assertFalse(self.regenerate(app))
+        self.assertEqual(app.sound_sequence, old_sequence)
+        self.assertEqual(app.get_dmts_modality_probabilities(applied=True), [1, 0])
 
     def test_probabilities_require_two_finite_numbers_summing_to_one(self):
         for text in ('0.5 0.5', '1 0', '0 1', '0.75 0.25'):
