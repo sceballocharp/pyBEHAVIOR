@@ -359,3 +359,7 @@ Manual GUI reward controls call the same output path:
 - For any new task, implement explicit start, update, finish, and clear behavior rather than spreading state changes across unrelated functions.
 
 
+
+## Classic Go/No-Go fork quiet period (v8)
+
+A fork-triggered Go/No-Go trial requires the signal to remain continuously below the trigger threshold for at least 1 second immediately before the rising crossing. Any high sample resets this timer, including crossings rejected during ITI or timeout. Low time during ITI may count; the ITI/timeout must still finish before a new crossing is accepted. At session start, the low period begins at the first observed low sample. A held-high signal never starts a trial after the timer or ITI expires. Lick-triggered Go/No-Go, DMTS, Lever, and tAC rules are unchanged.

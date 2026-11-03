@@ -112,6 +112,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.trial_state_file = None
         self.exp_folder = ""
         self.irfork_was_high = False
+        self._classic_fork_low_start_s = None
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
         self.next_trial_allowed_time_s = -1e12
@@ -1397,6 +1398,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.smart_task_active = False
         self.smart_task_pavlov_remaining = 0
         self.irfork_was_high = False
+        self._classic_fork_low_start_s = None
         self.last_trigger_time = -1e12
         self.last_trial_end_time_s = -1e12
         self.next_trial_allowed_time_s = -1e12
@@ -1826,6 +1828,19 @@ class BehaviorAcquisitionApp(tk.Tk):
             crossed_down = not is_high and self.irfork_was_high
             self.irfork_was_high = is_high
 
+            # Require a full second below threshold immediately before a
+            # classic Go/No-Go fork crossing, including across data chunks.
+            classic_fork = not self.is_dmts_task() and not self.is_lick_trigger()
+            fork_quiet_ready = False
+            if classic_fork:
+                low_start = getattr(self, '_classic_fork_low_start_s', None)
+                if is_high:
+                    fork_quiet_ready = (low_start is not None
+                                        and sample_time_s - low_start >= 1.0 - 1e-9)
+                    self._classic_fork_low_start_s = None
+                elif low_start is None:
+                    self._classic_fork_low_start_s = sample_time_s
+
             if self.active_trial_index is not None:
                 self._no_lick_quiet_start_s = None
                 if self.is_dmts_task():
@@ -1885,6 +1900,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                     continue
 
                 if not crossed_up:
+                    continue
+                if classic_fork and not fork_quiet_ready:
                     continue
 
             max_trials = max(0, self.parse_int(self.max_trials, 0))
