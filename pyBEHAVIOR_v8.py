@@ -445,7 +445,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.health_state_var,
         )
         for index, var in enumerate(health_vars):
-            ttk.Label(health, textvariable=var).grid(row=index, column=0, padx=8, pady=4, sticky="w")
+            ttk.Label(health, textvariable=var, width=24, anchor="w").grid(row=index, column=0, padx=8, pady=4, sticky="w")
         health.columnconfigure(0, weight=1)
 
         trial = ttk.LabelFrame(parameter_column, text="Trial Structure")
