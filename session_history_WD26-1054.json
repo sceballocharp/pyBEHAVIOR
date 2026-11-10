@@ -839,10 +839,272 @@
       1
     ],
     "started_at": "2026-11-05T11:01:19+01:00",
+    "stopped_at": "2026-11-05T11:06:03+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 34,
+    "rewards": 33,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "1 0"
+    }
+  },
+  {
+    "session_id": "d3ca5f7e-9639-4184-a200-5f3ebeadd7b1",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-05T11:06:18+01:00",
+    "stopped_at": "2026-11-05T12:29:36+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 274,
+    "rewards": 112,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "1af31a87-5672-477b-8a3a-98c27480cedd",
+    "user": "Sebastian",
+    "animal_id": "986",
+    "project": "DMTS_Full",
+    "sound_ids": [
+      4,
+      34
+    ],
+    "started_at": "2026-11-05T12:39:48+01:00",
+    "stopped_at": "2026-11-05T13:23:05+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 236,
+    "rewards": 182,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.2 0.0",
+      "sound_light_probabilities": "1 0",
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "2e504907-dce5-4ae9-b93a-affc9c246d2b",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-06T10:29:22+01:00",
+    "stopped_at": "2026-11-06T11:57:06+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 363,
+    "rewards": 155,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "becd6890-d995-4a30-bef9-cbd641a98cc4",
+    "user": "Sebastian",
+    "animal_id": "1",
+    "project": "Test",
+    "sound_ids": [],
+    "started_at": "2026-11-09T10:14:08+01:00",
+    "stopped_at": "2026-11-09T10:30:22+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 145,
+    "rewards": 162,
+    "weights": {
+      "sequence_values": "0 0",
+      "sequence_weights": "1 0"
+    }
+  },
+  {
+    "session_id": "5dd71922-827c-4932-9668-ea6f325559f9",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-09T10:39:46+01:00",
     "stopped_at": null,
     "status": "running",
     "simulation": false,
     "trials": 0,
     "rewards": 0
+  },
+  {
+    "session_id": "7e39982f-45ac-488c-82f0-c4aecf9b869c",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-09T11:28:06+01:00",
+    "stopped_at": "2026-11-09T11:54:16+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 89,
+    "rewards": 32,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "8f28b13f-d13f-47c7-ba94-bc313b5a38b9",
+    "user": "Sebastian",
+    "animal_id": "5760",
+    "project": "FM_WT_PTs_GoOnly",
+    "sound_ids": [
+      1
+    ],
+    "started_at": "2026-11-09T12:46:26+01:00",
+    "stopped_at": "2026-11-09T12:55:41+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 57,
+    "rewards": 56,
+    "weights": {
+      "sequence_values": "1 10",
+      "sequence_weights": "1 0"
+    }
+  },
+  {
+    "session_id": "9e453e68-7bfd-43d4-b18f-c895201617bf",
+    "user": "Sebastian",
+    "animal_id": "5260",
+    "project": "FM_WT_PTs_GoNoGo",
+    "sound_ids": [
+      1,
+      10
+    ],
+    "started_at": "2026-11-09T12:56:16+01:00",
+    "stopped_at": "2026-11-09T13:40:14+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 180,
+    "rewards": 60,
+    "weights": {
+      "sequence_values": "1 10",
+      "sequence_weights": "0.3 0.7"
+    }
+  },
+  {
+    "session_id": "a6ac211c-2e02-4ddd-9468-8f80e0280ec2",
+    "user": "Sebastian",
+    "animal_id": "1",
+    "project": "FM_WT_PTs_GoNoGo_Data",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-10T09:39:40+01:00",
+    "stopped_at": "2026-11-10T11:05:14+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 348,
+    "rewards": 126,
+    "weights": {
+      "sequence_values": "1 15",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "b0b1e18b-110a-447c-9684-1d97584f37f7",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-10T11:08:44+01:00",
+    "stopped_at": "2026-11-10T12:52:08+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 364,
+    "rewards": 176,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.6 0.4"
+    }
+  },
+  {
+    "session_id": "87ddc9b6-e7d7-43ef-b04a-13291baf219f",
+    "user": "Sebastian",
+    "animal_id": "1",
+    "project": "Test",
+    "sound_ids": [],
+    "started_at": "2026-11-10T13:17:07+01:00",
+    "stopped_at": null,
+    "status": "running",
+    "simulation": false,
+    "trials": 0,
+    "rewards": 0
+  },
+  {
+    "session_id": "abc8423d-7e2f-418d-8eee-0eb37f4f67e9",
+    "user": "Sebastian",
+    "animal_id": "1",
+    "project": "Test",
+    "sound_ids": [],
+    "started_at": "2026-11-10T13:17:35+01:00",
+    "stopped_at": "2026-11-10T13:18:15+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 56,
+    "rewards": 58,
+    "weights": {
+      "sequence_values": "0 0",
+      "sequence_weights": "1 0"
+    }
+  },
+  {
+    "session_id": "53ec5108-04c1-437e-8740-2ff3c01a1689",
+    "user": "Sebastian",
+    "animal_id": "1",
+    "project": "Test",
+    "sound_ids": [],
+    "started_at": "2026-11-10T13:18:36+01:00",
+    "stopped_at": "2026-11-10T13:19:26+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 55,
+    "rewards": 55,
+    "weights": {
+      "sequence_values": "0 0",
+      "sequence_weights": "1 0"
+    }
+  },
+  {
+    "session_id": "57cbf583-e01d-4149-895a-965a56bf6501",
+    "user": "Sebastian",
+    "animal_id": "1",
+    "project": "Test",
+    "sound_ids": [],
+    "started_at": "2026-11-10T13:19:27+01:00",
+    "stopped_at": "2026-11-10T13:30:24+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 194,
+    "rewards": 198,
+    "weights": {
+      "sequence_values": "0 0",
+      "sequence_weights": "1 0"
+    }
   }
 ]
