@@ -1234,5 +1234,85 @@
       "sound_light_probabilities": "1 0",
       "nonmatch_only_sounds": false
     }
+  },
+  {
+    "session_id": "026349a3-c5ba-4d17-9ff7-91f3df2bb0c8",
+    "user": "Sebastian",
+    "animal_id": "5260",
+    "project": "FM_WT_PTs_GoNoGo_Data",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-13T10:41:40+01:00",
+    "stopped_at": "2026-11-13T11:50:29+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 284,
+    "rewards": 99,
+    "weights": {
+      "sequence_values": "1 15",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "57f06660-7291-4a56-9d0d-a8d57c8db93a",
+    "user": "Sebastian",
+    "animal_id": "5743",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-13T11:55:01+01:00",
+    "stopped_at": "2026-11-13T11:55:18+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 0,
+    "rewards": 0,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "330e5ec4-22f2-4cb9-86c8-b33d8126f768",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-13T11:57:15+01:00",
+    "stopped_at": "2026-11-13T12:02:23+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 0,
+    "rewards": 1,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "8dac1a2a-9b36-41a3-aae8-077de9a4ee65",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-13T12:03:02+01:00",
+    "stopped_at": "2026-11-13T13:20:51+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 268,
+    "rewards": 108,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
   }
 ]
