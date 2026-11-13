@@ -480,6 +480,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.lever_start_debounce_s = tk.StringVar(value="0.1")
         self.lever_release_debounce_s = tk.StringVar(value="0.05")
         self.lever_release_window_s = tk.StringVar(value="0.25")
+        self.classic_go_sound_id = tk.StringVar(value="1")
+        self.classic_nogo_sound_id = tk.StringVar(value="10")
         self.sample_sound_id = tk.StringVar(value="1")
         self.test_sound_id = tk.StringVar(value="1")
         self.dmts_sound_ids = tk.StringVar(value="1:16")
@@ -516,6 +518,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.lever_release_debounce_widgets = self._entry(trial, 2, "Release debounce s", self.lever_release_debounce_s, width=6, row=8)
         self.lever_release_check = ttk.Checkbutton(trial, text="Require release + bonus", variable=self.lever_require_release, command=lambda: self.select_lever_release_mode("bonus"))
         self.lever_window_check = ttk.Checkbutton(trial, text="Require release within window", variable=self.lever_req_rel_window, command=lambda: self.select_lever_release_mode("window"))
+        self.classic_go_sound_widgets = self._entry(trial, 0, "GO Sound ID", self.classic_go_sound_id, width=6, row=7)
+        self.classic_nogo_sound_widgets = self._entry(trial, 2, "NoGo Sound ID", self.classic_nogo_sound_id, width=6, row=7)
         self.sample_sound_widgets = self._entry(trial, 0, "Sample ID", self.sample_sound_id, width=6, row=10)
         self.test_sound_widgets = self._entry(trial, 2, "Test ID", self.test_sound_id, width=6, row=10)
         self.dmts_fork_grace_widgets = self._entry(trial, 0, "Fork grace s", self.dmts_fork_grace_s, width=6, row=11)
@@ -550,6 +554,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.tac_min_lick_count,
         ):
             var.trace_add("write", lambda *_: self.update_behavior_readouts())
+        self.sequence_values.trace_add("write", lambda *_: self.sync_classic_sound_ids())
+        self.classic_go_sound_id.trace_add("write", lambda *_: self.sync_classic_sound_ids(from_fields=True))
+        self.classic_nogo_sound_id.trace_add("write", lambda *_: self.sync_classic_sound_ids(from_fields=True))
+        self.task_type.trace_add("write", lambda *_: self.sync_classic_sound_ids())
         self.update_trial_duration()
         self.update_task_parameter_visibility()
         self.update_behavior_readouts()
@@ -693,6 +701,25 @@ class BehaviorAcquisitionApp(tk.Tk):
         entry_widget.grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
         return label_widget, entry_widget
 
+    def sync_classic_sound_ids(self, from_fields=False):
+        if getattr(self, '_syncing_classic_sound_ids', False):
+            return
+        if self.is_lever_task() or self.is_dmts_task() or self.is_tac_family_task():
+            return
+        self._syncing_classic_sound_ids = True
+        try:
+            if from_fields:
+                fields = [self.classic_go_sound_id.get().strip(), self.classic_nogo_sound_id.get().strip()]
+                if all(value.isdigit() for value in fields):
+                    values = self.sequence_values.get().split()
+                    self.sequence_values.set(' '.join(fields + values[2:]))
+            else:
+                values = self.sequence_values.get().split()
+                self.classic_go_sound_id.set(values[0] if values else '1')
+                self.classic_nogo_sound_id.set(values[1] if len(values) > 1 else '10')
+        finally:
+            self._syncing_classic_sound_ids = False
+
     def update_task_parameter_visibility(self):
         if not hasattr(self, "lever_hold_widgets"):
             return
@@ -703,12 +730,14 @@ class BehaviorAcquisitionApp(tk.Tk):
         is_tac_family = self.is_tac_family_task()
         is_lick = self.is_lick_trigger()
         is_classic = not is_lever and not is_dmts and not is_tac_family
+        self.set_widget_pair_visible(self.classic_go_sound_widgets, is_classic, row=7, col=0)
+        self.set_widget_pair_visible(self.classic_nogo_sound_widgets, is_classic, row=7, col=2)
         self.set_widget_pair_visible(self.reward_go_widgets, not is_tac_pretraining, row=1, col=0)
         self.set_widget_pair_visible(self.pavlov_widgets, is_classic or is_dmts or is_tac, row=1, col=2)
-        self.set_widget_pair_visible(self.iti_widgets, not is_tac_pretraining, row=2, col=0)
-        self.set_widget_pair_visible(self.iti_rand_min_widgets, not is_tac_pretraining, row=2, col=2)
-        self.set_widget_pair_visible(self.iti_rand_max_widgets, not is_tac_pretraining, row=3, col=0)
-        self.set_widget_pair_visible(self.trial_duration_widgets, not is_tac_pretraining, row=3, col=2)
+        self.set_widget_pair_visible(self.iti_widgets, not is_tac_pretraining, row=2, col=2 if is_dmts else 0)
+        self.set_widget_pair_visible(self.iti_rand_min_widgets, not is_tac_pretraining, row=3 if is_dmts else 2, col=0 if is_dmts else 2)
+        self.set_widget_pair_visible(self.iti_rand_max_widgets, not is_tac_pretraining, row=3, col=2 if is_dmts else 0)
+        self.set_widget_pair_visible(self.trial_duration_widgets, not is_tac_pretraining, row=2 if is_dmts else 3, col=0 if is_dmts else 2)
         self.set_widget_pair_visible(self.response_window_widgets, not is_lever and not is_tac_pretraining, row=4, col=0)
         self.set_widget_pair_visible(self.reward_delay_widgets, not is_lever and not is_tac_pretraining, row=4, col=2)
         self.set_widget_pair_visible(self.sound_delay_widgets, is_classic, row=5, col=0)
@@ -748,9 +777,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.dmts_nonmatch_only_sounds_check.grid_remove()
             self.dmts_nonmatch_fa_noise_check.grid_remove()
             self.no_lick_period_check.grid_remove()
-        self.set_widget_pair_visible(self.sample_sound_widgets, is_dmts, row=10, col=0)
-        self.set_widget_pair_visible(self.test_sound_widgets, is_dmts, row=10, col=2)
-        self.set_widget_pair_visible(self.dmts_fork_grace_widgets, is_dmts, row=11, col=0)
+        self.set_widget_pair_visible(self.sample_sound_widgets, False, row=10, col=0)
+        self.set_widget_pair_visible(self.test_sound_widgets, False, row=10, col=2)
+        self.set_widget_pair_visible(self.dmts_fork_grace_widgets, False, row=11, col=0)
         self.set_widget_pair_visible(self.dmts_sound_ids_widgets, is_dmts, row=16, col=0)
         if is_dmts:
             self.dmts_sound_ids_widgets[1].grid_configure(columnspan=3, sticky="ew")
