@@ -363,3 +363,7 @@ Manual GUI reward controls call the same output path:
 ## Classic Go/No-Go fork quiet period (v8)
 
 A fork-triggered Go/No-Go trial requires the signal to remain continuously below the trigger threshold for at least 1 second immediately before the rising crossing. Any high sample resets this timer, including crossings rejected during ITI or timeout. Low time during ITI may count; the ITI/timeout must still finish before a new crossing is accepted. At session start, the low period begins at the first observed low sample. A held-high signal never starts a trial after the timer or ITI expires. Lick-triggered Go/No-Go, DMTS, Lever, and tAC rules are unchanged.
+
+## Go/No-Go SmartTask
+
+When enabled, completed GO and NoGo trials from the current session define HIT/(HIT+MISS) and CR/(CR+FA). Both categories must be present. Strictly above 90% HIT and below 10% CR starts a 25-completed-trial block with GO/NoGo weights `0.2 0.8`. The following 25 completed trials use `0.5 0.5`; SmartTask cannot change weights during that protected block. After those 25 trials, the controller can trigger again if the session rates still qualify. Decisions occur between trials; repeated checks do not advance the counters. Disabling SmartTask restores `0.5 0.5`, and each new session resets the cycle. Sound IDs, Pavlov and reward parameters are unchanged. This rule applies to classic fork- and lick-triggered Go/No-Go; DMTS retains its existing SmartTask behavior.

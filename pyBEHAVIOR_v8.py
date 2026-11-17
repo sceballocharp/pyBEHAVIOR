@@ -1426,6 +1426,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.pavlov.set("0")
         self.smart_task_active = False
         self.smart_task_pavlov_remaining = 0
+        if getattr(self, '_smart_gonogo_phase', 'idle') != 'idle':
+            self.sequence_weights.set('0.5 0.5')
+        self._smart_gonogo_phase = 'idle'
+        self._smart_gonogo_block_start = 0
         self.irfork_was_high = False
         self._classic_fork_low_start_s = None
         self.last_trigger_time = -1e12
@@ -2415,6 +2419,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         if max_trials and self.trial_index >= max_trials:
             self.plot_queue.put(("log", f"Trial start ignored: max trials {max_trials} reached."))
             return False
+        if hasattr(self, "smart_task"):
+            self.update_smart_task()
         stimulus = self.consume_next_trial_stimulus()
         sound_id = int(stimulus["sound_id"])
         iti = self.draw_trial_iti_s()
@@ -3650,6 +3656,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.plot_queue.put(("log", f"Trial {row['trial']} total IR crossing time was {total_s:.3f} s. HIT={row['HIT']}{result}."))
         self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
+        if hasattr(self, "smart_task"):
+            self.update_smart_task()
 
     def finish_active_lick_trial(self, row, trial_end_s):
         min_lick_count = self.get_min_lick_count()
@@ -3685,6 +3693,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.plot_queue.put(("log", f"Trial {row['trial']} lick count was {lick_count}. HIT={row['HIT']}{result}."))
         self.end_trial_state_interval(trial_end_s)
         self.clear_active_trial()
+        if hasattr(self, "smart_task"):
+            self.update_smart_task()
 
     def get_punish_no_go_fa_s(self):
         return min(10.0, max(0.0, self.parse_float(self.punish_no_go_fa, 0)))
@@ -5038,6 +5048,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         # Decide between trials, before the next sound/LED pair is prepared.
         if self.active_trial_index is not None:
             return
+        if not self.is_dmts_task() and hasattr(self, 'update_gonogo_smart_task'):
+            self.update_gonogo_smart_task()
+            return
         enabled = self.smart_task.get() and self.is_dmts_task()
         rate = self.get_match_go_hit_rate()
         recovering = bool(enabled and rate is not None and rate < 0.65)
@@ -5064,6 +5077,48 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.plot_queue.put(("log", "SmartTask: " + (
             "sequence regenerated: Match 0.8 / Nonmatch 0.2; Pavlov on for five match trials."
             if recovering else "sequence regenerated: Match 0.5 / Nonmatch 0.5; Pavlov off.")))
+
+    def update_gonogo_smart_task(self):
+        if self.is_lever_task() or self.is_tac_family_task():
+            return
+        phase = getattr(self, '_smart_gonogo_phase', 'idle')
+        completed = [row for row in self.trial_rows
+                     if row.get('trial_end_s') not in (None, '')
+                     and row.get('ResultType') in ('HIT', 'MISS', 'CR', 'FA', 'BLANK')]
+        count = len(completed)
+        weights = None
+        if not self.smart_task.get():
+            if phase == 'idle':
+                return
+            phase, weights = 'idle', '0.5 0.5'
+        elif phase == 'nogo':
+            if count - self._smart_gonogo_block_start < 25:
+                return
+            phase, weights = 'balanced', '0.5 0.5'
+        elif phase == 'balanced':
+            if count - self._smart_gonogo_block_start < 25:
+                return
+            phase = 'idle'
+        if self.smart_task.get() and phase == 'idle':
+            go = [r for r in completed if str(r.get('TrialType', '')).endswith('GO')
+                  and r.get('ResultType') in ('HIT', 'MISS')]
+            nogo = [r for r in completed if str(r.get('TrialType', '')).endswith('noGo')
+                    and r.get('ResultType') in ('CR', 'FA')]
+            if go and nogo:
+                hit_rate = sum(r['ResultType'] == 'HIT' for r in go) / len(go)
+                cr_rate = sum(r['ResultType'] == 'CR' for r in nogo) / len(nogo)
+                if hit_rate > 0.90 and cr_rate < 0.10:
+                    phase, weights = 'nogo', '0.2 0.8'
+        self._smart_gonogo_phase = phase
+        if weights is None:
+            return
+        self._smart_gonogo_block_start = count
+        self.sequence_weights.set(weights)
+        self.generate_sequence(log=False, apply_modality=False)
+        self.plot_queue.put(('log', 'SmartTask Go/No-Go: ' + (
+            'GO 0.2 / NoGo 0.8 for 25 trials.' if phase == 'nogo' else
+            'GO 0.5 / NoGo 0.5 for 25 protected trials.' if phase == 'balanced' else
+            'disabled; GO 0.5 / NoGo 0.5 restored.')))
 
     def get_match_go_hit_rate(self):
         eligible = [row for row in self.trial_rows
