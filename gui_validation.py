@@ -13,10 +13,10 @@ TEXT = {'user_name', 'mouse_id', 'project_name', 'device', 'random_seed',
 INTEGER = {'sound_id', 'classic_go_sound_id', 'classic_nogo_sound_id',
            'sample_sound_id', 'test_sound_id', 'lever_go_sound_id', 'lever_test_sound_id',
            'sequence_length', 'max_trials', 'min_lick_count', 'tac_min_lick_count',
-           'dmts_misses_before_reminder', 'dmts_reminder_trials'}
+           'dmts_misses_before_reminder', 'dmts_reminder_trials', 'smart_nogo_emphasis_trials'}
 POSITIVE = {'sequence_length', 'min_lick_count', 'tac_min_lick_count',
             'dmts_misses_before_reminder', 'dmts_reminder_trials',
-            'rate_hz', 'callback_s', 'window_s'}
+            'rate_hz', 'callback_s', 'window_s', 'smart_nogo_emphasis_trials'}
 SIGNED = {'threshold_v', 'lick_threshold', 'tac_left_threshold', 'tac_right_threshold',
           'left_y_min', 'left_y_max', 'right_y_min', 'right_y_max'}
 GROUPS = [('sequence_values', 'sequence_weights'), ('iti_rand_min_s', 'iti_rand_max_s'),

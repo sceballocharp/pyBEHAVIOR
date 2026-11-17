@@ -87,3 +87,25 @@ class GoNoGoSmartTaskTests(unittest.TestCase):
         app.update_smart_task()
         self.assertEqual(app._smart_gonogo_phase, 'idle')
         self.assertEqual(app.sequence_weights.get(), '0.5 0.5')
+
+    def test_configurable_emphasis_length_is_fixed_for_current_block(self):
+        app = harness()
+        app.smart_nogo_emphasis_trials = Var('7')
+        app.update_smart_task()
+        self.assertEqual(app._smart_gonogo_target, 7)
+        app.smart_nogo_emphasis_trials.set('12')
+        for _ in range(6):
+            app.trial_rows.append(row('noGo', 'FA'))
+            app.update_smart_task()
+            self.assertEqual(app._smart_gonogo_phase, 'nogo')
+        app.trial_rows.append(row('noGo', 'FA'))
+        app.update_smart_task()
+        self.assertEqual(app._smart_gonogo_phase, 'balanced')
+        for _ in range(24):
+            app.trial_rows.append(row('noGo', 'FA'))
+            app.update_smart_task()
+            self.assertEqual(app._smart_gonogo_phase, 'balanced')
+        app.trial_rows.append(row('noGo', 'FA'))
+        app.update_smart_task()
+        self.assertEqual(app._smart_gonogo_phase, 'nogo')
+        self.assertEqual(app._smart_gonogo_target, 12)

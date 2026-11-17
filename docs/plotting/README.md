@@ -144,3 +144,5 @@ Recent outcomes retain the SmartTask phase recorded when each Go/No-Go trial sta
 Session Overview labels header rates as Session-wide and the curve panel as Moving rates: last 25 per type (min 10). Both the recent outcomes and moving-rate panel show recorded session trial-number ticks and dashed SmartTask phase boundaries, with orange for NoGo emphasis, purple for Balanced protected, and gray for return to ordinary trials. The recent strip fits all four outcome rows in compact windows. Upcoming preview is hidden below 480 pixels tall to preserve space for the rate panel. The launch button is named Session Overview.
 
 Session Overview header now shows trial and outcome totals only; the session-wide percentage line has been removed. Moving-rate plots and SmartTask calculations are unchanged.
+
+Session-wide HIT and CR percentages are restored beside the trial count and outcome totals on the same header line, rather than on a separate line. HIT = HIT/(HIT+MISS), CR = CR/(CR+FA); missing categories show --.

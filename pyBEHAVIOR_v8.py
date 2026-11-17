@@ -379,6 +379,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_nonmatch_only_sounds = tk.BooleanVar(value=False)
         self.dmts_nonmatch_fa_noise = tk.BooleanVar(value=False)
         self.smart_task = tk.BooleanVar(value=False)
+        self.smart_nogo_emphasis_trials = tk.StringVar(value="25")
         self.smart_task_active = False
         self.smart_task_pavlov_remaining = 0
         self._entry(seq, 0, "Length", self.sequence_length, width=6)
@@ -398,6 +399,7 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         ttk.Checkbutton(sequence_options, text="SmartTask", variable=self.smart_task,
                         command=self.update_smart_task).grid(row=0, column=0, sticky="w")
+        self.smart_nogo_emphasis_widgets = self._entry(seq, 0, "NoGo emphasis trials", self.smart_nogo_emphasis_trials, width=6, row=7)
         ttk.Button(seq, text="ReGenerate Sequence", command=self.generate_sequence).grid(row=9, column=0, columnspan=4, sticky="ew", padx=6, pady=6)
 
         acquisition_row = ttk.Frame(parameter_column)
@@ -750,6 +752,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.sequence_values_widgets[0].configure(text=values_label, wraplength=150)
             self.sequence_weights_widgets[0].configure(text=weights_label, wraplength=150)
 
+        self.set_widget_pair_visible(self.smart_nogo_emphasis_widgets, is_classic, row=7, col=0)
         self.set_widget_pair_visible(self.classic_go_sound_widgets, is_classic, row=7, col=0)
         self.set_widget_pair_visible(self.classic_nogo_sound_widgets, is_classic, row=7, col=2)
         self.set_widget_pair_visible(self.reward_go_widgets, not is_tac_pretraining, row=1, col=0)
@@ -1145,14 +1148,15 @@ class BehaviorAcquisitionApp(tk.Tk):
         # settings before touching the GUI, then suppress linked callbacks until
         # all imported fields and generated sequence agree.
         import math
-        for key in ('GoSoundId', 'NoGoSoundId', 'GoWeight', 'NoGoWeight'):
+        for key in ('GoSoundId', 'NoGoSoundId', 'GoWeight', 'NoGoWeight', 'SmartTaskNoGoEmphasisTrials'):
             if key not in params:
                 continue
             try:
                 value = float(params[key])
             except (TypeError, ValueError):
                 raise ValueError(f'{key} must be a valid number') from None
-            if not math.isfinite(value) or value < 0 or ('SoundId' in key and not value.is_integer()):
+            if (not math.isfinite(value) or value < 0 or ('SoundId' in key and not value.is_integer())
+                    or (key == 'SmartTaskNoGoEmphasisTrials' and (value < 1 or not value.is_integer()))):
                 raise ValueError(f'Invalid protocol value for {key}: {params[key]}')
         if all(key in params for key in ('GoWeight', 'NoGoWeight')) and float(params['GoWeight']) + float(params['NoGoWeight']) <= 0:
             raise ValueError('Protocol GO / NoGo weights cannot both be zero')
@@ -1164,6 +1168,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         try:
             # Prefer the canonical key when both old and new names are present.
             params = dict(params)
+            params.setdefault("SmartTaskNoGoEmphasisTrials", "25")
             # Legacy protocols specify one duration for both valves.
             if "Rewardduration_ms" in params:
                 params.setdefault("RightRewardduration_ms", params["Rewardduration_ms"])
@@ -1206,6 +1211,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 "LeverTestWeight": self.lever_test_weight,
                 "LeverRewardTestTrials": self.lever_reward_test_trials,
                 "MaxTrials": self.max_trials,
+                "SmartTaskNoGoEmphasisTrials": self.smart_nogo_emphasis_trials,
                 "SoundLevel": self.sound_level,
                 "RandomSeed": self.random_seed,
                 "ITI_s": self.iti_s,
@@ -1652,6 +1658,9 @@ class BehaviorAcquisitionApp(tk.Tk):
                     'sequence_values': self.sequence_values.get(),
                     'sequence_weights': self.sequence_weights.get(),
                 }
+                setting = getattr(self, 'smart_nogo_emphasis_trials', None)
+                if setting is not None:
+                    weights['smart_nogo_emphasis_trials'] = int(float(setting.get()))
                 if self.is_dmts_task():
                     weights['sound_light_probabilities'] = self.dmts_modality_probabilities.get()
                     weights['nonmatch_only_sounds'] = bool(self.dmts_nonmatch_only_sounds.get())
@@ -2178,6 +2187,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "LeverReqRelBonus": int(self.lever_require_release.get()),
             "LeverReqRelWindow": int(self.lever_req_rel_window.get()),
             "MaxTrials": self.max_trials.get(),
+            "SmartTaskNoGoEmphasisTrials": self.smart_nogo_emphasis_trials.get(),
             "SampleSoundId": self.sample_sound_id.get(),
             "TestSoundId": self.test_sound_id.get(),
             "DMTSRandomMatchTrials": int(self.dmts_random_match_trials.get()),
@@ -2214,6 +2224,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "TriggerTypeDropDown",
             "OuputformatDropDown",
             "TaskType",
+            "SmartTaskNoGoEmphasisTrials",
             "GoWeight",
             "NoGoWeight",
             "BlankWeight",
@@ -5148,7 +5159,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 return
             phase, weights = 'idle', '0.5 0.5'
         elif phase == 'nogo':
-            if count - self._smart_gonogo_block_start < 25:
+            if count - self._smart_gonogo_block_start < getattr(self, '_smart_gonogo_target', 25):
                 return
             phase, weights = 'balanced', '0.5 0.5'
         elif phase == 'balanced':
@@ -5165,6 +5176,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                 cr_rate = sum(r['ResultType'] == 'CR' for r in nogo) / len(nogo)
                 if hit_rate > 0.90 and cr_rate < 0.10:
                     phase, weights = 'nogo', '0.2 0.8'
+                    setting = getattr(self, 'smart_nogo_emphasis_trials', None)
+                    self._smart_gonogo_target = int(float(setting.get())) if setting is not None else 25
         self._smart_gonogo_phase = phase
         if weights is None:
             return
@@ -5172,7 +5185,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.sequence_weights.set(weights)
         self.generate_sequence(log=False, apply_modality=False)
         self.plot_queue.put(('log', 'SmartTask Go/No-Go: ' + (
-            'GO 0.2 / NoGo 0.8 for 25 trials.' if phase == 'nogo' else
+            f'GO 0.2 / NoGo 0.8 for {self._smart_gonogo_target} trials.' if phase == 'nogo' else
             'GO 0.5 / NoGo 0.5 for 25 protected trials.' if phase == 'balanced' else
             'disabled; GO 0.5 / NoGo 0.5 restored.')))
 
@@ -5272,9 +5285,14 @@ class BehaviorAcquisitionApp(tk.Tk):
             left = 54
             right = width - 24
         else:
+            go_total = counts['HIT'] + counts['MISS']
+            nogo_total = counts['CR'] + counts['FA']
+            hit_text = f"{counts['HIT'] / go_total:.0%}" if go_total else '--'
+            cr_text = f"{counts['CR'] / nogo_total:.0%}" if nogo_total else '--'
             title = (
                 f"Trials {len(completed)}   HIT {counts['HIT']}   MISS {counts['MISS']}   "
-                f"CR {counts['CR']}   FA {counts['FA']}"
+                f"CR {counts['CR']}   FA {counts['FA']}   "
+                f"Session-wide: HIT {hit_text}   CR {cr_text}"
             )
             canvas.create_text(18, 18, text=title, anchor="w", fill="#222222", font=("Segoe UI", 10, "bold"))
             left = 54

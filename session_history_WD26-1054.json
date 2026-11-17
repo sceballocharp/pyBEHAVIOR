@@ -1528,5 +1528,21 @@
     "simulation": false,
     "trials": 0,
     "rewards": 0
+  },
+  {
+    "session_id": "7373eae2-31c9-4e28-bfe1-f67b9bf2dc50",
+    "user": "Sebastian",
+    "animal_id": "5260",
+    "project": "FM_WT_PTs_GoNoGo_Data",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-17T11:30:30+01:00",
+    "stopped_at": null,
+    "status": "running",
+    "simulation": false,
+    "trials": 0,
+    "rewards": 0
   }
 ]

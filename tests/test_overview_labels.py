@@ -28,5 +28,5 @@ class TaskLabelTests(unittest.TestCase):
         source=(Path(__file__).resolve().parents[1]/'pyBEHAVIOR_v8.py').read_text(encoding='utf-8')
         self.assertNotIn('text="Results Figure"',source)
         self.assertIn('text="Session Overview", command=self.open_results_window',source)
-        self.assertNotIn('Session-wide:',source)
+        self.assertIn('Session-wide: HIT {hit_text}   CR {cr_text}',source)
         self.assertIn('Moving rates: last 25 per type (min 10)',source)
