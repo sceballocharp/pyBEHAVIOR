@@ -710,7 +710,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         return label_widget, entry_widget
 
     def sync_classic_sound_ids(self, from_fields=False):
-        if getattr(self, '_syncing_classic_sound_ids', False):
+        if self.__dict__.get('_importing_protocol', False) or getattr(self, '_syncing_classic_sound_ids', False):
             return
         if self.is_lever_task() or self.is_dmts_task() or self.is_tac_family_task():
             return
@@ -1141,145 +1141,177 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.lever_req_rel_window.set(False)
 
     def apply_imported_parameters(self, params):
-        # Prefer the canonical key when both old and new names are present.
-        params = dict(params)
-        # Legacy protocols specify one duration for both valves.
-        if "Rewardduration_ms" in params:
-            params.setdefault("RightRewardduration_ms", params["Rewardduration_ms"])
-        if str(params.get("TaskType", "")).lower() == "dmts":
-            params.setdefault("DMTSMissesBeforeReminder", "5")
-            params.setdefault("DMTSReminderTrials", "3")
-            params.setdefault("DMTSBlankLickTimeout", "0")
-            params.setdefault("TACLeftChannel", "ai0")
-            params.setdefault("TACRightChannel", "ai1")
-            params.setdefault("TACLeftThreshold", params.get("Lickthreshold", "1"))
-            params.setdefault("TACRightThreshold", params.get("Lickthreshold", "1"))
-        if "LeverReqRelBonus" not in params and "LeverRequireRelease" in params:
-            params["LeverReqRelBonus"] = params["LeverRequireRelease"]
-        # Old protocols must not inherit window mode from the previous session.
-        params.setdefault("LeverReqRelWindow", "0")
-        params.setdefault("LeverGoWeight", "1")
-        params.setdefault("LeverTestWeight", "0")
-        params.setdefault("LeverRewardTestTrials", "0")
-        params.setdefault("LeverTestSoundId", "10")
-        if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
-            if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
-                self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
-            params["LeverReqRelBonus"] = "0"
-        mapping = {
-            "UserName": self.user_name,
-            "MouseId": self.mouse_id,
-            "ProjectName": self.project_name,
-            "NICard_filename": self.ni_script,
-            "Sound_filename": self.sound_file,
-            "frec": self.rate_hz,
-            "bin": self.callback_s,
-            "Channels": self.channels,
-        "TriggerTypeDropDown": self.trigger_type,
-            "OuputformatDropDown": self.output_format,
-            "OutputformatDropDown": self.output_format,
-            "TaskType": self.task_type,
-            "GoSoundId": self.lever_go_sound_id,
-            "LeverTestSoundId": self.lever_test_sound_id,
-            "LeverGoWeight": self.lever_go_weight,
-            "LeverTestWeight": self.lever_test_weight,
-            "LeverRewardTestTrials": self.lever_reward_test_trials,
-            "MaxTrials": self.max_trials,
-            "SoundLevel": self.sound_level,
-            "RandomSeed": self.random_seed,
-            "ITI_s": self.iti_s,
-            "ITIrandMin_s": self.iti_rand_min_s,
-            "ITIrandMax_s": self.iti_rand_max_s,
-            "Sounddelay_s": self.sound_delay_s,
-            "SoundDuration_s": self.sound_duration_s,
-            "Delay_s": self.delay_s,
-            "TrialDuration_s": self.trial_duration_s,
-            "ResponseWindow_s": self.response_window_s,
-            "RewardDelay_s": self.reward_delay_s,
-            "Rewardduration_ms": self.pulse_ms,
-            "RightRewardduration_ms": self.right_pulse_ms,
-            "LightTTLPulse_ms": self.light_ttl_pulse_ms,
-            "RewardProb": self.reward_go,
-            "HIT": self.hit_threshold_s,
-            "HITThreshold_percent": self.hit_threshold_s,
-            "HITThreshold_s": self.hit_threshold_s,
-            "HIT_s": self.hit_threshold_s,
-            "RewardGo": self.reward_go,
-            "RewardGoProb": self.reward_go,
-            "Pavlov": self.pavlov,
-            "PunishNoGoFA": self.punish_no_go_fa,
-            "Minlickcount": self.min_lick_count,
-            "Lickthreshold": self.lick_threshold,
-            "LeverThreshold": self.threshold_v,
-            "LeverHoldTime_s": self.lever_hold_time_s,
-            "LeverStartDebounce_s": self.lever_start_debounce_s,
-            "LeverReleaseDebounce_s": self.lever_release_debounce_s,
-            "LeverReleaseWindow_s": self.lever_release_window_s,
-            "LeverReqRelBonus": self.lever_require_release,
-            "LeverReqRelWindow": self.lever_req_rel_window,
-            "SampleSoundId": self.sample_sound_id,
-            "TestSoundId": self.test_sound_id,
-            "DMTSRandomMatchTrials": self.dmts_random_match_trials,
-            "DMTSSoundIds": self.dmts_sound_ids,
-            "DMTSModalityProbabilities": self.dmts_modality_probabilities,
-            "DMTSNonMatchOnlySounds": self.dmts_nonmatch_only_sounds,
-            "DMTSNonMatchFANoise": self.dmts_nonmatch_fa_noise,
-            "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
-            "DMTSReminderTrials": self.dmts_reminder_trials,
-            "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
-            "DMTSForkGrace_s": self.dmts_fork_grace_s,
-            "TACLeftChannel": self.tac_left_channel,
-            "TACRightChannel": self.tac_right_channel,
-            "TACLeftThreshold": self.tac_left_threshold,
-            "TACRightThreshold": self.tac_right_threshold,
-            "TACMinlickcount": self.tac_min_lick_count,
-            "PlaySound": self.play_sound_on_crossing,
-            "TriggerOutput": self.trigger_output_on_crossing,
-        }
-        applied = 0
-        for key, var in mapping.items():
-            if key in params:
-                var.set(params[key])
-                applied += 1
-        if "Sound_filename" in params:
-            self.sound_loaded = False
-        if self.is_lever_task() and not self.lever_hold_time_s.get().strip():
-            self.lever_hold_time_s.set("1")
-        self.update_task_parameter_visibility()
+        # Protocol values are authoritative: validate the explicit sequence
+        # settings before touching the GUI, then suppress linked callbacks until
+        # all imported fields and generated sequence agree.
+        import math
+        for key in ('GoSoundId', 'NoGoSoundId', 'GoWeight', 'NoGoWeight'):
+            if key not in params:
+                continue
+            try:
+                value = float(params[key])
+            except (TypeError, ValueError):
+                raise ValueError(f'{key} must be a valid number') from None
+            if not math.isfinite(value) or value < 0 or ('SoundId' in key and not value.is_integer()):
+                raise ValueError(f'Invalid protocol value for {key}: {params[key]}')
+        if all(key in params for key in ('GoWeight', 'NoGoWeight')) and float(params['GoWeight']) + float(params['NoGoWeight']) <= 0:
+            raise ValueError('Protocol GO / NoGo weights cannot both be zero')
+        validation = self.__dict__.get('_entry_validation')
+        was_importing = self.__dict__.get('_importing_protocol', False)
+        self._importing_protocol = True
+        if validation is not None:
+            validation.updating = True
+        try:
+            # Prefer the canonical key when both old and new names are present.
+            params = dict(params)
+            # Legacy protocols specify one duration for both valves.
+            if "Rewardduration_ms" in params:
+                params.setdefault("RightRewardduration_ms", params["Rewardduration_ms"])
+            if str(params.get("TaskType", "")).lower() == "dmts":
+                params.setdefault("DMTSMissesBeforeReminder", "5")
+                params.setdefault("DMTSReminderTrials", "3")
+                params.setdefault("DMTSBlankLickTimeout", "0")
+                params.setdefault("TACLeftChannel", "ai0")
+                params.setdefault("TACRightChannel", "ai1")
+                params.setdefault("TACLeftThreshold", params.get("Lickthreshold", "1"))
+                params.setdefault("TACRightThreshold", params.get("Lickthreshold", "1"))
+            if "LeverReqRelBonus" not in params and "LeverRequireRelease" in params:
+                params["LeverReqRelBonus"] = params["LeverRequireRelease"]
+            # Old protocols must not inherit window mode from the previous session.
+            params.setdefault("LeverReqRelWindow", "0")
+            params.setdefault("LeverGoWeight", "1")
+            params.setdefault("LeverTestWeight", "0")
+            params.setdefault("LeverRewardTestTrials", "0")
+            params.setdefault("LeverTestSoundId", "10")
+            if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
+                if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
+                    self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
+                params["LeverReqRelBonus"] = "0"
+            mapping = {
+                "UserName": self.user_name,
+                "MouseId": self.mouse_id,
+                "ProjectName": self.project_name,
+                "NICard_filename": self.ni_script,
+                "Sound_filename": self.sound_file,
+                "frec": self.rate_hz,
+                "bin": self.callback_s,
+                "Channels": self.channels,
+            "TriggerTypeDropDown": self.trigger_type,
+                "OuputformatDropDown": self.output_format,
+                "OutputformatDropDown": self.output_format,
+                "TaskType": self.task_type,
+                "GoSoundId": self.lever_go_sound_id,
+                "LeverTestSoundId": self.lever_test_sound_id,
+                "LeverGoWeight": self.lever_go_weight,
+                "LeverTestWeight": self.lever_test_weight,
+                "LeverRewardTestTrials": self.lever_reward_test_trials,
+                "MaxTrials": self.max_trials,
+                "SoundLevel": self.sound_level,
+                "RandomSeed": self.random_seed,
+                "ITI_s": self.iti_s,
+                "ITIrandMin_s": self.iti_rand_min_s,
+                "ITIrandMax_s": self.iti_rand_max_s,
+                "Sounddelay_s": self.sound_delay_s,
+                "SoundDuration_s": self.sound_duration_s,
+                "Delay_s": self.delay_s,
+                "TrialDuration_s": self.trial_duration_s,
+                "ResponseWindow_s": self.response_window_s,
+                "RewardDelay_s": self.reward_delay_s,
+                "Rewardduration_ms": self.pulse_ms,
+                "RightRewardduration_ms": self.right_pulse_ms,
+                "LightTTLPulse_ms": self.light_ttl_pulse_ms,
+                "RewardProb": self.reward_go,
+                "HIT": self.hit_threshold_s,
+                "HITThreshold_percent": self.hit_threshold_s,
+                "HITThreshold_s": self.hit_threshold_s,
+                "HIT_s": self.hit_threshold_s,
+                "RewardGo": self.reward_go,
+                "RewardGoProb": self.reward_go,
+                "Pavlov": self.pavlov,
+                "PunishNoGoFA": self.punish_no_go_fa,
+                "Minlickcount": self.min_lick_count,
+                "Lickthreshold": self.lick_threshold,
+                "LeverThreshold": self.threshold_v,
+                "LeverHoldTime_s": self.lever_hold_time_s,
+                "LeverStartDebounce_s": self.lever_start_debounce_s,
+                "LeverReleaseDebounce_s": self.lever_release_debounce_s,
+                "LeverReleaseWindow_s": self.lever_release_window_s,
+                "LeverReqRelBonus": self.lever_require_release,
+                "LeverReqRelWindow": self.lever_req_rel_window,
+                "SampleSoundId": self.sample_sound_id,
+                "TestSoundId": self.test_sound_id,
+                "DMTSRandomMatchTrials": self.dmts_random_match_trials,
+                "DMTSSoundIds": self.dmts_sound_ids,
+                "DMTSModalityProbabilities": self.dmts_modality_probabilities,
+                "DMTSNonMatchOnlySounds": self.dmts_nonmatch_only_sounds,
+                "DMTSNonMatchFANoise": self.dmts_nonmatch_fa_noise,
+                "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
+                "DMTSReminderTrials": self.dmts_reminder_trials,
+                "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
+                "DMTSForkGrace_s": self.dmts_fork_grace_s,
+                "TACLeftChannel": self.tac_left_channel,
+                "TACRightChannel": self.tac_right_channel,
+                "TACLeftThreshold": self.tac_left_threshold,
+                "TACRightThreshold": self.tac_right_threshold,
+                "TACMinlickcount": self.tac_min_lick_count,
+                "PlaySound": self.play_sound_on_crossing,
+                "TriggerOutput": self.trigger_output_on_crossing,
+            }
+            applied = 0
+            for key, var in mapping.items():
+                if key in params:
+                    var.set(params[key])
+                    applied += 1
+            if "Sound_filename" in params:
+                self.sound_loaded = False
+            if self.is_lever_task() and not self.lever_hold_time_s.get().strip():
+                self.lever_hold_time_s.set("1")
+            self.update_task_parameter_visibility()
 
-        sequence_changed = False
-        if "GoSoundId" in params or "NoGoSoundId" in params:
-            go_id = params.get("GoSoundId", self.sequence_values.get().split()[0] if self.sequence_values.get().split() else "1")
-            no_go_id = params.get("NoGoSoundId", "10")
-            self.sequence_values.set(f"{go_id} {no_go_id}")
-            self.sound_id.set(go_id)
-            applied += int("GoSoundId" in params) + int("NoGoSoundId" in params)
-            sequence_changed = True
-        if "GoWeight" in params or "NoGoWeight" in params:
-            go_weight = params.get("GoWeight", self.sequence_weights.get().split()[0] if self.sequence_weights.get().split() else "0.5")
-            no_go_weight = params.get("NoGoWeight", "0.5")
-            self.sequence_weights.set(f"{go_weight} {no_go_weight}")
-            applied += int("GoWeight" in params) + int("NoGoWeight" in params)
-            sequence_changed = True
-        if sequence_changed:
-            self.generate_sequence(log=False)
-            self.log("Closed-loop sequence updated from imported Go/NoGo parameters.")
-        if self.is_dmts_task():
-            self.sound_id.set(self.sample_sound_id.get())
-            weights = self._parse_number_list(self.sequence_weights.get(), [0.5, 0.5], float)
-            self.sequence_values.set("1 2 0")
-            self.sequence_weights.set(f"{weights[0]} {weights[1] if len(weights) > 1 else 0.5} {params.get('BlankWeight', '0')}")
-            self.generate_sequence(log=False)
-            self.update_trial_duration()
-        if self.is_tac_task():
-            self.trigger_type.set("Lick")
-            self.generate_sequence(log=False)
-            self.update_trial_duration()
-        if self.is_tac_pretraining_task():
-            self.trigger_type.set("Lick")
-            self.play_sound_on_crossing.set(False)
-            self.update_trial_duration()
-        return applied
+            sequence_changed = False
+            if "GoSoundId" in params or "NoGoSoundId" in params:
+                go_id = params.get("GoSoundId", self.sequence_values.get().split()[0] if self.sequence_values.get().split() else "1")
+                no_go_id = params.get("NoGoSoundId", "10")
+                self.sequence_values.set(f"{go_id} {no_go_id}")
+                self.sound_id.set(go_id)
+                applied += int("GoSoundId" in params) + int("NoGoSoundId" in params)
+                sequence_changed = True
+            if "GoWeight" in params or "NoGoWeight" in params:
+                go_weight = params.get("GoWeight", self.sequence_weights.get().split()[0] if self.sequence_weights.get().split() else "0.5")
+                no_go_weight = params.get("NoGoWeight", "0.5")
+                self.sequence_weights.set(f"{go_weight} {no_go_weight}")
+                applied += int("GoWeight" in params) + int("NoGoWeight" in params)
+                sequence_changed = True
+            if sequence_changed:
+                self.generate_sequence(log=False)
+                self.log("Closed-loop sequence updated from imported Go/NoGo parameters.")
+            if self.is_dmts_task():
+                self.sound_id.set(self.sample_sound_id.get())
+                weights = self._parse_number_list(self.sequence_weights.get(), [0.5, 0.5], float)
+                self.sequence_values.set("1 2 0")
+                self.sequence_weights.set(f"{weights[0]} {weights[1] if len(weights) > 1 else 0.5} {params.get('BlankWeight', '0')}")
+                self.generate_sequence(log=False)
+                self.update_trial_duration()
+            if self.is_tac_task():
+                self.trigger_type.set("Lick")
+                self.generate_sequence(log=False)
+                self.update_trial_duration()
+            if self.is_tac_pretraining_task():
+                self.trigger_type.set("Lick")
+                self.play_sound_on_crossing.set(False)
+                self.update_trial_duration()
+            return applied
+
+        finally:
+            self._importing_protocol = was_importing
+            if not was_importing:
+                sync = getattr(self, 'sync_classic_sound_ids', None)
+                try:
+                    if callable(sync):
+                        sync()
+                finally:
+                    if validation is not None:
+                        validation.reload_sources()
 
     def parse_float(self, var, default):
         return self.parse_float_value(var.get(), default)
@@ -5231,13 +5263,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             if result in counts:
                 counts[result] += 1
 
-        go_total = counts["HIT"] + counts["MISS"]
-        nogo_total = counts["CR"] + counts["FA"]
-        hit_rate = counts["HIT"] / go_total if go_total else 0.0
-        cr_rate = counts["CR"] / nogo_total if nogo_total else 0.0
         if self.is_tac_family_task():
-            choice_total = counts["HIT"] + counts["MISS"] + counts["FA"]
-            choice_rate = counts["HIT"] / choice_total if choice_total else 0.0
             title = (
                 f"Trials {len(completed)}   HIT {counts['HIT']}   MISS {counts['MISS']}   "
                 f"FA {counts['FA']}"
@@ -5253,12 +5279,6 @@ class BehaviorAcquisitionApp(tk.Tk):
             canvas.create_text(18, 18, text=title, anchor="w", fill="#222222", font=("Segoe UI", 10, "bold"))
             left = 54
             right = width - 24
-        if self.is_tac_family_task():
-            rate_summary = f'Session-wide: Choice accuracy {choice_rate:.0%}'
-        else:
-            go_name, nogo_name = ('Match HIT', 'Non-match CR') if self.is_dmts_task() else ('GO HIT', 'NoGo CR')
-            rate_summary = f'Session-wide: {go_name} {hit_rate:.0%} (n={go_total}) | {nogo_name} {cr_rate:.0%} (n={nogo_total})'
-        canvas.create_text(18, 38, text=rate_summary, anchor='w', fill='#444444', font=('Segoe UI', 9))
         if width >= 900:
             crossing_width = min(250, max(210, width * 0.22))
             crossing_left = width - crossing_width - 24

@@ -180,14 +180,38 @@ class EntryValidation:
         self.refresh(name, field.draft.get())
         return field
 
+    def reload_sources(self):
+        """Publish an imported batch without writing any old UI values back."""
+        self.updating = True
+        try:
+            for name, field in self.fields.items():
+                self.model.external(name, field.source.get())
+            for name, field in self.fields.items():
+                field.draft.set(self.model.active[name])
+            self.model.errors = {
+                name: validate_setting(name, value, self.model.drafts)
+                for name, value in self.model.drafts.items()
+            }
+            for name, field in self.fields.items():
+                field.show_error(self.model.errors.get(name, ''))
+        finally:
+            self.updating = False
+
     def refresh(self, name, text, external=False):
         if self.updating:
             return
         self.updating = True
         try:
             if external:
-                self.model.external(name, text)
-                self.fields[name].draft.set(text)
+                # A runtime trace can update a linked field before the original
+                # source variable's own validation trace runs. Capture *all*
+                # source changes first, rather than writing stale model values
+                # back over the outer change (e.g. imported NoGo sound ID).
+                for key, field in self.fields.items():
+                    current = field.source.get()
+                    if key == name or current != self.model.active[key]:
+                        self.model.external(key, current)
+                        field.draft.set(current)
             self.model.edit(name, text)
             for key, field in self.fields.items():
                 value = self.model.active[key]

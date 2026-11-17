@@ -1492,5 +1492,41 @@
       "sequence_values": "1 2",
       "sequence_weights": "0.5 0.5"
     }
+  },
+  {
+    "session_id": "26790fbb-8b36-4291-b21a-21b80ea61a14",
+    "user": "Sebastian",
+    "animal_id": "5260",
+    "project": "FM_WT_PTs_GoNoGo_Data",
+    "sound_ids": [
+      1,
+      10
+    ],
+    "started_at": "2026-11-17T11:06:35+01:00",
+    "stopped_at": "2026-11-17T11:08:00+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 7,
+    "rewards": 3,
+    "weights": {
+      "sequence_values": "1 10",
+      "sequence_weights": "0.5 0.5"
+    }
+  },
+  {
+    "session_id": "d27f3851-da9c-4ae1-8dc3-d105b151e6f8",
+    "user": "Sebastian",
+    "animal_id": "5260",
+    "project": "FM_WT_PTs_GoNoGo_Data",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-17T11:15:42+01:00",
+    "stopped_at": null,
+    "status": "running",
+    "simulation": false,
+    "trials": 0,
+    "rewards": 0
   }
 ]

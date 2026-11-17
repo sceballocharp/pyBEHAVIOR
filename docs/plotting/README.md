@@ -142,3 +142,5 @@ Moving performance curves begin only at the tenth completed trial of each type; 
 Recent outcomes retain the SmartTask phase recorded when each Go/No-Go trial started: pale orange columns mark NoGo emphasis and pale purple columns mark Balanced protected trials. Outcome marker colors are unchanged. Old trials without phase metadata remain unshaded.
 
 Session Overview labels header rates as Session-wide and the curve panel as Moving rates: last 25 per type (min 10). Both the recent outcomes and moving-rate panel show recorded session trial-number ticks and dashed SmartTask phase boundaries, with orange for NoGo emphasis, purple for Balanced protected, and gray for return to ordinary trials. The recent strip fits all four outcome rows in compact windows. Upcoming preview is hidden below 480 pixels tall to preserve space for the rate panel. The launch button is named Session Overview.
+
+Session Overview header now shows trial and outcome totals only; the session-wide percentage line has been removed. Moving-rate plots and SmartTask calculations are unchanged.
