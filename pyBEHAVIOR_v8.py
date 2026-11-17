@@ -12,6 +12,7 @@ import csv
 import json
 import math
 import statistics
+from gui_validation import EntryValidation
 import socket
 from session_history import SessionHistory
 from datetime import datetime, timezone
@@ -282,7 +283,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         ttk.Button(run_setup_left, text="Import parameters", command=self.import_parameters_file).grid(row=1, column=0, padx=4, pady=4, sticky="ew")
         ttk.Button(run_setup_left, text="Save NWB", command=self.save_nwb_placeholder).grid(row=1, column=1, padx=4, pady=4, sticky="ew")
         ttk.Button(run_setup_left, text="Open .bin", command=self.open_bin).grid(row=1, column=2, padx=4, pady=4, sticky="ew")
-        ttk.Button(run_setup_left, text="Results Figure", command=self.open_results_window).grid(row=1, column=3, padx=4, pady=4, sticky="ew")
+        ttk.Button(run_setup_left, text="Session Overview", command=self.open_results_window).grid(row=1, column=3, padx=4, pady=4, sticky="ew")
         ttk.Checkbutton(run_setup_left, text="Simulation", variable=self.simulation_mode).grid(row=1, column=4, padx=4, pady=4, sticky="w")
         ttk.Button(run_setup_left, text="stim_generator", command=self.open_stim_generator_window).grid(row=2, column=3, columnspan=2, padx=4, pady=4, sticky="ew")
         self._file_row(run_setup_left, 2, "NI script", self.ni_script, self.choose_ni_script)
@@ -303,7 +304,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self._entry(session, 2, "Mouse", self.mouse_id, width=8)
         self._entry(session, 4, "Project", self.project_name, width=18)
         ttk.Label(session, text="Output").grid(row=0, column=6, padx=(14, 4))
-        ttk.Combobox(session, textvariable=self.output_format, values=("NWB", "BIDS", "No standard"), width=12).grid(row=0, column=7)
+        ttk.Combobox(session, textvariable=self.output_format, values=("NWB", "BIDS", "No standard"), width=12, state="readonly").grid(row=0, column=7)
         _, save_root_entry = self._entry(session, 0, "Save root", self.save_root, width=32, row=1)
         save_root_entry.grid_configure(columnspan=7, sticky="ew")
 
@@ -335,7 +336,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             trig.columnconfigure(column, weight=1)
             group.grid(row=0, column=column, sticky="nsew", padx=6, pady=6)
         ttk.Label(trigger_group, text="Trigger").grid(row=0, column=0, padx=6, pady=4, sticky="w")
-        ttk.Combobox(trigger_group, textvariable=self.trigger_type, values=("IRFork", "Lick", "None"), width=9).grid(row=0, column=1, padx=6, pady=4, sticky="w")
+        ttk.Combobox(trigger_group, textvariable=self.trigger_type, values=("IRFork", "Lick", "None"), width=9, state="readonly").grid(row=0, column=1, padx=6, pady=4, sticky="w")
         self._entry(trigger_group, 0, "Threshold V", self.threshold_v, width=6, row=1)
         ttk.Checkbutton(trigger_group, text="Write BehaviorSignal.bin", variable=self.write_behavior_signal_bin).grid(row=2, column=0, columnspan=2, padx=6, pady=4, sticky="w")
         ttk.Checkbutton(rewards, text="Trigger reward", variable=self.trigger_output_on_crossing).grid(row=0, column=0, columnspan=3, padx=6, pady=4, sticky="w")
@@ -381,8 +382,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.smart_task_active = False
         self.smart_task_pavlov_remaining = 0
         self._entry(seq, 0, "Length", self.sequence_length, width=6)
-        self._entry(seq, 2, "Values", self.sequence_values, width=10)
-        self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
+        self.sequence_values_widgets = self._entry(seq, 2, "Values", self.sequence_values, width=10)
+        self.sequence_weights_widgets = self._entry(seq, 0, "Weights", self.sequence_weights, width=10, row=1)
         self._entry(seq, 2, "Seed", self.random_seed, width=6, row=1)
         self._entry(seq, 2, "Max trials", self.max_trials, width=6, row=2)
         self._entry(seq, 0, "Index", self.sequence_index_var, width=6, row=4, state="readonly")
@@ -691,12 +692,19 @@ class BehaviorAcquisitionApp(tk.Tk):
         line.grid(row=row, column=0, columnspan=3, sticky="ew", padx=4, pady=3)
         line.columnconfigure(1, weight=1)
         ttk.Label(line, text=label, width=11).grid(row=0, column=0, sticky="w", padx=(0, 6))
-        ttk.Entry(line, textvariable=var).grid(row=0, column=1, sticky="ew", padx=(0, 6))
+        self._validated_entry(line, var, width=32).grid(row=0, column=1, sticky="ew", padx=(0, 6))
         ttk.Button(line, text="Browse", command=command).grid(row=0, column=2)
+
+    def _validated_entry(self, parent, var, width=10):
+        if not hasattr(self, '_entry_validation'):
+            self._entry_validation = EntryValidation()
+        name = next((key for key, value in self.__dict__.items() if value is var), str(var))
+        return self._entry_validation.add(parent, name, var, width)
 
     def _entry(self, parent, col, label, var, width=10, row=0, state="normal"):
         label_widget = ttk.Label(parent, text=label)
-        entry_widget = ttk.Entry(parent, textvariable=var, width=width, state=state)
+        entry_widget = (ttk.Entry(parent, textvariable=var, width=width, state=state)
+                        if state != "normal" else self._validated_entry(parent, var, width))
         label_widget.grid(row=row, column=col, padx=(6, 4), pady=4, sticky="w")
         entry_widget.grid(row=row, column=col + 1, padx=(0, 6), pady=4, sticky="w")
         return label_widget, entry_widget
@@ -730,6 +738,18 @@ class BehaviorAcquisitionApp(tk.Tk):
         is_tac_family = self.is_tac_family_task()
         is_lick = self.is_lick_trigger()
         is_classic = not is_lever and not is_dmts and not is_tac_family
+        if hasattr(self, 'sequence_values_widgets'):
+            if is_dmts:
+                values_label, weights_label = 'Codes: Match / Non-match / Blank', 'Weights: Match / Non-match / Blank'
+            elif is_classic:
+                values_label, weights_label = 'Sound IDs: GO / NoGo', 'Weights: GO / NoGo'
+            elif is_tac:
+                values_label, weights_label = 'Sound IDs: Left / Right', 'Weights: Left / Right'
+            else:
+                values_label, weights_label = 'Sound IDs', 'Sequence weights'
+            self.sequence_values_widgets[0].configure(text=values_label, wraplength=150)
+            self.sequence_weights_widgets[0].configure(text=weights_label, wraplength=150)
+
         self.set_widget_pair_visible(self.classic_go_sound_widgets, is_classic, row=7, col=0)
         self.set_widget_pair_visible(self.classic_nogo_sound_widgets, is_classic, row=7, col=2)
         self.set_widget_pair_visible(self.reward_go_widgets, not is_tac_pretraining, row=1, col=0)
@@ -2260,6 +2280,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "TrialType": f"{trial_type_id} {trial_type}",
             "HIT": "",
             "smart_task_pavlov": "",
+            "smart_task_phase": (getattr(self, "_smart_gonogo_phase", "idle")
+                                 if trial_type in ("GO", "noGo") else "idle"),
             "MISS": "",
             "CR": "",
             "FA": "",
@@ -4307,6 +4329,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             return list(default)
 
     def update_sequence_display(self):
+        if getattr(self, "results_canvas", None) is not None:
+            self.redraw_results_window()
         if self.trial_stimulus_sequence:
             self.sequence_index_var.set(str(self.trial_stimulus_index + 1))
             stimulus = self.trial_stimulus_sequence[self.trial_stimulus_index]
@@ -5164,7 +5188,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             return
 
         self.results_window = tk.Toplevel(self)
-        self.results_window.title("BASIL Trial Results")
+        self.results_window.title("Session Overview")
         self.results_window.geometry("900x520")
         self.results_window.protocol("WM_DELETE_WINDOW", self.close_results_window)
         frame = ttk.Frame(self.results_window, padding=10)
@@ -5195,7 +5219,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         width = max(520, canvas.winfo_width())
         height = max(320, canvas.winfo_height())
         completed = [row for row in self.trial_rows if row.get("ResultType")]
-        if not completed:
+        show_upcoming = (not self.is_dmts_task() and not self.is_lever_task()
+                         and not self.is_tac_family_task() and height >= 480)
+        if not completed and not show_upcoming:
             canvas.create_text(width / 2, height / 2, text="No completed trials yet", fill="#555555")
             return
 
@@ -5214,7 +5240,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             choice_rate = counts["HIT"] / choice_total if choice_total else 0.0
             title = (
                 f"Trials {len(completed)}   HIT {counts['HIT']}   MISS {counts['MISS']}   "
-                f"FA {counts['FA']}   Choice accuracy {choice_rate:.0%}"
+                f"FA {counts['FA']}"
             )
             canvas.create_text(18, 18, text=title, anchor="w", fill="#222222", font=("Segoe UI", 10, "bold"))
             left = 54
@@ -5222,25 +5248,32 @@ class BehaviorAcquisitionApp(tk.Tk):
         else:
             title = (
                 f"Trials {len(completed)}   HIT {counts['HIT']}   MISS {counts['MISS']}   "
-                f"CR {counts['CR']}   FA {counts['FA']}   "
-                f"GO hit {hit_rate:.0%}   noGo CR {cr_rate:.0%}"
+                f"CR {counts['CR']}   FA {counts['FA']}"
             )
             canvas.create_text(18, 18, text=title, anchor="w", fill="#222222", font=("Segoe UI", 10, "bold"))
             left = 54
             right = width - 24
+        if self.is_tac_family_task():
+            rate_summary = f'Session-wide: Choice accuracy {choice_rate:.0%}'
+        else:
+            go_name, nogo_name = ('Match HIT', 'Non-match CR') if self.is_dmts_task() else ('GO HIT', 'NoGo CR')
+            rate_summary = f'Session-wide: {go_name} {hit_rate:.0%} (n={go_total}) | {nogo_name} {cr_rate:.0%} (n={nogo_total})'
+        canvas.create_text(18, 38, text=rate_summary, anchor='w', fill='#444444', font=('Segoe UI', 9))
         if width >= 900:
             crossing_width = min(250, max(210, width * 0.22))
             crossing_left = width - crossing_width - 24
             condition_width = min(230, max(190, width * 0.20))
             condition_left = crossing_left - condition_width - 24
             main_right = condition_left - 28
-            recent_top = 72
-            recent_bottom = min(200, max(160, int(height * 0.34)))
-            rate_top = recent_bottom + 54
-            rate_bottom = height - 36
+            recent_top = 100
+            recent_bottom = min(230, max(190, int(height * 0.40)))
+            rate_top = recent_bottom + 64
+            rate_bottom = height - (166 if show_upcoming else 36)
             crossing_bottom = min(height - 160, max(220, int(height * 0.48)))
             self._draw_recent_trial_strip(canvas, completed, left, main_right, recent_top, recent_bottom)
             self._draw_rate_panel(canvas, completed, left, main_right, rate_top, rate_bottom)
+            if show_upcoming:
+                self._draw_upcoming_trials(canvas, left, main_right, height - 126, height - 24)
             self._draw_condition_panel(canvas, completed, condition_left, crossing_left - 24, recent_top, height - 36)
             self._draw_crossing_duration_panel(canvas, crossing_left, width - 24, recent_top, crossing_bottom)
             return
@@ -5250,65 +5283,132 @@ class BehaviorAcquisitionApp(tk.Tk):
             condition_width = min(240, max(190, width * 0.28))
             condition_left = width - condition_width
             right = condition_left - 28
-        raster_top = 52
-        raster_bottom = min(190, height * 0.42)
-        rate_top = raster_bottom + 54
-        rate_bottom = height - 36
+        raster_top = 100
+        raster_bottom = min(230, max(190, height * 0.40))
+        rate_top = raster_bottom + 64
+        rate_bottom = height - (166 if show_upcoming else 36)
         plot_width = max(1, right - left)
 
-        recent = completed[-80:]
-        cell_w = plot_width / max(1, len(recent))
-        colors = {
-            "HIT": "#2ca02c",
-            "MISS": "#ff7f0e",
-            "CR": "#1f77b4",
-            "FA": "#d62728",
-        }
-        y_positions = {
-            "HIT": raster_top + 16,
-            "MISS": raster_top + 48,
-            "CR": raster_top + 80,
-            "FA": raster_top + 112,
-        }
-        for result, y in y_positions.items():
-            canvas.create_text(left - 10, y, text=result, anchor="e", fill="#333333")
-            canvas.create_line(left, y, right, y, fill="#eeeeee")
-        for index, row in enumerate(recent):
-            result = row.get("ResultType", "")
-            y = y_positions.get(result, raster_top + 16)
-            x0 = left + index * cell_w + 1
-            x1 = left + (index + 1) * cell_w - 1
-            canvas.create_rectangle(x0, y - 9, max(x0 + 2, x1), y + 9, fill=colors.get(result, "#777777"), outline="")
-        canvas.create_text(left, raster_bottom + 18, text="Recent trial outcomes", anchor="w", fill="#333333")
+        self._draw_recent_trial_strip(canvas, completed, left, right, raster_top, raster_bottom)
 
         self._draw_rate_panel(canvas, completed, left, right, rate_top, rate_bottom)
+        if show_upcoming:
+            self._draw_upcoming_trials(canvas, left, right, height - 126, height - 24)
         if condition_left is not None:
             panel_gap = 42
-            split_y = int(52 + (height - 88) * 0.48)
-            self._draw_condition_panel(canvas, completed, condition_left, width - 24, 52, split_y)
+            split_y = int(100 + (height - 136) * 0.48)
+            self._draw_condition_panel(canvas, completed, condition_left, width - 24, 100, split_y)
             self._draw_crossing_duration_panel(canvas, condition_left, width - 24, split_y + panel_gap, height - 36)
+
+    def get_upcoming_gonogo_trials(self, count=10):
+        """Peek at the queued sequence without consuming trials or random draws."""
+        if self.is_dmts_task() or self.is_lever_task() or self.is_tac_family_task():
+            return []
+        limit = max(0, self.parse_int(self.max_trials, 0))
+        if limit:
+            count = min(count, max(0, limit - self.trial_index))
+        stimuli = self.trial_stimulus_sequence
+        sounds = self.sound_sequence
+        preview = []
+        for offset in range(count):
+            if stimuli:
+                item = stimuli[(self.trial_stimulus_index + offset) % len(stimuli)]
+                code = item.get('trial_type_id')
+            else:
+                if self.play_sound_on_crossing.get():
+                    if not sounds:
+                        break
+                    sound_id = sounds[(self.sound_sequence_index + offset) % len(sounds)]
+                else:
+                    sound_id = self.parse_int(self.sound_id, 1)
+                code, _ = self.classify_trial_sound(sound_id)
+            preview.append({1: 'GO', 2: 'NoGo'}.get(code, 'Blank'))
+        return preview
+
+    def _draw_upcoming_trials(self, canvas, left, right, top, bottom):
+        canvas.create_rectangle(left, top, right, bottom, outline='#dddddd')
+        canvas.create_text(left, top - 18, text='Upcoming planned trials (T = next)', anchor='w', fill='#333333')
+        rows = self.get_upcoming_gonogo_trials()
+        y_positions = {'GO': bottom - 32, 'NoGo': top + 22}
+        for label, y in y_positions.items():
+            canvas.create_text(left - 8, y, text='0 GO' if label == 'GO' else '1 NoGo', anchor='e', fill='#333333')
+            canvas.create_line(left, y, right, y, fill='#eeeeee')
+        if not rows:
+            canvas.create_text((left + right) / 2, (top + bottom) / 2, text='No queued trials', fill='#777777')
+            return
+        cell_width = (right - left) / len(rows)
+        for index, kind in enumerate(rows):
+            x = left + (index + 0.5) * cell_width
+            if kind in y_positions:
+                y = y_positions[kind]
+                half = min(10, cell_width * 0.32)
+                canvas.create_rectangle(x - half, y - 7, x + half, y + 7,
+                                        fill='#2ca02c' if kind == 'GO' else '#1f77b4', outline='')
+            else:
+                canvas.create_text(x, (top + bottom) / 2, text='B', fill='#777777')
+            canvas.create_text(x, bottom - 10, text='T' if index == 0 else f'T+{index}', fill='#555555', font=('Segoe UI', 8))
+
+    def _draw_smart_task_shading(self, canvas, rows, left, right, top, bottom):
+        """Shade recorded phases, never infer old trials from the current phase."""
+        colors = {'nogo': '#ffe6bf', 'balanced': '#e5dafa'}
+        cell_width = (right - left) / max(1, len(rows))
+        present = set()
+        for index, row in enumerate(rows):
+            phase = row.get('smart_task_phase', 'idle')
+            if phase not in colors:
+                continue
+            present.add(phase)
+            canvas.create_rectangle(left + index * cell_width, top,
+                                    left + (index + 1) * cell_width, bottom,
+                                    fill=colors[phase], outline='')
+        if present:
+            canvas.create_text(left, top - 14, anchor='w', font=('Segoe UI', 8),
+                               fill='#925700', text='Orange: NoGo emphasis')
+            canvas.create_text(right, top - 14, anchor='e', font=('Segoe UI', 8),
+                               fill='#69409a', text='Purple: Balanced protected')
+
+    def _draw_trial_number_ticks(self, canvas, rows, left, right, y, centered=False):
+        if not rows:
+            return
+        max_ticks = max(2, min(6, int((right - left) / 65)))
+        indices = sorted({round(i * (len(rows) - 1) / (max_ticks - 1)) for i in range(max_ticks)})
+        for index in indices:
+            fraction = ((index + 0.5) / len(rows) if centered else index / max(1, len(rows) - 1))
+            x = left + fraction * (right - left)
+            canvas.create_line(x, y - 4, x, y, fill='#888888')
+            canvas.create_text(x, y + 2, text=str(rows[index].get('trial', index + 1)),
+                               anchor='n', fill='#555555', font=('Segoe UI', 8))
+
+    def _draw_smart_task_boundaries(self, canvas, rows, left, right, top, bottom, centered=False):
+        previous = 'idle'
+        for index, row in enumerate(rows):
+            phase = row.get('smart_task_phase', 'idle')
+            if phase != previous:
+                fraction = index / len(rows) if centered else index / max(1, len(rows) - 1)
+                x = left + fraction * (right - left)
+                color = {'nogo': '#b87500', 'balanced': '#8050b0'}.get(phase, '#888888')
+                canvas.create_line(x, top, x, bottom, fill=color, dash=(4, 3), width=2)
+            previous = phase
 
     def _draw_recent_trial_strip(self, canvas, rows, left, right, top, bottom):
         canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
         recent = rows[-80:]
         if not recent:
             return
-        plot_top = top + 12
+        plot_top = top + 6
         plot_bottom = bottom - 26
-        plot_width = max(1, right - left - 8)
+        plot_width = max(1, right - left)
         cell_w = plot_width / max(1, len(recent))
+        self._draw_smart_task_shading(canvas, recent, left, right, top, bottom - 26)
         colors = {
             "HIT": "#2ca02c",
             "MISS": "#ff7f0e",
             "CR": "#1f77b4",
             "FA": "#d62728",
         }
-        y_positions = {
-            "HIT": plot_top + 16,
-            "MISS": plot_top + 48,
-            "CR": plot_top + 80,
-            "FA": plot_top + 112,
-        }
+        lane_height = max(1, (plot_bottom - plot_top) / 4)
+        y_positions = {result: plot_top + (index + 0.5) * lane_height
+                       for index, result in enumerate(('HIT', 'MISS', 'CR', 'FA'))}
         for result, y in y_positions.items():
             if y > plot_bottom:
                 continue
@@ -5319,10 +5419,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             y = y_positions.get(result, plot_top + 16)
             if y > plot_bottom:
                 continue
-            x0 = left + index * cell_w + 3
-            x1 = left + (index + 1) * cell_w + 1
+            x0 = left + index * cell_w + 1
+            x1 = left + (index + 1) * cell_w - 1
             canvas.create_rectangle(x0, y - 8, max(x0 + 2, x1), y + 8, fill=colors.get(result, "#777777"), outline="")
-        canvas.create_text(left, bottom - 10, text="Recent trial outcomes", anchor="w", fill="#333333")
+        self._draw_smart_task_boundaries(canvas, recent, left, right, top, plot_bottom, centered=True)
+        self._draw_trial_number_ticks(canvas, recent, left, right, bottom - 18, centered=True)
+        canvas.create_text(left, top - 38, text='Recent outcomes - last 80 trials (trial #)', anchor='w', fill='#333333', font=('Segoe UI', 9))
 
     def _draw_recent_trial_column(self, canvas, rows, left, right, top, bottom):
         canvas.create_rectangle(left, top, right, bottom, outline="#dddddd")
@@ -5479,30 +5581,43 @@ class BehaviorAcquisitionApp(tk.Tk):
         for fraction in (0.0, 0.5, 1.0):
             y = bottom - fraction * (bottom - top)
             canvas.create_line(left, y, right, y, fill="#eeeeee")
-            canvas.create_text(left - 8, y, text=f"{fraction:.1f}", anchor="e", fill="#555555")
+            canvas.create_text(left - 8, y, text=f"{fraction:.0%}", anchor="e", fill="#555555")
 
+        rows = [row for row in rows if row.get("trial_end_s") not in (None, "")]
+        if not rows:
+            return
+        self._draw_smart_task_boundaries(canvas, rows, left, right, top, bottom)
+        self._draw_trial_number_ticks(canvas, rows, left, right, bottom)
         hit_points = []
         cr_points = []
         result_points = []
-        go_hits = go_total = nogo_cr = nogo_total = 0
+        go_window = []
+        nogo_window = []
         n = len(rows)
         for index, row in enumerate(rows, start=1):
             result = row.get("ResultType", "")
-            if result in ("HIT", "MISS"):
-                go_total += 1
-                go_hits += int(result == "HIT")
-                result_score = 1 if result == "HIT" else 0
-            elif result in ("CR", "FA"):
-                nogo_total += 1
-                nogo_cr += int(result == "CR")
-                result_score = 1 if result == "CR" else 0
-            else:
-                result_score = None
+            trial_type = str(row.get('TrialType', ''))
+            is_go = trial_type.endswith('GO') or trial_type.endswith('DMTS-match')
+            is_nogo = trial_type.endswith('noGo') or trial_type.endswith('DMTS-nonmatch')
+            # Preserve the response categories used by the other task plots.
+            if not is_go and not is_nogo and not ('DMTS-' in trial_type or trial_type.endswith('BLANK')):
+                is_go = result in ('HIT', 'MISS')
+                is_nogo = result in ('CR', 'FA')
+            if is_go and result in ('HIT', 'MISS', 'FA'):
+                go_window.append(int(result == 'HIT'))
+                go_window = go_window[-25:]
+            elif is_nogo and result in ('CR', 'FA'):
+                nogo_window.append(int(result == 'CR'))
+                nogo_window = nogo_window[-25:]
+            result_score = (1 if result in ('HIT', 'CR') else 0
+                            if result in ('MISS', 'FA') else None)
             x = left + ((index - 1) / max(1, n - 1)) * (right - left)
             if result_score is not None:
                 result_points.append((x, bottom - result_score * (bottom - top), result))
-            hit_points.append((x, bottom - (go_hits / go_total if go_total else 0.0) * (bottom - top)))
-            cr_points.append((x, bottom - (nogo_cr / nogo_total if nogo_total else 0.0) * (bottom - top)))
+            if len(go_window) >= 10:
+                hit_points.append((x, bottom - sum(go_window) / len(go_window) * (bottom - top)))
+            if len(nogo_window) >= 10:
+                cr_points.append((x, bottom - sum(nogo_window) / len(nogo_window) * (bottom - top)))
 
         colors = {
             "HIT": "#2ca02c",
@@ -5512,13 +5627,17 @@ class BehaviorAcquisitionApp(tk.Tk):
         }
         for x, y, result in result_points:
             canvas.create_oval(x - 4, y - 4, x + 4, y + 4, fill=colors.get(result, "#777777"), outline="")
-        self._draw_polyline(canvas, hit_points, "#2ca02c")
-        self._draw_polyline(canvas, cr_points, "#1f77b4")
-        canvas.create_text(left, top - 20, text="Running performance", anchor="w", fill="#333333")
-        canvas.create_line(right - 170, top - 20, right - 140, top - 20, fill="#2ca02c", width=3)
-        canvas.create_text(right - 134, top - 20, text="GO hit", anchor="w", fill="#333333")
-        canvas.create_line(right - 82, top - 20, right - 52, top - 20, fill="#1f77b4", width=3)
-        canvas.create_text(right - 46, top - 20, text="noGo CR", anchor="w", fill="#333333")
+        if hit_points:
+            self._draw_polyline(canvas, hit_points, '#2ca02c')
+        if cr_points:
+            self._draw_polyline(canvas, cr_points, '#1f77b4')
+        canvas.create_text(left, top - 38, text='Moving rates: last 25 per type (min 10)', anchor='w', fill='#333333', font=('Segoe UI', 9))
+        hit_name, cr_name = (('Match HIT', 'Non-match CR') if getattr(self, 'is_dmts_task', lambda: False)()
+                             else ('GO HIT', 'NoGo CR'))
+        hit_label = f'{hit_name} {sum(go_window) / len(go_window):.0%} (n={len(go_window)})' if len(go_window) >= 10 else f'{hit_name} waiting ({len(go_window)}/10)'
+        cr_label = f'{cr_name} {sum(nogo_window) / len(nogo_window):.0%} (n={len(nogo_window)})' if len(nogo_window) >= 10 else f'{cr_name} waiting ({len(nogo_window)}/10)'
+        canvas.create_text(left, top - 17, text=hit_label, anchor='w', fill='#2ca02c', font=('Segoe UI', 8))
+        canvas.create_text(right, top - 17, text=cr_label, anchor='e', fill='#1f77b4', font=('Segoe UI', 8))
 
     def _draw_polyline(self, canvas, points, color):
         if len(points) == 1:

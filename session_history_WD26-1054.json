@@ -1483,10 +1483,14 @@
       2
     ],
     "started_at": "2026-11-17T09:51:35+01:00",
-    "stopped_at": null,
-    "status": "running",
+    "stopped_at": "2026-11-17T10:50:20+01:00",
+    "status": "stopped",
     "simulation": false,
-    "trials": 0,
-    "rewards": 0
+    "trials": 368,
+    "rewards": 183,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5"
+    }
   }
 ]

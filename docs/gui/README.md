@@ -304,3 +304,7 @@ Before finishing a GUI restructuring change:
 
 
 The lever-only `Require release + bonus` and `Require release within window` checkboxes are placed in `Trial Structure` with the lever timing fields. `Require release within window` uses `self.lever_req_rel_window`. Selecting it clears the bonus checkbox, and selecting bonus clears window-only. The generator uses the same mutually exclusive choices.
+
+## Inline entry validation (v8)
+
+Editable main-window fields keep separate draft and runtime values. Invalid/incomplete drafts show red text/highlighting with a short adjacent explanation; the last valid value remains active. Valid drafts update the runtime variables, while sequence application still follows the existing ReGenerate Sequence workflow. Sequence values/weights, axis limits, ITI bounds, and paired channels must be consistent before edited pairs are applied. Optional blank protocol defaults remain allowed. Read-only fields have no editor, and output-format/trigger dropdowns are restricted to supported choices. Runtime-generated settings and imported protocols refresh the editors. Paths are checked for syntax and expected file extension; disk/network availability and hardware readiness remain startup checks. This validation applies to the main Behavior GUI, not the separate Braincodec panel or stimulus-generator window.

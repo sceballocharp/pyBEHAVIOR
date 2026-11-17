@@ -128,3 +128,17 @@ Both keep full-session lists for export and windowed lists for plotting. The liv
 - Avoid expensive per-sample work inside `draw_plot()`; it runs repeatedly during acquisition.
 
 
+
+## Upcoming Go/No-Go trials
+
+Session Overview includes a bottom-left preview of the next 10 planned Go/No-Go trials, with GO at y=0 (green), NoGo at y=1 (blue), and labels T, T+1, etc. T is the next trial to start; a currently active trial has already been consumed. Previewing does not advance the sequence or draw random numbers. Sequence wrap and Max trials are respected. Blank entries display B. The preview refreshes with sequence changes and trial advancement, is visible before the first result, and is hidden for other tasks or windows shorter than 400 pixels. SmartTask or manual regeneration can change the future plan.
+
+## Moving performance
+
+The performance panel uses the latest 25 completed trials of each type independently (all available trials until 25). GO HIT and NoGo CR are updated at each session trial; the other type carries its previous rate forward, so both curves remain continuous after their first observation. No value is drawn before a type has any data. Blank/uncompleted trials do not enter the denominators. DMTS uses match/non-match categories, with wrong-choice match FA counted against match performance. Rates and window counts are shown above the panel. Session totals and SmartTask calculations remain unchanged.
+
+Moving performance curves begin only at the tenth completed trial of each type; before that the legend displays waiting (n/10). The maximum window remains 25 trials per type.
+
+Recent outcomes retain the SmartTask phase recorded when each Go/No-Go trial started: pale orange columns mark NoGo emphasis and pale purple columns mark Balanced protected trials. Outcome marker colors are unchanged. Old trials without phase metadata remain unshaded.
+
+Session Overview labels header rates as Session-wide and the curve panel as Moving rates: last 25 per type (min 10). Both the recent outcomes and moving-rate panel show recorded session trial-number ticks and dashed SmartTask phase boundaries, with orange for NoGo emphasis, purple for Balanced protected, and gray for return to ordinary trials. The recent strip fits all four outcome rows in compact windows. Upcoming preview is hidden below 480 pixels tall to preserve space for the rate panel. The launch button is named Session Overview.
