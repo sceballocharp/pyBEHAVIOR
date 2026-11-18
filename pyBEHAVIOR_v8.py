@@ -378,6 +378,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_modality_probabilities = tk.StringVar(value="1 0")
         self.dmts_nonmatch_only_sounds = tk.BooleanVar(value=False)
         self.dmts_nonmatch_fa_noise = tk.BooleanVar(value=False)
+        self.fa_noise_file = tk.StringVar(value=os.path.join(APP_DIR, "Sounds", "Punishment", "white_noise.wav"))
         self.smart_task = tk.BooleanVar(value=False)
         self.smart_nogo_emphasis_trials = tk.StringVar(value="25")
         self.smart_task_active = False
@@ -536,7 +537,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_misses_widgets = self._entry(trial, 0, "Match misses", self.dmts_misses_before_reminder, width=6, row=15)
         self.dmts_reminders_widgets = self._entry(trial, 2, "Reminder trials", self.dmts_reminder_trials, width=6, row=15)
         self.dmts_blank_timeout_check = ttk.Checkbutton(trial, text="Timeout for licking during blank response window", variable=self.dmts_blank_lick_timeout)
-        self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(trial, text="NonMatch FA noise (110)", variable=self.dmts_nonmatch_fa_noise)
+        self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(trial, text="NonMatch FA noise", variable=self.dmts_nonmatch_fa_noise)
+        self.fa_noise_file_frame = ttk.Frame(trial)
+        self.fa_noise_file_frame.columnconfigure(1, weight=1)
+        self._entry(self.fa_noise_file_frame, 0, 'FA noise file', self.fa_noise_file, width=22)
+        ttk.Button(self.fa_noise_file_frame, text='Browse', command=self.choose_fa_noise_file).grid(row=0, column=2, padx=4)
+        ttk.Button(self.fa_noise_file_frame, text='Test', command=self.play_fa_noise).grid(row=0, column=3, padx=4)
         self.no_lick_period = tk.BooleanVar(value=False)
         self.no_lick_period_check = ttk.Checkbutton(trial, text="NoLick period", variable=self.no_lick_period)
         for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms, self.right_pulse_ms):
@@ -795,10 +801,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         if is_dmts:
             self.dmts_nonmatch_only_sounds_check.grid()
             self.dmts_nonmatch_fa_noise_check.grid(row=18, column=0, columnspan=2, padx=6, pady=4, sticky="w")
+            self.fa_noise_file_frame.grid(row=19, column=0, columnspan=4, sticky="ew")
             self.no_lick_period_check.grid(row=18, column=2, columnspan=2, padx=6, pady=4, sticky="w")
         else:
             self.dmts_nonmatch_only_sounds_check.grid_remove()
             self.dmts_nonmatch_fa_noise_check.grid_remove()
+            self.fa_noise_file_frame.grid_remove()
             self.no_lick_period_check.grid_remove()
         self.set_widget_pair_visible(self.sample_sound_widgets, False, row=10, col=0)
         self.set_widget_pair_visible(self.test_sound_widgets, False, row=10, col=2)
@@ -1251,6 +1259,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 "DMTSModalityProbabilities": self.dmts_modality_probabilities,
                 "DMTSNonMatchOnlySounds": self.dmts_nonmatch_only_sounds,
                 "DMTSNonMatchFANoise": self.dmts_nonmatch_fa_noise,
+                "DMTSFANoiseFile": self.fa_noise_file,
                 "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
                 "DMTSReminderTrials": self.dmts_reminder_trials,
                 "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
@@ -1584,10 +1593,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.setup_tasks()
         if self.session_requires_sound_file():
             self.startup_message('Starting session: loading sound MAT file.')
-            loaded = self.load_sound_file()
-            if self.is_dmts_task() and self.dmts_nonmatch_fa_noise.get():
-                if not loaded or self.get_sound_by_id(110) is None:
-                    raise ValueError('NonMatch FA noise requires sound ID 110 in the selected sound bank.')
+            self.load_sound_file()
+        if self.is_dmts_task() and self.dmts_nonmatch_fa_noise.get():
+            self.startup_message("Starting session: loading standalone FA noise WAV.")
+            self.load_fa_noise(force=True)
         self.startup_message('Starting session: starting acquisition.')
         self.begin_session_history()
         self.acq_thread = threading.Thread(target=self.acquisition_loop, daemon=True)
@@ -1663,6 +1672,10 @@ class BehaviorAcquisitionApp(tk.Tk):
                     weights['smart_nogo_emphasis_trials'] = int(float(setting.get()))
                 if self.is_dmts_task():
                     weights['sound_light_probabilities'] = self.dmts_modality_probabilities.get()
+                    weights['fa_noise_file'] = self.fa_noise_file.get()
+                    weights['fa_noise_enabled'] = bool(self.dmts_nonmatch_fa_noise.get())
+                    weights['fa_noise_level_multiplier'] = 1.25
+                    weights['fa_noise_repeats'] = 3
                     weights['nonmatch_only_sounds'] = bool(self.dmts_nonmatch_only_sounds.get())
             history.update(self.trial_index, self.reward_pulse_count, stopped=stopped, weights=weights)
         except Exception as exc:
@@ -1699,9 +1712,6 @@ class BehaviorAcquisitionApp(tk.Tk):
         return True
 
     def session_requires_sound_file(self):
-        noise = getattr(self, "dmts_nonmatch_fa_noise", None)
-        if self.is_dmts_task() and noise is not None and noise.get():
-            return True
         if self.is_dmts_task() and getattr(self, 'dmts_light_client', None) is not None:
             var = getattr(self, 'dmts_modality_probabilities', None)
             override = getattr(self, 'dmts_nonmatch_only_sounds', None)
@@ -2195,6 +2205,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSModalityProbabilities": self.dmts_modality_probabilities.get(),
             "DMTSNonMatchOnlySounds": int(self.dmts_nonmatch_only_sounds.get()),
             "DMTSNonMatchFANoise": int(self.dmts_nonmatch_fa_noise.get()),
+            "DMTSFANoiseFile": self.fa_noise_file.get(),
+            "DMTSFANoiseLevelMultiplier": 1.25,
+            "DMTSFANoiseRepeats": 3,
             "DMTSStimulusSource": ("mixed" if self.get_dmts_modality_probabilities()[0] > 0 else "LED") if getattr(self, "dmts_light_client", None) is not None else "sound",
             "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
                 if getattr(self, 'dmts_light_client', None) is not None else '',
@@ -2224,6 +2237,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             "TriggerTypeDropDown",
             "OuputformatDropDown",
             "TaskType",
+            "DMTSNonMatchFANoise",
+            "DMTSFANoiseFile",
+            "DMTSFANoiseLevelMultiplier",
+            "DMTSFANoiseRepeats",
             "SmartTaskNoGoEmphasisTrials",
             "GoWeight",
             "NoGoWeight",
@@ -2332,6 +2349,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             "dmts_reminder": 0,
             "punishment_sound_id": 0,
             "punishment_sound_repeats": 0,
+            "punishment_sound_file": "",
+            "punishment_sound_gain": 0.0,
+            "punishment_sound_duration_s": 0.0,
             "lever_reward_test_trials": int(params["LeverRewardTestTrials"]),
             "light_code": light_code,
             "sound_id": sound_id,
@@ -3247,10 +3267,14 @@ class BehaviorAcquisitionApp(tk.Tk):
             row["ResultType"] = "BLANK"
         noise = getattr(self, 'dmts_nonmatch_fa_noise', None)
         if fa and not same_sound and noise is not None and noise.get():
-            duration = self.play_loaded_sound(sound_id=110, from_worker=True, start_s=reward_start_s, level_multiplier=1.25, repeats=3)
+            duration = self.play_fa_noise(from_worker=True, start_s=reward_start_s)
             if duration is not None:
-                row['punishment_sound_id'] = 110
+                metadata = getattr(self, '_last_fa_noise_playback', {})
+                row['punishment_sound_id'] = 0  # Standalone WAV, not a task-bank ID.
                 row['punishment_sound_repeats'] = 3
+                row['punishment_sound_file'] = metadata.get('path', '')
+                row['punishment_sound_gain'] = metadata.get('gain', 0.0)
+                row['punishment_sound_duration_s'] = duration
         if (hit or (cr and self.is_lick_trigger())) and not self.active_reward_decided:
             measure = float(row.get("lick_count") or self.active_crossing_total_s)
             self.maybe_send_go_reward(row, measure, start_s=reward_start_s)
@@ -4176,6 +4200,52 @@ class BehaviorAcquisitionApp(tk.Tk):
         while self.trigger_pulses and self.trigger_pulses[0][1] < oldest:
             self.trigger_pulses.pop(0)
 
+    def choose_fa_noise_file(self):
+        path = filedialog.askopenfilename(initialdir=os.path.dirname(self.fa_noise_file.get()),
+                                          filetypes=[('WAV audio', '*.wav')])
+        if path:
+            self.fa_noise_file.set(path)
+
+    def load_fa_noise(self, force=False):
+        from punishment_audio import load_punishment_wav
+        selected = os.path.expanduser(self.fa_noise_file.get())
+        if not os.path.isabs(selected):
+            selected = os.path.join(APP_DIR, selected)
+        selected = os.path.abspath(selected)
+        cached = getattr(self, '_fa_noise_audio', None)
+        if force or cached is None or cached[0] != selected:
+            self._fa_noise_audio = load_punishment_wav(selected)
+        return self._fa_noise_audio
+
+    def play_fa_noise(self, from_worker=False, start_s=None):
+        if not from_worker and getattr(self, 'running', False):
+            self.log('Stop acquisition before testing the FA noise.')
+            return None
+        self._last_fa_noise_playback = {}
+        duration = None
+        try:
+            path, fs, original = self.load_fa_noise()
+            gain = self.get_sound_level_gain() * 1.25
+            signal = np.tile(original * gain, 3)
+            if nidaqmx is not None:
+                self.play_sound_on_ni(signal, fs)
+            elif sd is not None:
+                sd.play(signal, fs, blocking=False)
+            else:
+                raise RuntimeError('No audio playback backend is available')
+            self.record_sound_output(signal, fs, sound_id=0, start_s=start_s)
+            duration = len(signal) / fs
+            self._last_fa_noise_playback = {'path': path, 'gain': gain, 'repeats': 3,
+                                          'duration_s': duration}
+            message = f'FA noise: {os.path.basename(path)}, 3 repeats, level {gain:g}, {duration:g} s.'
+        except Exception as exc:
+            message = f'FA noise playback error: {exc}'
+        if from_worker:
+            self.plot_queue.put(('log', message))
+        else:
+            self.log(message)
+        return duration
+
     def load_sound_file(self):
         if loadmat is None:
             self.log("Cannot load sound: scipy.io.loadmat is unavailable.")
@@ -4676,12 +4746,14 @@ class BehaviorAcquisitionApp(tk.Tk):
             self.replace_hdf5_dataset(trials, "sound_ids", sound_ids)
             self.replace_hdf5_dataset(trials, "sample_sound_ids", sample_sound_ids)
             self.replace_hdf5_dataset(trials, "test_sound_ids", test_sound_ids)
-            for column in ('sample_light_id', 'test_light_id', 'dmts_light_confirmed'):
+            for column in ('sample_light_id', 'test_light_id', 'dmts_light_confirmed', 'punishment_sound_id', 'punishment_sound_repeats'):
                 self.replace_hdf5_dataset(trials, column, [int(row.get(column, 0) or 0) for row in trial_rows])
             self.replace_hdf5_dataset(trials, 'dmts_light_timing_extension_s',
                                       [float(row.get('dmts_light_timing_extension_s', 0) or 0) for row in trial_rows])
-            for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error'):
+            for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error', 'punishment_sound_file'):
                 self.replace_hdf5_dataset(trials, column, [str(row.get(column, '')) for row in trial_rows], dtype=utf8)
+            for column in ('punishment_sound_gain', 'punishment_sound_duration_s'):
+                self.replace_hdf5_dataset(trials, column, [float(row.get(column, 0) or 0) for row in trial_rows])
             self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)
             self.replace_hdf5_dataset(trials, "trial_type", trial_types)
 
@@ -4711,6 +4783,10 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("BehaviorSignalColumn", params["BehaviorSignalColumn"]),
             ("frec", rate),
             ("TaskType", params["TaskType"]),
+            ("DMTSNonMatchFANoise", params["DMTSNonMatchFANoise"]),
+            ("DMTSFANoiseFile", params["DMTSFANoiseFile"]),
+            ("DMTSFANoiseLevelMultiplier", 1.25),
+            ("DMTSFANoiseRepeats", 3),
             ("GoWeight", params["GoWeight"]),
             ("NoGoWeight", params["NoGoWeight"]),
             ("BlankWeight", params["BlankWeight"]),

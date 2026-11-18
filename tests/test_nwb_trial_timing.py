@@ -22,7 +22,9 @@ class NWBTrialTimingTests(unittest.TestCase):
         )
         export = MethodType(methods["write_nwb_contract_hdf5"], app)
         rows = [
-            {"trigger_time_s": "0.000000", "crossing_duration_s": "1.123456", "trial_end_s": "1.173456"},
+            {"trigger_time_s": "0.000000", "crossing_duration_s": "1.123456", "trial_end_s": "1.173456",
+             "punishment_sound_file": "noise.wav", "punishment_sound_gain": 0.25,
+             "punishment_sound_repeats": 3, "punishment_sound_duration_s": 1.5},
             {"trigger_time_s": "2.000000", "crossing_duration_s": "", "trial_end_s": None},
             {},
         ]
@@ -30,6 +32,10 @@ class NWBTrialTimingTests(unittest.TestCase):
         self.assertEqual(saved["trigger_time_s"][0][:2], [0.0, 2.0])
         self.assertEqual(saved["crossing_duration_s"][0][0], 1.123456)
         self.assertEqual(saved["trial_end_s"][0][0], 1.173456)
+        self.assertEqual(saved['punishment_sound_file'][0], ['noise.wav', '', ''])
+        self.assertEqual(saved['punishment_sound_gain'][0], [0.25, 0.0, 0.0])
+        self.assertEqual(saved['punishment_sound_repeats'][0], [3, 0, 0])
+        self.assertEqual(saved['punishment_sound_duration_s'][0], [1.5, 0.0, 0.0])
         for column in ("trigger_time_s", "crossing_duration_s", "trial_end_s"):
             values, dtype = saved[column]
             self.assertEqual(len(values), len(rows))

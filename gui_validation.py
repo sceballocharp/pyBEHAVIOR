@@ -9,7 +9,7 @@ from tkinter import ttk
 OPTIONAL = {'random_seed', 'task_type', 'iti_rand_min_s', 'iti_rand_max_s',
             'reward_go', 'punish_no_go_fa', 'min_lick_count', 'lick_threshold'}
 TEXT = {'user_name', 'mouse_id', 'project_name', 'device', 'random_seed',
-        'save_root', 'ni_script', 'sound_file'}
+        'save_root', 'ni_script', 'sound_file', 'fa_noise_file'}
 INTEGER = {'sound_id', 'classic_go_sound_id', 'classic_nogo_sound_id',
            'sample_sound_id', 'test_sound_id', 'lever_go_sound_id', 'lever_test_sound_id',
            'sequence_length', 'max_trials', 'min_lick_count', 'tac_min_lick_count',
@@ -48,10 +48,12 @@ def validate_setting(name, text, context):
     if name in TEXT:
         if '\n' in text or '\r' in text:
             return 'Use a single line'
-        if name in {'save_root', 'ni_script', 'sound_file'} and any(c in text for c in '*?"<>|'):
+        if name in {'save_root', 'ni_script', 'sound_file', 'fa_noise_file'} and any(c in text for c in '*?"<>|'):
             return 'Enter a valid path'
         if name == 'sound_file' and not text.lower().endswith('.mat'):
             return 'Select a .mat sound bank'
+        if name == 'fa_noise_file' and not text.lower().endswith('.wav'):
+            return 'Select a .wav noise file'
         if name == 'ni_script' and not text.lower().endswith('.m'):
             return 'Select a .m setup script'
         return ''

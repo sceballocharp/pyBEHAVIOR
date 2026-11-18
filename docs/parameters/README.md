@@ -115,3 +115,11 @@ The FA noise waveform is repeated three times in one contiguous playback (1.5 se
 ## Protocol authority during import
 
 Import applies the complete supported protocol in one batch, suspending entry validation write-back and GO/NoGo synchronization until the batch is complete. Explicit GO/NoGo sound IDs and weights take precedence over old GUI drafts and defaults; invalid IDs/weights are rejected instead of silently replaced. The sound-ID fields, sequence and inline-validation state are synchronized after import. Defaults remain available for fields absent from legacy protocols. Subsequent intentional GUI edits or enabled SmartTask may still change session settings.
+
+## Standalone DMTS false-alarm noise
+
+**NonMatch FA noise** now uses **FA noise file**, a separate mono WAV with Browse and Test buttons. The default `Sounds/Punishment/white_noise.wav` was exported losslessly from the original DMTS sound 110 at 192 kHz (0.5 s), preserving waveform amplitude. It has no dependency on the selected task MAT sound bank. Three contiguous repetitions play at 1.25 times the current Sound level when a non-match trial is scored FA. Existing timeout punishment is unchanged.
+
+The WAV is loaded separately at session start and cached; changing its selected path reloads that file on the next playback. Test plays the same punishment while acquisition is stopped. Light-only sessions with noise enabled no longer need a task sound bank for punishment. Missing, empty, stereo or non-finite WAV files are rejected. PCM WAV samples are converted to floating point; floating-point WAV amplitudes are preserved.
+
+Protocols may set `DMTSFANoiseFile`; the session parameters save that path, multiplier and repetition count. Trial CSV/NWB records include `punishment_sound_file`, `punishment_sound_gain`, `punishment_sound_repeats`, and `punishment_sound_duration_s`. `punishment_sound_id` is zero for the standalone WAV, with the played waveform still included in recorded sound outputs. Old protocol files enabling `DMTSNonMatchFANoise` work with the separate default WAV.

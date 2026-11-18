@@ -190,18 +190,21 @@ class DMTSFANoiseTests(unittest.TestCase):
                     with self.subTest(enabled=enabled, match=match, response=response):
                         app, row = harness(match=match)
                         app.dmts_nonmatch_fa_noise = SimpleNamespace(get=lambda: enabled)
-                        app.play_loaded_sound = Mock(return_value=0.1)
+                        app.play_loaded_sound = Mock()
+                        app.play_fa_noise = Mock(return_value=0.1)
                         app.active_dmts_response_evaluated = True
                         app.active_dmts_response_met = response
                         app.active_choice_side = 'right' if match and response else ''
                         app.finish_active_dmts_reward_period(2.5)
                         app.finish_active_dmts_reward_period(2.5)
                         if enabled and not match and response:
-                            app.play_loaded_sound.assert_called_once_with(sound_id=110, from_worker=True, start_s=2.5, level_multiplier=1.25, repeats=3)
-                            self.assertEqual(row['punishment_sound_id'], 110)
+                            app.play_fa_noise.assert_called_once_with(from_worker=True, start_s=2.5)
+                            app.play_loaded_sound.assert_not_called()
+                            self.assertEqual(row['punishment_sound_id'], 0)
                             self.assertEqual(row['punishment_sound_repeats'], 3)
                             self.assertEqual(row['ResultType'], 'FA')
                         else:
+                            app.play_fa_noise.assert_not_called()
                             app.play_loaded_sound.assert_not_called()
 
     def test_repeats_are_concatenated_for_one_contiguous_playback(self):
