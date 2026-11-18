@@ -86,6 +86,20 @@ class AudioWorkerTests(unittest.TestCase):
             output.release()
             self.assertTrue(audio.stop())
 
+    def test_stop_discards_request_that_has_not_started(self):
+        original_start = threading.Thread.start
+        player = Mock()
+        with patch('audio_worker.threading.Thread.start'):
+            audio = AudioWorker(player=player)
+            audio.submit(AudioJob(np.ones(100), 1000))
+            audio.request_stop()
+        original_start(audio._thread)
+        self.assertTrue(audio.stop(1))
+        player.assert_not_called()
+        event = audio.events.get_nowait()
+        self.assertEqual(event['status'], 'cancelled')
+        self.assertIsNone(event['started_at'])
+
     def test_next_trial_waits_for_busy_and_buffered_playback_end(self):
         app = trial_harness()
         app._audio_worker = SimpleNamespace(busy=True)

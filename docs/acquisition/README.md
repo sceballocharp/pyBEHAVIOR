@@ -118,3 +118,13 @@ When `Write BehaviorSignal.bin` is enabled, `open_behavior_signal_file()` opens:
 - Keep acquisition-time decisions based on sample time, not wall-clock GUI time.
 
 
+
+## Asynchronous DMTS punishment playback
+
+The standalone FA noise is submitted to a dedicated audio worker. No Tk variables/widgets are accessed by that worker; its job contains a waveform, sample rate, device name, and simulation flag captured by the caller. The acquisition loop continues reading inputs while the worker owns its NI AO task (or sounddevice stream). The three repetitions remain one contiguous waveform at the configured relative WN gain.
+
+A busy flag prevents a new trial from being prepared while punishment is queued or playing. Completion additionally establishes a session-time boundary: older buffered samples cannot trigger a trial that would overlap playback. Existing ITI and timeout rules still apply. Sample/test and manual sound requests are rejected if punishment is busy, rather than silently delayed. The NI sample/test path and audio worker share a nonblocking output lock. Normal sample/test NI playback retains its existing synchronous implementation in this first stage.
+
+Worker events are drained by acquisition; standalone Test events are drained on the GUI thread while acquisition is stopped. Software playback-start and end timestamps are saved separately from the requested trial timeline. Completed waveform outputs are recorded at their reported start; cancellation records an estimated partial waveform. These software timestamps are not a hardware measurement; the acquired SoundCopy channel remains the physical timing reference.
+
+Stop/window close requests cancellation and polls asynchronously until acquisition and audio threads have exited. Only then are pending audio events drained, files/tasks closed, history saved and NWB exported. NI audio tasks are stopped, closed, and their AO channel returned to zero by the audio worker. Max trials waits for the final punishment before stopping automatically. Audio errors are logged and request session cleanup; simulated punishment waits without opening hardware.

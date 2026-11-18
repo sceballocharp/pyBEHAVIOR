@@ -24,7 +24,9 @@ class NWBTrialTimingTests(unittest.TestCase):
         rows = [
             {"trigger_time_s": "0.000000", "crossing_duration_s": "1.123456", "trial_end_s": "1.173456",
              "punishment_sound_file": "noise.wav", "punishment_sound_gain": 0.25,
-             "punishment_sound_repeats": 3, "punishment_sound_duration_s": 1.5},
+             "punishment_sound_repeats": 3, "punishment_sound_duration_s": 1.5,
+             "punishment_sound_start_s": 2.7, "punishment_sound_end_s": 4.2,
+             "punishment_sound_status": "completed"},
             {"trigger_time_s": "2.000000", "crossing_duration_s": "", "trial_end_s": None},
             {},
         ]
@@ -36,6 +38,9 @@ class NWBTrialTimingTests(unittest.TestCase):
         self.assertEqual(saved['punishment_sound_gain'][0], [0.25, 0.0, 0.0])
         self.assertEqual(saved['punishment_sound_repeats'][0], [3, 0, 0])
         self.assertEqual(saved['punishment_sound_duration_s'][0], [1.5, 0.0, 0.0])
+        self.assertEqual(saved['punishment_sound_start_s'][0][0], 2.7)
+        self.assertEqual(saved['punishment_sound_end_s'][0][0], 4.2)
+        self.assertEqual(saved['punishment_sound_status'][0], ['completed', '', ''])
         for column in ("trigger_time_s", "crossing_duration_s", "trial_end_s"):
             values, dtype = saved[column]
             self.assertEqual(len(values), len(rows))
