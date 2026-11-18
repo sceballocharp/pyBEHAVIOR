@@ -6,6 +6,13 @@ Sounds/AllSounds_from_wav.mat
 /Sounds/DMTS
 
 *.pyc
+<<<<<<< Updated upstream
 
 # Local crash captures from the diagnostic launcher
 /diagnostics/
+=======
+*.pyc
+>>>>>>> Stashed changes
+braincodec/__pycache__/tk_panel.cpython-314.pyc
+braincodec/__pycache__/control_panel.cpython-314.pyc
+braincodec/__pycache__/__init__.cpython-314.pyc
