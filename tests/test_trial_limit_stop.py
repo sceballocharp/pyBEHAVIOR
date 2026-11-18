@@ -1,6 +1,7 @@
 """Hardware-free checks of trial-limit stopping in the shared acquisition loop."""
 import queue
 import time
+import traceback
 import unittest
 from types import MethodType, SimpleNamespace
 from unittest.mock import Mock, patch
@@ -8,8 +9,8 @@ from unittest.mock import Mock, patch
 from test_lever_modes import load_methods, Var
 
 
-METHODS = load_methods("pyBEHAVIOR_v8.py", {"stop_at_trial_limit", "acquisition_loop"})
-METHODS["time"] = time
+METHODS = load_methods("pyBEHAVIOR_v8.py", {"stop_at_trial_limit", "acquisition_loop", "_process_audio_events"})
+METHODS.update(time=time, queue=queue, traceback=traceback)
 
 
 def harness(limit=300, trial=300, active=None):
@@ -18,7 +19,7 @@ def harness(limit=300, trial=300, active=None):
         active_trial_index=active, plot_queue=queue.Queue(),
         parse_int=lambda var, default: int(var.get()),
     )
-    for name in ("stop_at_trial_limit", "acquisition_loop"):
+    for name in ("stop_at_trial_limit", "acquisition_loop", "_process_audio_events"):
         setattr(app, name, MethodType(METHODS[name], app))
     return app
 
@@ -48,6 +49,15 @@ class TrialLimitStopTests(unittest.TestCase):
                 app.stop_at_trial_limit()
                 self.assertTrue(app.running)
                 self.assertTrue(app.plot_queue.empty())
+
+    def test_final_punishment_must_finish_before_automatic_stop(self):
+        app = harness()
+        app._audio_worker = SimpleNamespace(busy=True)
+        app.stop_at_trial_limit()
+        self.assertTrue(app.running)
+        app._audio_worker.busy = False
+        app.stop_at_trial_limit()
+        self.assertFalse(app.running)
 
     def test_pending_reminders_do_not_extend_limit(self):
         app = harness()

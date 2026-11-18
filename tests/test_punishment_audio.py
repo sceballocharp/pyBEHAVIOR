@@ -41,28 +41,47 @@ class PunishmentAudioTests(unittest.TestCase):
                     load_punishment_wav(path)
 
     def test_playback_uses_wav_and_three_repetitions_at_boosted_gain(self):
-        methods = load_methods('pyBEHAVIOR_v8.py', {'play_fa_noise'})
-        backend = SimpleNamespace(play=Mock())
-        methods.update(np=np, nidaqmx=None, sd=backend)
+        import threading
+        import time
+        from types import MethodType
+        from audio_worker import AudioWorker
+        methods = load_methods('pyBEHAVIOR_v8.py', {'play_fa_noise', '_process_audio_events'})
+        methods.update(np=np, queue=queue)
+        played = []
+        def player(job, cancel, started):
+            played.append(job.signal)
+            started(time.perf_counter())
+        audio = AudioWorker(player=player)
         path = str(ROOT / 'Sounds/Punishment/white_noise.wav')
+        row = {}
         app = SimpleNamespace(load_fa_noise=Mock(return_value=(path, 4, np.array([1.0, -1.0]))),
             get_sound_level_gain=lambda: 0.2, fa_noise_level_multiplier=Var('1.25'),
-            record_sound_output=Mock(), log=Mock(),
+            record_sound_output=Mock(), log=Mock(), write_trial_log=Mock(),
             get_sound_by_id=Mock(side_effect=AssertionError('Task bank must not be consulted')),
-            plot_queue=queue.Queue())
-        duration = methods['play_fa_noise'](app, from_worker=True, start_s=2.5)
-        expected = np.array([0.25, -0.25] * 3)
-        np.testing.assert_array_equal(backend.play.call_args.args[0], expected)
-        self.assertEqual(backend.play.call_count, 1)
-        self.assertEqual(duration, 1.5)
-        self.assertEqual(app.record_sound_output.call_args.kwargs, {'sound_id': 0, 'start_s': 2.5})
-        self.assertEqual(app._last_fa_noise_playback['path'], path)
-        self.assertEqual(app._last_fa_noise_playback['gain'], 0.25)
-        app.get_sound_by_id.assert_not_called()
-        app.fa_noise_level_multiplier.set('0.5')
-        methods['play_fa_noise'](app, from_worker=True, start_s=4.0)
-        np.testing.assert_array_equal(backend.play.call_args.args[0], np.array([0.1, -0.1] * 3))
-        self.assertEqual(app._last_fa_noise_playback['gain'], 0.1)
+            get_active_trial_row=lambda: row, acq_start_perf=time.perf_counter()-2.5,
+            _ensure_audio_worker=lambda: audio, _audio_worker=audio, _audio_requests={},
+            _audio_block_until_s=-1e12, running=True, plot_queue=queue.Queue())
+        app._process_audio_events = MethodType(methods['_process_audio_events'], app)
+        try:
+            duration = methods['play_fa_noise'](app, from_worker=True, start_s=2.5)
+            self.assertEqual(duration, 1.5)
+            self.assertTrue(audio.wait_idle(1))
+            app._process_audio_events()
+            np.testing.assert_array_equal(played[0], np.array([0.25, -0.25] * 3))
+            self.assertGreaterEqual(app.record_sound_output.call_args.kwargs['start_s'], 2.5)
+            self.assertEqual(app.record_sound_output.call_args.kwargs['sound_id'], 0)
+            self.assertEqual(row['punishment_sound_status'], 'completed')
+            self.assertEqual(app._last_fa_noise_playback['path'], path)
+            self.assertEqual(app._last_fa_noise_playback['gain'], 0.25)
+            app.get_sound_by_id.assert_not_called()
+            app.fa_noise_level_multiplier.set('0.5')
+            methods['play_fa_noise'](app, from_worker=True, start_s=4.0)
+            self.assertTrue(audio.wait_idle(1))
+            app._process_audio_events()
+            np.testing.assert_array_equal(played[1], np.array([0.1, -0.1] * 3))
+            self.assertEqual(app._last_fa_noise_playback['gain'], 0.1)
+        finally:
+            self.assertTrue(audio.stop())
 
     def test_light_only_noise_does_not_require_task_bank(self):
         methods = load_methods('pyBEHAVIOR_v8.py', {'session_requires_sound_file'})

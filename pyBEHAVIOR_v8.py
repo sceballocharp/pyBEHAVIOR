@@ -88,6 +88,13 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.title("pyBEHAVIOR_v8")
         self.geometry("1200x1000+0+0")
 
+        self._audio_worker = None
+        self._audio_output_lock = threading.Lock()
+        self._audio_requests = {}
+        self._audio_block_until_s = -1e12
+        self._audio_stopping = False
+        self._stop_after_id = None
+        self._close_after_stop = False
         self.acq_thread = None
         self.running = False
         self.plot_queue = queue.Queue()
@@ -1444,6 +1451,13 @@ class BehaviorAcquisitionApp(tk.Tk):
                 setattr(self, attr, None)
 
     def start_live(self):
+        if self.__dict__.get("_stop_after_id") is not None:
+            self.log("Please wait for acquisition and audio to finish stopping.")
+            return
+        audio = self.__dict__.get("_audio_worker")
+        if audio is not None and (audio.busy or audio.closed and audio.is_alive()):
+            self.log("Please wait for the previous audio playback to finish.")
+            return
         if self.running:
             return
         previous_thread = getattr(self, 'acq_thread', None)
@@ -1486,6 +1500,9 @@ class BehaviorAcquisitionApp(tk.Tk):
                 return
         self.clear_buffers()
         self.running = True
+        self._audio_stopping = False
+        self._audio_failure = None
+        self._audio_block_until_s = -1e12
         self.dmts_match_miss_streak = 0
         self.dmts_reminder_remaining = 0
         self.dmts_reminder_engaged = False
@@ -1610,6 +1627,19 @@ class BehaviorAcquisitionApp(tk.Tk):
     def stop_live(self):
         self.cancel_reward_train(log_message=False)
         self.running = False
+        self._audio_stopping = True
+        audio = self.__dict__.get('_audio_worker')
+        if audio is not None:
+            audio.request_stop()
+        acquisition = getattr(self, 'acq_thread', None)
+        if ((audio is not None and audio.is_alive())
+                or (acquisition is not None and acquisition.is_alive())):
+            self.set_status('orange')
+            if self.__dict__.get('_stop_after_id') is None:
+                self._stop_after_id = self.after(25, self._poll_stop_live)
+            return
+        self._process_audio_events()
+        self._audio_worker = None
         client = getattr(self, 'dmts_light_client', None)
         if client is not None:
             try:
@@ -1639,9 +1669,15 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.update_session_history(stopped=True)
         if self.output_format.get() == "NWB":
             self.save_nwb(silent=True)
-        self.set_status("gray")
+        self.set_status("red" if self.__dict__.get("_audio_failure") else "gray")
         self.update_health_readouts()
         self.log("Live acquisition stopped.")
+        if self.__dict__.get("_close_after_stop", False):
+            self.destroy()
+
+    def _poll_stop_live(self):
+        self._stop_after_id = None
+        self.stop_live()
 
     def begin_session_history(self):
         self.session_history = SessionHistory(os.path.join(APP_DIR, f'session_history_{socket.gethostname()}.json'))
@@ -1726,6 +1762,9 @@ class BehaviorAcquisitionApp(tk.Tk):
                 and self.sequence_has_sound())
 
     def stop_at_trial_limit(self):
+        audio = self.__dict__.get("_audio_worker")
+        if audio is not None and audio.busy:
+            return
         # Trial indices advance at trial start; let the last trial finish first.
         max_trials = max(0, self.parse_int(self.max_trials, 0))
         if (self.running and max_trials and self.trial_index >= max_trials
@@ -1759,6 +1798,9 @@ class BehaviorAcquisitionApp(tk.Tk):
                     time.sleep(callback_s)
                 if not self.running:
                     break
+                self._process_audio_events()
+                if not self.running:
+                    break
                 self.handle_data(times, data)
                 # Queue GUI cleanup only after the final data chunk is written.
                 self.stop_at_trial_limit()
@@ -1769,6 +1811,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 self.plot_queue.put(("log", f"Acquisition error: {exc}\n{traceback.format_exc()}"))
                 self.plot_queue.put(("status", "red"))
                 self.running = False
+                self.plot_queue.put(("stop_session", None))
                 break
 
     def normalize_read(self, raw, count):
@@ -1963,6 +2006,13 @@ class BehaviorAcquisitionApp(tk.Tk):
                         self.add_active_high_interval(sample_time_s)
                 if not self.is_dmts_task():
                     self.evaluate_active_trial(sample_time_s)
+                continue
+
+            audio = self.__dict__.get('_audio_worker')
+            if ((audio is not None and audio.busy)
+                    or sample_time_s < self.__dict__.get('_audio_block_until_s', -1e12)):
+                self.trigger_reset_seen_for_new_trial = False
+                self._no_lick_quiet_start_s = None
                 continue
 
             if self.is_dmts_task():
@@ -2356,6 +2406,11 @@ class BehaviorAcquisitionApp(tk.Tk):
             "punishment_sound_file": "",
             "punishment_sound_gain": 0.0,
             "punishment_sound_duration_s": 0.0,
+            "punishment_sound_start_s": "",
+            "punishment_sound_end_s": "",
+            "punishment_sound_status": "",
+            "punishment_sound_error": "",
+            "punishment_sound_request": "",
             "lever_reward_test_trials": int(params["LeverRewardTestTrials"]),
             "light_code": light_code,
             "sound_id": sound_id,
@@ -4221,34 +4276,126 @@ class BehaviorAcquisitionApp(tk.Tk):
             self._fa_noise_audio = load_punishment_wav(selected)
         return self._fa_noise_audio
 
+    def _ensure_audio_worker(self):
+        from audio_worker import AudioWorker
+        audio = self.__dict__.get('_audio_worker')
+        if audio is not None and audio.closed:
+            if audio.is_alive():
+                raise RuntimeError('Previous audio playback is still stopping')
+            self._process_audio_events()
+            audio = None
+        if audio is None:
+            if '_audio_output_lock' not in self.__dict__:
+                self._audio_output_lock = threading.Lock()
+            audio = AudioWorker(output_lock=self._audio_output_lock)
+            self._audio_worker = audio
+        if '_audio_requests' not in self.__dict__:
+            self._audio_requests = {}
+        return audio
+
     def play_fa_noise(self, from_worker=False, start_s=None):
+        from audio_worker import AudioJob
         if not from_worker and getattr(self, 'running', False):
             self.log('Stop acquisition before testing the FA noise.')
             return None
+        if from_worker and self.__dict__.get('_audio_stopping', False):
+            return None
         self._last_fa_noise_playback = {}
-        duration = None
         try:
             path, fs, original = self.load_fa_noise()
             gain = self.get_sound_level_gain() * float(self.fa_noise_level_multiplier.get())
             signal = np.tile(original * gain, 3)
-            if nidaqmx is not None:
-                self.play_sound_on_ni(signal, fs)
-            elif sd is not None:
-                sd.play(signal, fs, blocking=False)
-            else:
-                raise RuntimeError('No audio playback backend is available')
-            self.record_sound_output(signal, fs, sound_id=0, start_s=start_s)
-            duration = len(signal) / fs
-            self._last_fa_noise_playback = {'path': path, 'gain': gain, 'repeats': 3,
-                                          'duration_s': duration}
-            message = f'FA noise: {os.path.basename(path)}, 3 repeats, level {gain:g}, {duration:g} s.'
-        except Exception as exc:
-            message = f'FA noise playback error: {exc}'
-        if from_worker:
+            device_var = getattr(self, 'device', None)
+            simulation_var = getattr(self, 'simulation_mode', None)
+            job = AudioJob(signal=signal, rate=fs,
+                           device=device_var.get().strip() if device_var is not None else 'Dev1',
+                           simulation=bool(simulation_var.get()) if simulation_var is not None else False)
+            audio = self._ensure_audio_worker()
+            row = self.get_active_trial_row() if from_worker else None
+            metadata = {'path': path, 'gain': gain, 'repeats': 3,
+                        'duration_s': len(signal) / fs, 'row': row, 'job': job,
+                        'origin': self.acq_start_perf if from_worker else None}
+            self._audio_requests[job.token] = metadata
+            try:
+                audio.submit(job)
+            except Exception:
+                self._audio_requests.pop(job.token, None)
+                raise
+            if row is not None:
+                row['punishment_sound_status'] = 'queued'
+                row['punishment_sound_request'] = job.token
+            self._last_fa_noise_playback = metadata
+            message = f'FA noise queued: {os.path.basename(path)}, 3 repeats, level {gain:g}.'
+            if job.simulation:
+                message += ' Simulation only; no audio output.'
             self.plot_queue.put(('log', message))
-        else:
-            self.log(message)
-        return duration
+            return metadata['duration_s']
+        except Exception as exc:
+            message = f'FA noise request error: {exc}'
+            if from_worker:
+                row = self.get_active_trial_row()
+                if row is not None:
+                    row['punishment_sound_status'] = 'error'
+                    row['punishment_sound_error'] = str(exc)
+                self._audio_failure = message
+                self.dmts_lapse_stop_requested = True
+                self.running = False
+                self.plot_queue.put(('stop_session', None))
+                self.plot_queue.put(('log', message))
+            else:
+                self.log(message)
+            return None
+
+    def _process_audio_events(self):
+        audio = self.__dict__.get('_audio_worker')
+        if audio is None:
+            return
+        while True:
+            try:
+                event = audio.events.get_nowait()
+            except queue.Empty:
+                break
+            metadata = self._audio_requests.get(event['token'])
+            if metadata is None:
+                continue
+            row = metadata['row']
+            origin = metadata['origin']
+            start = event.get('started_at')
+            if event['kind'] == 'started':
+                if row is not None:
+                    row['punishment_sound_status'] = 'playing'
+                    row['punishment_sound_start_s'] = start - origin if origin is not None else ''
+                    self.write_trial_log()
+                continue
+            end = event['ended_at']
+            status = event['status']
+            if row is not None:
+                row['punishment_sound_status'] = status
+                row['punishment_sound_error'] = event.get('error', '')
+                row['punishment_sound_end_s'] = end - origin if origin is not None else ''
+                if origin is not None:
+                    # Buffered input from before playback ended cannot start a
+                    # new trial after the audio worker has become idle.
+                    self._audio_block_until_s = max(self._audio_block_until_s, end - origin)
+                if start is not None and origin is not None:
+                    job = metadata['job']
+                    samples = len(job.signal) if status == 'completed' else min(
+                        len(job.signal), max(0, int((end - start) * job.rate)))
+                    if samples:
+                        self.record_sound_output(job.signal[:samples], job.rate, sound_id=0,
+                                                 start_s=start - origin)
+                    row['punishment_sound_duration_s'] = samples / job.rate
+                else:
+                    row['punishment_sound_duration_s'] = 0.0
+                self.write_trial_log()
+            self.plot_queue.put(('log', f'FA noise {status}: {event.get("error", metadata["path"])}'))
+            self._audio_requests.pop(event['token'], None)
+            if status == 'error':
+                self._audio_failure = event.get('error', 'Audio playback failed')
+            if status == 'error' and getattr(self, 'running', False):
+                self.dmts_lapse_stop_requested = True
+                self.running = False
+                self.plot_queue.put(('stop_session', None))
 
     def load_sound_file(self):
         if loadmat is None:
@@ -4291,6 +4438,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         return self.parse_float(self.sound_level, 1.0)
 
     def play_loaded_sound(self, use_sequence=False, from_worker=False, sound_id=None, start_s=None, level_multiplier=1.0, repeats=1):
+        audio = self.__dict__.get("_audio_worker")
+        if audio is not None and audio.busy:
+            self.plot_queue.put(("log", "Sound request rejected: FA noise is still playing."))
+            return None
         if sound_id is None:
             sound_id = self.consume_next_sound_id() if use_sequence else self.parse_int(self.sound_id, 1)
         if int(sound_id or 0) <= 0:
@@ -4346,8 +4497,12 @@ class BehaviorAcquisitionApp(tk.Tk):
 
     def play_sound_on_ni(self, signal, fs):
         device = self.device.get().strip() or "Dev1"
-        task = nidaqmx.Task()
+        lock = self.__dict__.get("_audio_output_lock")
+        if lock is not None and not lock.acquire(blocking=False):
+            raise RuntimeError("Audio output is busy; sound was not delayed")
+        task = None
         try:
+            task = nidaqmx.Task()
             task.ao_channels.add_ao_voltage_chan(f"{device}/ao0")
             task.timing.cfg_samp_clk_timing(fs, sample_mode=AcquisitionType.FINITE, samps_per_chan=len(signal))
             values = signal.tolist() if hasattr(signal, "tolist") else list(signal)
@@ -4356,7 +4511,12 @@ class BehaviorAcquisitionApp(tk.Tk):
             task.wait_until_done(timeout=max(2.0, len(values) / fs + 1.0))
             task.stop()
         finally:
-            task.close()
+            try:
+                if task is not None:
+                    task.close()
+            finally:
+                if lock is not None:
+                    lock.release()
 
     def generate_sequence(self, log=True, apply_modality=True):
         self.ensure_sequence_controls()
@@ -4757,10 +4917,13 @@ class BehaviorAcquisitionApp(tk.Tk):
                 self.replace_hdf5_dataset(trials, column, [int(row.get(column, 0) or 0) for row in trial_rows])
             self.replace_hdf5_dataset(trials, 'dmts_light_timing_extension_s',
                                       [float(row.get('dmts_light_timing_extension_s', 0) or 0) for row in trial_rows])
-            for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error', 'punishment_sound_file'):
+            for column in ('dmts_light_trial_id', 'dmts_light_fingerprint', 'dmts_light_error', 'punishment_sound_file', 'punishment_sound_status', 'punishment_sound_error', 'punishment_sound_request'):
                 self.replace_hdf5_dataset(trials, column, [str(row.get(column, '')) for row in trial_rows], dtype=utf8)
             for column in ('punishment_sound_gain', 'punishment_sound_duration_s'):
                 self.replace_hdf5_dataset(trials, column, [float(row.get(column, 0) or 0) for row in trial_rows])
+            for column in ('punishment_sound_start_s', 'punishment_sound_end_s'):
+                self.replace_hdf5_dataset(trials, column, [float(row[column]) if row.get(column) not in (None, '')
+                                                          else float('nan') for row in trial_rows])
             self.replace_hdf5_dataset(trials, "HMCF", hmcf, dtype=utf8)
             self.replace_hdf5_dataset(trials, "trial_type", trial_types)
 
@@ -5154,6 +5317,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         return trace
 
     def _drain_plot_queue(self):
+        acquisition = self.__dict__.get("acq_thread")
+        if (not getattr(self, "running", False) and hasattr(self, "_process_audio_events")
+                and (acquisition is None or not acquisition.is_alive())):
+            self._process_audio_events()
         latest_plot_payload = None
         results_pending = False
         sequence_pending = False
@@ -6086,8 +6253,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             )
 
     def on_close(self):
+        self._close_after_stop = True
         self.stop_live()
-        self.destroy()
 
 
 if __name__ == "__main__":
