@@ -135,7 +135,15 @@ Session Overview includes a bottom-left preview of the next 10 planned Go/No-Go 
 
 ## Moving performance
 
-The performance panel uses the latest 25 completed trials of each type independently (all available trials until 25). GO HIT and NoGo CR are updated at each session trial; the other type carries its previous rate forward, so both curves remain continuous after their first observation. No value is drawn before a type has any data. Blank/uncompleted trials do not enter the denominators. DMTS uses match/non-match categories, with wrong-choice match FA counted against match performance. Rates and window counts are shown above the panel. Session totals and SmartTask calculations remain unchanged.
+DMTS also displays the next 10 planned trials in the upcoming preview: green Match
+at y=0, blue NonMatch at y=1, and B for blanks. T is the next trial to start,
+including any pair already prepared during the ITI; subsequent positions are
+T+1 through T+9. The preview respects Max trials and queued reminder matches,
+without consuming the sequence or drawing random numbers. It uses the same
+480-pixel minimum canvas height as the Go/No-Go preview. Future adaptive changes
+can change the plan.
+
+The performance panel uses the latest 25 completed trials of each type independently (all available trials until 25). GO HIT and NoGo CR are updated at each session trial; the other type carries its previous rate forward, so both curves remain continuous after their first observation. No value is drawn before a type has any data. Blank/uncompleted trials do not enter the denominators. DMTS uses match/non-match categories, with wrong-choice match FA counted against match performance. Rates and window counts are shown above the panel. Session totals remain unchanged. Go/No-Go SmartTask uses the same per-type moving rates (minimum 10, maximum 25); DMTS SmartTask retains its existing calculation.
 
 Moving performance curves begin only at the tenth completed trial of each type; before that the legend displays waiting (n/10). The maximum window remains 25 trials per type.
 

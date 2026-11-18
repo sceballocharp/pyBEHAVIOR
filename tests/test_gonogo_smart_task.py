@@ -15,7 +15,7 @@ def harness():
         is_dmts_task=lambda: False, is_lever_task=lambda: False,
         is_tac_family_task=lambda: False, sequence_weights=Var('0.5 0.5'),
         sequence_values=Var('3 10'), pavlov=Var('0.3'),
-        trial_rows=[row('1 GO', 'HIT') for _ in range(10)] + [row('2 noGo', 'FA')],
+        trial_rows=[row('1 GO', 'HIT') for _ in range(10)] + [row('2 noGo', 'FA') for _ in range(10)],
         generate_sequence=Mock(), plot_queue=queue.Queue())
     for name in ('update_smart_task', 'update_gonogo_smart_task'):
         setattr(app, name, MethodType(METHODS[name], app))
@@ -49,7 +49,7 @@ class GoNoGoSmartTaskTests(unittest.TestCase):
         self.assertEqual(app.pavlov.get(), '0.3')
 
     def test_strict_thresholds_and_both_categories_required(self):
-        for hits, misses, crs, fas in ((9,1,0,10), (10,0,1,9), (10,0,0,0), (0,0,0,10)):
+        for hits, misses, crs, fas in ((9,1,0,10), (10,0,3,9), (10,0,0,9), (9,0,0,10), (10,0,0,0), (0,0,0,10)):
             app = harness()
             app.trial_rows = ([row('GO','HIT')]*hits + [row('GO','MISS')]*misses
                               + [row('noGo','CR')]*crs + [row('noGo','FA')]*fas)
@@ -109,3 +109,29 @@ class GoNoGoSmartTaskTests(unittest.TestCase):
         app.update_smart_task()
         self.assertEqual(app._smart_gonogo_phase, 'nogo')
         self.assertEqual(app._smart_gonogo_target, 12)
+
+    def test_moving_rates_override_old_session_history(self):
+        app = harness()
+        app.trial_rows = ([row('GO', 'MISS')]*100 + [row('noGo', 'CR')]*100
+                          + [row('GO', 'HIT')]*25 + [row('noGo', 'FA')]*25)
+        app.update_smart_task()
+        self.assertEqual(app._smart_gonogo_phase, 'nogo')
+        self.assertEqual(app.sequence_weights.get(), '0.2 0.8')
+        app = harness()
+        app.trial_rows = ([row('GO', 'HIT')]*200 + [row('noGo', 'FA')]*200
+                          + [row('GO', 'MISS')]*25 + [row('noGo', 'CR')]*25)
+        app.update_smart_task()
+        app.generate_sequence.assert_not_called()
+
+    def test_twenty_percent_cr_now_triggers(self):
+        app = harness()
+        app.trial_rows = [row('GO', 'HIT')]*10 + [row('noGo', 'CR')]*2 + [row('noGo', 'FA')]*8
+        app.update_smart_task()
+        self.assertEqual(app._smart_gonogo_phase, 'nogo')
+
+    def test_incomplete_trials_do_not_satisfy_minimum_ten(self):
+        app = harness()
+        app.trial_rows = [row('GO', 'HIT')]*10 + [row('noGo', 'FA')]*9
+        app.trial_rows.append(dict(row('noGo', 'FA'), trial_end_s=''))
+        app.update_smart_task()
+        app.generate_sequence.assert_not_called()

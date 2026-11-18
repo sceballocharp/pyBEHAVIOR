@@ -6,6 +6,7 @@ import random
 import re
 import struct
 import threading
+import traceback
 import time
 import tkinter as tk
 import csv
@@ -1765,7 +1766,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 observed_rate = (len(data) / callback_elapsed) if callback_elapsed > 0 else 0.0
                 self.plot_queue.put(("health", {"rate_hz": observed_rate, "callback_s": callback_elapsed}))
             except Exception as exc:
-                self.plot_queue.put(("log", f"Acquisition error: {exc}"))
+                self.plot_queue.put(("log", f"Acquisition error: {exc}\n{traceback.format_exc()}"))
                 self.plot_queue.put(("status", "red"))
                 self.running = False
                 break
@@ -4445,6 +4446,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             return list(default)
 
     def update_sequence_display(self):
+        if threading.current_thread() is not threading.main_thread():
+            self.plot_queue.put(("sequence", None))
+            return
         if getattr(self, "results_canvas", None) is not None:
             self.redraw_results_window()
         if self.trial_stimulus_sequence:
@@ -5152,6 +5156,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def _drain_plot_queue(self):
         latest_plot_payload = None
         results_pending = False
+        sequence_pending = False
         health_payload = None
         health_pending = False
         try:
@@ -5167,6 +5172,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                     self.set_status(payload)
                 elif kind == "results":
                     results_pending = True
+                elif kind == "sequence":
+                    sequence_pending = True
                 elif kind == "health":
                     health_pending = True
                     health_payload = payload
@@ -5174,9 +5181,12 @@ class BehaviorAcquisitionApp(tk.Tk):
                     self.stop_live()
         except queue.Empty:
             pass
+        if sequence_pending:
+            self.update_sequence_display()
         if results_pending:
             self.update_hit_performance_background()
-            self.redraw_results_window()
+            if not sequence_pending:
+                self.redraw_results_window()
         if latest_plot_payload is not None:
             self.draw_plot(*latest_plot_payload)
         if health_pending or latest_plot_payload is not None or results_pending:
@@ -5247,13 +5257,13 @@ class BehaviorAcquisitionApp(tk.Tk):
             phase = 'idle'
         if self.smart_task.get() and phase == 'idle':
             go = [r for r in completed if str(r.get('TrialType', '')).endswith('GO')
-                  and r.get('ResultType') in ('HIT', 'MISS')]
+                  and r.get('ResultType') in ('HIT', 'MISS')][-25:]
             nogo = [r for r in completed if str(r.get('TrialType', '')).endswith('noGo')
-                    and r.get('ResultType') in ('CR', 'FA')]
-            if go and nogo:
+                    and r.get('ResultType') in ('CR', 'FA')][-25:]
+            if len(go) >= 10 and len(nogo) >= 10:
                 hit_rate = sum(r['ResultType'] == 'HIT' for r in go) / len(go)
                 cr_rate = sum(r['ResultType'] == 'CR' for r in nogo) / len(nogo)
-                if hit_rate > 0.90 and cr_rate < 0.10:
+                if hit_rate > 0.90 and cr_rate < 0.25:
                     phase, weights = 'nogo', '0.2 0.8'
                     setting = getattr(self, 'smart_nogo_emphasis_trials', None)
                     self._smart_gonogo_target = int(float(setting.get())) if setting is not None else 25
@@ -5343,7 +5353,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         width = max(520, canvas.winfo_width())
         height = max(320, canvas.winfo_height())
         completed = [row for row in self.trial_rows if row.get("ResultType")]
-        show_upcoming = (not self.is_dmts_task() and not self.is_lever_task()
+        show_upcoming = (not self.is_lever_task()
                          and not self.is_tac_family_task() and height >= 480)
         if not completed and not show_upcoming:
             canvas.create_text(width / 2, height / 2, text="No completed trials yet", fill="#555555")
@@ -5442,13 +5452,44 @@ class BehaviorAcquisitionApp(tk.Tk):
             preview.append({1: 'GO', 2: 'NoGo'}.get(code, 'Blank'))
         return preview
 
+    def get_upcoming_dmts_trials(self, count=10):
+        """Peek at prepared and queued relations without drawing stimuli or RNG."""
+        limit = max(0, self.parse_int(self.max_trials, 0))
+        if limit:
+            count = min(count, max(0, limit - self.trial_index))
+        preview = []
+        pending = (getattr(self, '_dmts_trial_pending', None)
+                   or getattr(self, '_dmts_light_pending', None))
+        labels = {0: 'Blank', 1: 'Match', 2: 'NonMatch'}
+        reminders = 0
+        smart_task = getattr(self, 'smart_task', None)
+        if self.is_lick_trigger() and not (smart_task is not None and smart_task.get()):
+            reminders = getattr(self, 'dmts_reminder_remaining', 0)
+            if getattr(self, 'active_trial_index', None) is not None and getattr(self, 'active_dmts_reminder', False):
+                reminders = max(0, reminders - 1)
+        if pending and count > 0:
+            preview.append(labels.get(pending['trial_type'], 'Match'))
+            reminders = max(0, reminders - 1)
+        while len(preview) < count and reminders > 0:
+            preview.append('Match')
+            reminders -= 1
+        sequence = self.sound_sequence
+        offset = 0
+        while len(preview) < count and sequence:
+            code = int(sequence[(self.sound_sequence_index + offset) % len(sequence)])
+            preview.append(labels.get(code, 'Match'))
+            offset += 1
+        return preview
+
     def _draw_upcoming_trials(self, canvas, left, right, top, bottom):
         canvas.create_rectangle(left, top, right, bottom, outline='#dddddd')
         canvas.create_text(left, top - 18, text='Upcoming planned trials (T = next)', anchor='w', fill='#333333')
-        rows = self.get_upcoming_gonogo_trials()
-        y_positions = {'GO': bottom - 32, 'NoGo': top + 22}
+        dmts = self.is_dmts_task()
+        rows = self.get_upcoming_dmts_trials() if dmts else self.get_upcoming_gonogo_trials()
+        lower, upper = ('Match', 'NonMatch') if dmts else ('GO', 'NoGo')
+        y_positions = {lower: bottom - 32, upper: top + 22}
         for label, y in y_positions.items():
-            canvas.create_text(left - 8, y, text='0 GO' if label == 'GO' else '1 NoGo', anchor='e', fill='#333333')
+            canvas.create_text(left - 8, y, text=f'{0 if label == lower else 1} {label}', anchor='e', fill='#333333')
             canvas.create_line(left, y, right, y, fill='#eeeeee')
         if not rows:
             canvas.create_text((left + right) / 2, (top + bottom) / 2, text='No queued trials', fill='#777777')
@@ -5460,7 +5501,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 y = y_positions[kind]
                 half = min(10, cell_width * 0.32)
                 canvas.create_rectangle(x - half, y - 7, x + half, y + 7,
-                                        fill='#2ca02c' if kind == 'GO' else '#1f77b4', outline='')
+                                        fill='#2ca02c' if kind == lower else '#1f77b4', outline='')
             else:
                 canvas.create_text(x, (top + bottom) / 2, text='B', fill='#777777')
             canvas.create_text(x, bottom - 10, text='T' if index == 0 else f'T+{index}', fill='#555555', font=('Segoe UI', 8))

@@ -6,3 +6,6 @@ Sounds/AllSounds_from_wav.mat
 /Sounds/DMTS
 
 *.pyc
+
+# Local crash captures from the diagnostic launcher
+/diagnostics/

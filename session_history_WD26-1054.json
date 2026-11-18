@@ -1611,5 +1611,90 @@
       "sequence_weights": "1 0",
       "smart_nogo_emphasis_trials": 25
     }
+  },
+  {
+    "session_id": "08b8461d-7b22-438e-80e1-7a37a3fc5bbe",
+    "user": "Sebastian",
+    "animal_id": "5260",
+    "project": "FM_WT_PTs_GoNoGo_Data",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-18T09:46:46+01:00",
+    "stopped_at": "2026-11-18T11:17:59+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 390,
+    "rewards": 184,
+    "weights": {
+      "sequence_values": "1 15",
+      "sequence_weights": "0.55 0.45",
+      "smart_nogo_emphasis_trials": 10
+    }
+  },
+  {
+    "session_id": "490c45bc-2105-4bd5-828e-9f42c1709840",
+    "user": "Sebastian",
+    "animal_id": "5744",
+    "project": "GoNoGo_FM_Amel_2ndPart",
+    "sound_ids": [
+      1,
+      2
+    ],
+    "started_at": "2026-11-18T11:20:56+01:00",
+    "stopped_at": "2026-11-18T12:30:47+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 359,
+    "rewards": 160,
+    "weights": {
+      "sequence_values": "1 2",
+      "sequence_weights": "0.5 0.5",
+      "smart_nogo_emphasis_trials": 25
+    }
+  },
+  {
+    "session_id": "0f11691c-84d1-41cf-a77e-91de3cf621a9",
+    "user": "Sebastian",
+    "animal_id": "1242",
+    "project": "DMTS_full",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-18T13:33:08+01:00",
+    "stopped_at": "2026-11-18T14:10:43+01:00",
+    "status": "stopped",
+    "simulation": false,
+    "trials": 130,
+    "rewards": 84,
+    "weights": {
+      "sequence_values": "1 2 0",
+      "sequence_weights": "0.8 0.15 0.05",
+      "smart_nogo_emphasis_trials": 25,
+      "sound_light_probabilities": "1 0",
+      "fa_noise_file": "C:\\Users\\BEHAVIOR_102\\Documents\\GitHub\\pyBEHAVIOR\\Sounds\\Punishment\\white_noise.wav",
+      "fa_noise_enabled": true,
+      "fa_noise_level_multiplier": 3.0,
+      "fa_noise_repeats": 3,
+      "nonmatch_only_sounds": false
+    }
+  },
+  {
+    "session_id": "b568d707-b922-467d-ae33-6b1fd6ef3efd",
+    "user": "Sebastian",
+    "animal_id": "1242",
+    "project": "DMTS_full",
+    "sound_ids": [
+      1,
+      15
+    ],
+    "started_at": "2026-11-18T14:11:24+01:00",
+    "stopped_at": null,
+    "status": "running",
+    "simulation": false,
+    "trials": 0,
+    "rewards": 0
   }
 ]
