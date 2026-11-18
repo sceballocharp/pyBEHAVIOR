@@ -46,7 +46,8 @@ class PunishmentAudioTests(unittest.TestCase):
         methods.update(np=np, nidaqmx=None, sd=backend)
         path = str(ROOT / 'Sounds/Punishment/white_noise.wav')
         app = SimpleNamespace(load_fa_noise=Mock(return_value=(path, 4, np.array([1.0, -1.0]))),
-            get_sound_level_gain=lambda: 0.2, record_sound_output=Mock(), log=Mock(),
+            get_sound_level_gain=lambda: 0.2, fa_noise_level_multiplier=Var('1.25'),
+            record_sound_output=Mock(), log=Mock(),
             get_sound_by_id=Mock(side_effect=AssertionError('Task bank must not be consulted')),
             plot_queue=queue.Queue())
         duration = methods['play_fa_noise'](app, from_worker=True, start_s=2.5)
@@ -58,6 +59,10 @@ class PunishmentAudioTests(unittest.TestCase):
         self.assertEqual(app._last_fa_noise_playback['path'], path)
         self.assertEqual(app._last_fa_noise_playback['gain'], 0.25)
         app.get_sound_by_id.assert_not_called()
+        app.fa_noise_level_multiplier.set('0.5')
+        methods['play_fa_noise'](app, from_worker=True, start_s=4.0)
+        np.testing.assert_array_equal(backend.play.call_args.args[0], np.array([0.1, -0.1] * 3))
+        self.assertEqual(app._last_fa_noise_playback['gain'], 0.1)
 
     def test_light_only_noise_does_not_require_task_bank(self):
         methods = load_methods('pyBEHAVIOR_v8.py', {'session_requires_sound_file'})

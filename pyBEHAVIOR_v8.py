@@ -379,6 +379,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_nonmatch_only_sounds = tk.BooleanVar(value=False)
         self.dmts_nonmatch_fa_noise = tk.BooleanVar(value=False)
         self.fa_noise_file = tk.StringVar(value=os.path.join(APP_DIR, "Sounds", "Punishment", "white_noise.wav"))
+        self.fa_noise_level_multiplier = tk.StringVar(value="1.25")
         self.smart_task = tk.BooleanVar(value=False)
         self.smart_nogo_emphasis_trials = tk.StringVar(value="25")
         self.smart_task_active = False
@@ -540,9 +541,10 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(trial, text="NonMatch FA noise", variable=self.dmts_nonmatch_fa_noise)
         self.fa_noise_file_frame = ttk.Frame(trial)
         self.fa_noise_file_frame.columnconfigure(1, weight=1)
-        self._entry(self.fa_noise_file_frame, 0, 'FA noise file', self.fa_noise_file, width=22)
-        ttk.Button(self.fa_noise_file_frame, text='Browse', command=self.choose_fa_noise_file).grid(row=0, column=2, padx=4)
-        ttk.Button(self.fa_noise_file_frame, text='Test', command=self.play_fa_noise).grid(row=0, column=3, padx=4)
+        self._entry(self.fa_noise_file_frame, 0, 'FA noise file', self.fa_noise_file, width=16)
+        self._entry(self.fa_noise_file_frame, 2, 'WN level x', self.fa_noise_level_multiplier, width=5)
+        ttk.Button(self.fa_noise_file_frame, text='Browse', command=self.choose_fa_noise_file).grid(row=0, column=4, padx=4)
+        ttk.Button(self.fa_noise_file_frame, text='Test', command=self.play_fa_noise).grid(row=0, column=5, padx=4)
         self.no_lick_period = tk.BooleanVar(value=False)
         self.no_lick_period_check = ttk.Checkbutton(trial, text="NoLick period", variable=self.no_lick_period)
         for var in (self.sound_delay_s, self.delay_s, self.sound_duration_s, self.response_window_s, self.reward_delay_s, self.pulse_ms, self.right_pulse_ms):
@@ -1156,7 +1158,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         # settings before touching the GUI, then suppress linked callbacks until
         # all imported fields and generated sequence agree.
         import math
-        for key in ('GoSoundId', 'NoGoSoundId', 'GoWeight', 'NoGoWeight', 'SmartTaskNoGoEmphasisTrials'):
+        for key in ('GoSoundId', 'NoGoSoundId', 'GoWeight', 'NoGoWeight', 'SmartTaskNoGoEmphasisTrials', 'DMTSFANoiseLevelMultiplier'):
             if key not in params:
                 continue
             try:
@@ -1260,6 +1262,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 "DMTSNonMatchOnlySounds": self.dmts_nonmatch_only_sounds,
                 "DMTSNonMatchFANoise": self.dmts_nonmatch_fa_noise,
                 "DMTSFANoiseFile": self.fa_noise_file,
+                "DMTSFANoiseLevelMultiplier": self.fa_noise_level_multiplier,
                 "DMTSMissesBeforeReminder": self.dmts_misses_before_reminder,
                 "DMTSReminderTrials": self.dmts_reminder_trials,
                 "DMTSBlankLickTimeout": self.dmts_blank_lick_timeout,
@@ -1674,7 +1677,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                     weights['sound_light_probabilities'] = self.dmts_modality_probabilities.get()
                     weights['fa_noise_file'] = self.fa_noise_file.get()
                     weights['fa_noise_enabled'] = bool(self.dmts_nonmatch_fa_noise.get())
-                    weights['fa_noise_level_multiplier'] = 1.25
+                    weights['fa_noise_level_multiplier'] = float(self.fa_noise_level_multiplier.get())
                     weights['fa_noise_repeats'] = 3
                     weights['nonmatch_only_sounds'] = bool(self.dmts_nonmatch_only_sounds.get())
             history.update(self.trial_index, self.reward_pulse_count, stopped=stopped, weights=weights)
@@ -2206,7 +2209,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             "DMTSNonMatchOnlySounds": int(self.dmts_nonmatch_only_sounds.get()),
             "DMTSNonMatchFANoise": int(self.dmts_nonmatch_fa_noise.get()),
             "DMTSFANoiseFile": self.fa_noise_file.get(),
-            "DMTSFANoiseLevelMultiplier": 1.25,
+            "DMTSFANoiseLevelMultiplier": self.fa_noise_level_multiplier.get(),
             "DMTSFANoiseRepeats": 3,
             "DMTSStimulusSource": ("mixed" if self.get_dmts_modality_probabilities()[0] > 0 else "LED") if getattr(self, "dmts_light_client", None) is not None else "sound",
             "DMTSLightLibrary": json.dumps(self.dmts_light_client.library.patterns, sort_keys=True)
@@ -4225,7 +4228,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         duration = None
         try:
             path, fs, original = self.load_fa_noise()
-            gain = self.get_sound_level_gain() * 1.25
+            gain = self.get_sound_level_gain() * float(self.fa_noise_level_multiplier.get())
             signal = np.tile(original * gain, 3)
             if nidaqmx is not None:
                 self.play_sound_on_ni(signal, fs)
@@ -4785,7 +4788,7 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("TaskType", params["TaskType"]),
             ("DMTSNonMatchFANoise", params["DMTSNonMatchFANoise"]),
             ("DMTSFANoiseFile", params["DMTSFANoiseFile"]),
-            ("DMTSFANoiseLevelMultiplier", 1.25),
+            ("DMTSFANoiseLevelMultiplier", params["DMTSFANoiseLevelMultiplier"]),
             ("DMTSFANoiseRepeats", 3),
             ("GoWeight", params["GoWeight"]),
             ("NoGoWeight", params["NoGoWeight"]),

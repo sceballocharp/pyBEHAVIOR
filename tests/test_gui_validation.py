@@ -57,7 +57,8 @@ class ValidationTests(unittest.TestCase):
 
     def test_counts_probabilities_and_signed_thresholds(self):
         for name, text in [('max_trials', '1.5'), ('dmts_reminder_trials', '0'),
-                           ('reward_go', '1.1'), ('pavlov', '-0.1'), ('hit_threshold_s', '101')]:
+                           ('reward_go', '1.1'), ('pavlov', '-0.1'), ('hit_threshold_s', '101'),
+                           ('fa_noise_level_multiplier', '-1'), ('fa_noise_level_multiplier', 'nan')]:
             self.assertTrue(validate_setting(name, text, {}), (name, text))
         for name, text in [('max_trials', '0'), ('threshold_v', '-0.3'),
                            ('hit_threshold_s', '100'), ('reward_go', '0.5')]:
