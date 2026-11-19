@@ -86,7 +86,7 @@ class BehaviorAcquisitionApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("pyBEHAVIOR_v8")
-        self.geometry("1200x1000+0+0")
+        self.fit_initial_window()
 
         self._audio_worker = None
         self._audio_output_lock = threading.Lock()
@@ -224,6 +224,22 @@ class BehaviorAcquisitionApp(tk.Tk):
         if NWBFile is None:
             self.log("pynwb not available: NWB export is disabled until pynwb is installed.")
 
+    def fit_initial_window(self):
+        width = self.winfo_screenwidth()
+        height = self.winfo_screenheight() - 80
+        x = y = 0
+        if os.name == "nt":
+            import ctypes
+            from ctypes.wintypes import RECT
+
+            area = RECT()
+            # SPI_GETWORKAREA excludes the Windows taskbar.
+            if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(area), 0):
+                x, y = area.left, area.top
+                width = area.right - x - 16
+                height = area.bottom - y - 40
+        self.geometry(f"{min(1200, width)}x{min(1000, height)}+{x}+{y}")
+
     def on_window_resize(self, event):
         if event.widget is not self:
             return
@@ -258,8 +274,7 @@ class BehaviorAcquisitionApp(tk.Tk):
 
         self._build_braincodec_tab(braincodec_tab)
 
-        parameter_column = ttk.Frame(root)
-        parameter_column.grid(row=0, column=1, rowspan=6, sticky="nsew", padx=(8, 0))
+        parameter_column = self.build_scrollable_settings(root)
         parameter_column.columnconfigure(0, weight=1)
         parameter_column.rowconfigure(0, weight=0)
         parameter_column.rowconfigure(1, weight=0)
@@ -590,6 +605,38 @@ class BehaviorAcquisitionApp(tk.Tk):
         root.rowconfigure(5, weight=1)
         self.log_text = tk.Text(log_frame, height=7, wrap=tk.WORD)
         self.log_text.pack(fill=tk.BOTH, expand=True)
+
+    def build_scrollable_settings(self, parent):
+        viewport = ttk.Frame(parent)
+        viewport.grid(row=0, column=1, rowspan=6, sticky="nsew", padx=(8, 0))
+        viewport.columnconfigure(0, weight=1)
+        viewport.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(viewport, width=470, highlightthickness=0,
+                           background=ttk.Style(self).lookup("TFrame", "background"))
+        scrollbar = ttk.Scrollbar(viewport, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        settings = ttk.Frame(canvas)
+        window = canvas.create_window(0, 0, window=settings, anchor="nw")
+        settings.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox(window)))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
+
+        def scroll_settings(event):
+            widget = event.widget
+            while widget is not None and widget is not viewport:
+                widget = widget.master
+            if widget is viewport:
+                if event.num in (4, 5):
+                    steps = -1 if event.num == 4 else 1
+                else:
+                    steps = -int(event.delta / 120) or (-1 if event.delta > 0 else 1)
+                canvas.yview_scroll(steps, "units")
+                return "break"
+
+        for event in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.bind(event, scroll_settings, add="+")
+        return settings
 
     def _build_braincodec_tab(self, parent):
         parent.columnconfigure(0, weight=1)
