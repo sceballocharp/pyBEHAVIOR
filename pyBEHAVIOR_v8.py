@@ -487,6 +487,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.tac_min_lick_count = tk.StringVar(value="1")
         self.lever_hold_time_s = tk.StringVar(value="1")
         self.lever_go_sound_id = tk.StringVar(value="1")
+        self.lever_end_sound_id = tk.StringVar(value="6")
         self.lever_test_sound_id = tk.StringVar(value="10")
         self.lever_go_weight = tk.StringVar(value="1")
         self.lever_test_weight = tk.StringVar(value="0")
@@ -522,8 +523,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.lick_threshold_widgets = self._entry(trial, 2, "Lick thresh", self.lick_threshold, width=6, row=6)
         self.hit_threshold_widgets = self._entry(trial, 2, "Resp. hold %", self.hit_threshold_s, width=6, row=6)
         self.lever_hold_widgets = self._entry(trial, 0, "Lever hold s", self.lever_hold_time_s, width=6, row=7)
-        self.lever_go_sound_widgets = self._entry(trial, 0, "GO start ID", self.lever_go_sound_id, width=6, row=4)
-        self.lever_test_sound_widgets = self._entry(trial, 2, "Test start ID", self.lever_test_sound_id, width=6, row=4)
+        self.lever_go_sound_widgets = self._entry(trial, 0, "StartSeq", self.lever_go_sound_id, width=6, row=4)
+        self.lever_end_sound_widgets = self._entry(trial, 2, "EndSeq", self.lever_end_sound_id, width=6, row=4)
+        self.lever_test_sound_widgets = self._entry(trial, 0, "Test start ID", self.lever_test_sound_id, width=6, row=10)
         self.lever_go_weight_widgets = self._entry(trial, 0, "GO weight", self.lever_go_weight, width=6, row=5)
         self.lever_test_weight_widgets = self._entry(trial, 2, "Test weight", self.lever_test_weight, width=6, row=5)
         self.lever_start_debounce_widgets = self._entry(trial, 2, "Start debounce s", self.lever_start_debounce_s, width=6, row=7)
@@ -549,7 +551,7 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.dmts_nonmatch_fa_noise_check = ttk.Checkbutton(trial, text="NonMatch FA noise", variable=self.dmts_nonmatch_fa_noise)
         self.fa_noise_file_frame = ttk.Frame(trial)
         self.fa_noise_file_frame.columnconfigure(1, weight=1)
-        self._entry(self.fa_noise_file_frame, 0, 'FA noise file', self.fa_noise_file, width=16)
+        self.fa_noise_file_widgets = self._entry(self.fa_noise_file_frame, 0, 'FA noise file', self.fa_noise_file, width=16)
         self._entry(self.fa_noise_file_frame, 2, 'WN level x', self.fa_noise_level_multiplier, width=5)
         ttk.Button(self.fa_noise_file_frame, text='Browse', command=self.choose_fa_noise_file).grid(row=0, column=4, padx=4)
         ttk.Button(self.fa_noise_file_frame, text='Test', command=self.play_fa_noise).grid(row=0, column=5, padx=4)
@@ -787,7 +789,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.hit_threshold_widgets, not is_lever and not is_tac_family and not is_lick, row=6, col=2)
         self.set_widget_pair_visible(self.lever_hold_widgets, is_lever, row=7, col=0)
         self.set_widget_pair_visible(self.lever_go_sound_widgets, is_lever, row=4, col=0)
-        self.set_widget_pair_visible(self.lever_test_sound_widgets, is_lever, row=4, col=2)
+        self.set_widget_pair_visible(self.lever_end_sound_widgets, is_lever, row=4, col=2)
+        self.set_widget_pair_visible(self.lever_test_sound_widgets, is_lever, row=10, col=0)
         self.set_widget_pair_visible(self.lever_go_weight_widgets, is_lever, row=5, col=0)
         self.set_widget_pair_visible(self.lever_test_weight_widgets, is_lever, row=5, col=2)
         self.set_widget_pair_visible(self.lever_start_debounce_widgets, is_lever, row=7, col=2)
@@ -810,14 +813,19 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.set_widget_pair_visible(self.dmts_modality_widgets, is_dmts, row=2, col=0)
         if is_dmts:
             self.dmts_nonmatch_only_sounds_check.grid()
-            self.dmts_nonmatch_fa_noise_check.grid(row=18, column=0, columnspan=2, padx=6, pady=4, sticky="w")
-            self.fa_noise_file_frame.grid(row=19, column=0, columnspan=4, sticky="ew")
             self.no_lick_period_check.grid(row=18, column=2, columnspan=2, padx=6, pady=4, sticky="w")
         else:
             self.dmts_nonmatch_only_sounds_check.grid_remove()
+            self.no_lick_period_check.grid_remove()
+        if is_lever or is_dmts:
+            self.dmts_nonmatch_fa_noise_check.configure(text="No release noise" if is_lever else "NonMatch FA noise")
+            self.fa_noise_file_widgets[0].configure(text="Noise file" if is_lever else "FA noise file")
+            noise_row = 11 if is_lever else 18
+            self.dmts_nonmatch_fa_noise_check.grid(row=noise_row, column=0, columnspan=2, padx=6, pady=4, sticky="w")
+            self.fa_noise_file_frame.grid(row=noise_row + 1, column=0, columnspan=4, sticky="ew")
+        else:
             self.dmts_nonmatch_fa_noise_check.grid_remove()
             self.fa_noise_file_frame.grid_remove()
-            self.no_lick_period_check.grid_remove()
         self.set_widget_pair_visible(self.sample_sound_widgets, False, row=10, col=0)
         self.set_widget_pair_visible(self.test_sound_widgets, False, row=10, col=2)
         self.set_widget_pair_visible(self.dmts_fork_grace_widgets, False, row=11, col=0)
@@ -1206,6 +1214,9 @@ class BehaviorAcquisitionApp(tk.Tk):
             params.setdefault("LeverTestWeight", "0")
             params.setdefault("LeverRewardTestTrials", "0")
             params.setdefault("LeverTestSoundId", "10")
+            if str(params.get("TaskType", "")).strip().lower() == "lever":
+                params.setdefault("StartSeq", params.get("GoSoundId", "1"))
+                params.setdefault("EndSeq", "6")
             if str(params["LeverReqRelWindow"]).lower() in {"1", "true", "yes", "on"}:
                 if str(params.get("LeverReqRelBonus", "0")).lower() in {"1", "true", "yes", "on"}:
                     self.log("Both lever release modes enabled; LeverReqRelWindow takes precedence.")
@@ -1224,6 +1235,8 @@ class BehaviorAcquisitionApp(tk.Tk):
                 "OutputformatDropDown": self.output_format,
                 "TaskType": self.task_type,
                 "GoSoundId": self.lever_go_sound_id,
+                "StartSeq": self.lever_go_sound_id,
+                "EndSeq": self.lever_end_sound_id,
                 "LeverTestSoundId": self.lever_test_sound_id,
                 "LeverGoWeight": self.lever_go_weight,
                 "LeverTestWeight": self.lever_test_weight,
@@ -1481,6 +1494,11 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.update_idletasks()
 
     def _start_live_session(self):
+        if self.is_lever_task() and not (
+            1 <= self.parse_int(self.lever_go_sound_id, 0) <= self.parse_int(self.lever_end_sound_id, 0)
+        ):
+            self.log("Lever requires positive sound IDs with StartSeq <= EndSeq.")
+            return
         if self.is_dmts_task():
             for label, var in (("Match misses", self.dmts_misses_before_reminder), ("Reminder trials", self.dmts_reminder_trials)):
                 value = var.get().strip()
@@ -1615,8 +1633,8 @@ class BehaviorAcquisitionApp(tk.Tk):
         if self.session_requires_sound_file():
             self.startup_message('Starting session: loading sound MAT file.')
             self.load_sound_file()
-        if self.is_dmts_task() and self.dmts_nonmatch_fa_noise.get():
-            self.startup_message("Starting session: loading standalone FA noise WAV.")
+        if (self.is_dmts_task() or self.is_lever_task()) and self.dmts_nonmatch_fa_noise.get():
+            self.startup_message("Starting session: loading punishment noise WAV.")
             self.load_fa_noise(force=True)
         self.startup_message('Starting session: starting acquisition.')
         self.begin_session_history()
@@ -2206,6 +2224,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "NoGoWeight": sequence_weights[1] if len(sequence_weights) > 1 else "",
             "BlankWeight": sequence_weights[2] if self.is_dmts_task() and len(sequence_weights) > 2 else "0",
             "GoSoundId": self.lever_go_sound_id.get() if self.is_lever_task() else (sequence_values[0] if len(sequence_values) > 0 else ""),
+            "StartSeq": self.lever_go_sound_id.get(),
+            "EndSeq": self.lever_end_sound_id.get(),
             "LeverTestSoundId": self.lever_test_sound_id.get(),
             "LeverGoWeight": self.lever_go_weight.get(),
             "LeverTestWeight": self.lever_test_weight.get(),
@@ -2300,6 +2320,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "NoGoWeight",
             "BlankWeight",
             "GoSoundId",
+            "StartSeq",
+            "EndSeq",
             "LeverTestSoundId",
             "LeverGoWeight",
             "LeverTestWeight",
@@ -2460,6 +2482,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             "lever_release_window_s": self.parse_float_value(params["LeverReleaseWindow_s"], 0.25),
             "lever_require_release": params["LeverReqRelBonus"],
             "lever_req_rel_window": params["LeverReqRelWindow"],
+            "lever_start_seq": params.get("StartSeq", ""),
+            "lever_end_seq": params.get("EndSeq", ""),
             "iti_s": iti,
             "iti_rand_min_s": params["ITIrandMin_s"],
             "iti_rand_max_s": params["ITIrandMax_s"],
@@ -3112,7 +3136,14 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.irfork_was_high = is_high
 
         if self.active_trial_index is not None:
-            if is_high:
+            cutoff_s = self.active_lever_cutoff_s
+            release_time_s = sample_time_s if crossed_down else self.active_lever_low_start_s
+            pending_release = not is_high and release_time_s is not None
+            if cutoff_s is not None and sample_time_s >= cutoff_s and (
+                not pending_release or release_time_s > cutoff_s
+            ):
+                self.finish_active_lever_trial(cutoff_s, success=False, no_release=True)
+            elif is_high:
                 self.active_lever_low_start_s = None
                 self.evaluate_active_lever_trial(sample_time_s)
             elif crossed_down:
@@ -3125,7 +3156,10 @@ class BehaviorAcquisitionApp(tk.Tk):
                     self.finish_active_lever_trial(sample_time_s, success=success, hold_end_s=release_time_s)
             return
 
-        if sample_time_s < self.next_trial_allowed_time_s:
+        audio = self.__dict__.get("_audio_worker")
+        if (sample_time_s < self.next_trial_allowed_time_s
+                or (audio is not None and audio.busy)
+                or sample_time_s < self.__dict__.get("_audio_block_until_s", -math.inf)):
             self.lever_reset_seen_for_new_trial = False
             self.lever_pending_start_s = None
             return
@@ -3157,7 +3191,6 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.create_trial(sound_id, trigger_time_s, threshold, iti,
                           trial_type_id=trial_type_id, trial_type=trial_type)
         self.start_active_lever_trial(trigger_time_s, iti)
-        self.play_next_lever_sound(trigger_time_s)
         self.last_trigger_time = trigger_time_s
         self.plot_queue.put(("log", f"Lever crossed {threshold:g} V. Trial {self.trial_index} started; hold for {self.get_lever_hold_time_s():g} s."))
         self.evaluate_active_lever_trial(sample_time_s)
@@ -3491,11 +3524,12 @@ class BehaviorAcquisitionApp(tk.Tk):
         self.active_trial_base_iti_s = iti_s
         self.active_trial_extra_timeout_s = 0.0
         self.active_lever_sound_id = int(self.get_active_trial_row()["sound_id"])
-        # Freeze the GO sound boundary for this trial, like its starting sound ID.
-        self.active_lever_sound_stop_id = (
+        # Snapshot the inclusive GO endpoint for this trial.
+        self.active_lever_end_sound_id = (
             None if str(self.get_active_trial_row().get("TrialType", "")).endswith("Lever-Test")
-            else max(1, self.parse_int(self.lever_test_sound_id, 10))
+            else self.parse_int(self.lever_end_sound_id, 6)
         )
+        self.active_lever_cutoff_s = None
         self.active_lever_next_sound_time_s = trigger_time_s
         self.active_lever_low_start_s = None
         self.active_lever_release_armed = False
@@ -3561,13 +3595,19 @@ class BehaviorAcquisitionApp(tk.Tk):
         if sample_time_s < self.active_lever_next_sound_time_s:
             return
         sound_id = max(1, self.active_lever_sound_id)
-        if self.active_lever_sound_stop_id is not None and sound_id >= self.active_lever_sound_stop_id:
-            self.active_lever_next_sound_time_s = None
-            self.plot_queue.put(("log", f"GO sound sequence stopped before Test sound ID {self.active_lever_sound_stop_id}; lever trial continues."))
-            return
-        duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
+        end_id = self.active_lever_end_sound_id
+        duration_s = None
+        if end_id is None or sound_id <= end_id:
+            duration_s = self.play_loaded_sound(sound_id=sound_id, from_worker=True, start_s=sample_time_s)
         if duration_s is None:
             self.active_lever_next_sound_time_s = None
+            if end_id is not None:
+                self.active_lever_cutoff_s = sample_time_s
+                self.plot_queue.put(("log", f"Lever GO sound {sound_id} unavailable; ending trial."))
+            return
+        if sound_id == end_id:
+            self.active_lever_next_sound_time_s = None
+            self.active_lever_cutoff_s = sample_time_s + duration_s
             return
         self.active_lever_sound_id = sound_id + 1
         self.active_lever_next_sound_time_s = sample_time_s + max(0.0, duration_s) + self.lever_sound_gap_s
@@ -3577,6 +3617,9 @@ class BehaviorAcquisitionApp(tk.Tk):
         if row is None or self.active_high_start_s is None:
             return
         self.play_next_lever_sound(sample_time_s)
+        if self.active_lever_cutoff_s is not None and sample_time_s >= self.active_lever_cutoff_s:
+            self.finish_active_lever_trial(self.active_lever_cutoff_s, success=False)
+            return
         hold_s = max(0.0, sample_time_s - self.active_high_start_s)
         row["crossing_duration_s"] = f"{hold_s:.6f}"
         if hold_s >= self.get_lever_hold_time_s() and not row["HIT"]:
@@ -3594,7 +3637,7 @@ class BehaviorAcquisitionApp(tk.Tk):
                 self.write_trial_log()
                 self.plot_queue.put(("results", None))
 
-    def finish_active_lever_trial(self, trial_end_s, success, hold_end_s=None):
+    def finish_active_lever_trial(self, trial_end_s, success, hold_end_s=None, no_release=False):
         row = self.get_active_trial_row()
         if row is None:
             self.clear_active_trial()
@@ -3614,6 +3657,15 @@ class BehaviorAcquisitionApp(tk.Tk):
         if success:
             reward_count = self.get_lever_release_reward_count(hold_s)
             self.maybe_send_go_reward(row, hold_s, start_s=trial_end_s, reward_count=reward_count)
+        elif no_release and self.dmts_nonmatch_fa_noise.get():
+            duration = self.play_fa_noise(from_worker=True, start_s=trial_end_s)
+            if duration is not None:
+                metadata = self._last_fa_noise_playback
+                row["punishment_sound_id"] = 0
+                row["punishment_sound_repeats"] = metadata["repeats"]
+                row["punishment_sound_file"] = metadata["path"]
+                row["punishment_sound_gain"] = metadata["gain"]
+                row["punishment_sound_duration_s"] = duration
         self.apply_trial_timeout(row, trial_end_s)
         self.set_trial_end_time(row, trial_end_s)
         self.write_trial_log()
@@ -4964,6 +5016,8 @@ class BehaviorAcquisitionApp(tk.Tk):
             ("Threshold", params["LeverThreshold"]),
             ("LeverHoldTime_s", params["LeverHoldTime_s"]),
             ("GoSoundId", params["GoSoundId"]),
+            ("StartSeq", params["StartSeq"]),
+            ("EndSeq", params["EndSeq"]),
             ("LeverTestSoundId", params["LeverTestSoundId"]),
             ("LeverGoWeight", params["LeverGoWeight"]),
             ("LeverTestWeight", params["LeverTestWeight"]),

@@ -186,7 +186,9 @@ The new flag defaults to 0. Both release flags off selects simple hold. GUI cont
 
 ### Lever Sound Playback
 
-`play_next_lever_sound()` plays the configured lever sound and can repeat during a held lever state using `lever_sound_gap_s`.
+`play_next_lever_sound()` advances through consecutive sound IDs during a hold, with a gap between clips. GO trials use the inclusive range from `StartSeq` to `EndSeq` (defaults 1 through 6). When the final clip ends, a trial still waiting for release closes as a MISS. A release that began by the cutoff can finish debouncing and then be scored normally. A hold-only HIT already scored is preserved.
+
+Test/Probe trials start at their separate Test sound ID. The GO cutoff is tied to sound playback and applies to GO trials with playback enabled.
 
 ## DMTS
 

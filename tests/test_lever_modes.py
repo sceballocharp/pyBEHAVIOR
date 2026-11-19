@@ -19,7 +19,7 @@ def load_methods(filename, names):
     tree = ast.parse(source)
     nodes = [node for node in ast.walk(tree)
              if isinstance(node, ast.FunctionDef) and node.name in names]
-    namespace = {"os": os, "APP_DIR": str(ROOT)}
+    namespace = {"os": os, "math": math, "APP_DIR": str(ROOT)}
     exec(compile(ast.Module(body=nodes, type_ignores=[]), filename, "exec"), namespace)
     return namespace
 
@@ -51,6 +51,9 @@ class LeverHarness:
         self.active_high_start_s = 0.0
         self.active_trial_index = 1
         self.active_lever_low_start_s = None
+        self.active_lever_cutoff_s = None
+        self.dmts_nonmatch_fa_noise = Var(False)
+        self.next_trial_allowed_time_s = 4
         self.active_lever_release_armed = False
         self.irfork_was_high = True
         self.row = {"trial": 1, "HIT": 0, "MISS": 0}
@@ -185,32 +188,73 @@ class LeverModeTests(unittest.TestCase):
                 self.assertTrue(app.active_reward_decided)
                 app.send_reward_pulses.assert_not_called()
 
-    def test_go_sound_limit_preserves_trial_and_release_reward(self):
-        # Sound limits are independent of reward eligibility.
+    def test_go_sequence_cutoff_uses_inclusive_final_clip_end(self):
         methods = load_methods("pyBEHAVIOR_v8.py", {"start_active_lever_trial", "play_next_lever_sound"})
-        for start_id, stop_id, expected in [(1, 10, list(range(1, 10))), (3, 5, [3, 4]), (10, 10, []), (11, 10, [])]:
-            with self.subTest(start_id=start_id, stop_id=stop_id):
+        for release, expected_hit in [(None, 0), (2.199, 1), (2.2, 1), (2.201, 0)]:
+            with self.subTest(release=release):
                 app = LeverHarness("bonus")
-                app.row.update(sound_id=start_id, TrialType="1 Lever-GO")
-                app.lever_test_sound_id = Var(stop_id)
+                app.row.update(sound_id=4, TrialType="1 Lever-GO")
+                app.lever_end_sound_id = Var(6)
                 app.parse_int = lambda v, default: int(v.get())
                 app.start_trial_state_interval = Mock()
                 methods["start_active_lever_trial"](app, 0, 1)
-                app.lever_test_sound_id.set(99)  # Edits apply to the next trial.
+                app.lever_end_sound_id.set(99)
                 app.play_sound_on_crossing = Var(True)
                 app.lever_sound_gap_s = 0.5
-                app.play_loaded_sound = Mock(return_value=0.1)
+                app.play_loaded_sound = Mock(return_value=0.2)
                 app.play_next_lever_sound = MethodType(methods["play_next_lever_sound"], app)
-                for when in range(20):
-                    app.evaluate_active_lever_trial(when)
-                self.assertEqual([c.kwargs["sound_id"] for c in app.play_loaded_sound.call_args_list], expected)
+                for when in (0, 1, 2):
+                    app.check_lever_trigger_sample(when, 2, 1)
+                self.assertEqual([c.kwargs["sound_id"] for c in app.play_loaded_sound.call_args_list], [4, 5, 6])
+                self.assertEqual(app.active_lever_cutoff_s, 2.2)
                 self.assertIsNone(app.active_lever_next_sound_time_s)
-                self.assertEqual(app.active_trial_index, app.trial_index)
                 self.assertEqual(app.rewards, [])
-                app.release(20)
-                self.assertEqual(app.row["HIT"], 1)
-                self.assertEqual(app.rewards, [1])
+                if release is None:
+                    app.check_lever_trigger_sample(2.2, 2, 1)
+                    app.release(3)
+                else:
+                    app.release(release)
+                self.assertEqual(app.row["HIT"], expected_hit)
+                self.assertEqual(app.row["MISS"], 1 - expected_hit)
+                self.assertEqual(app.rewards, [1] if expected_hit else [])
                 self.assertIsNone(app.active_trial_index)
+
+    def test_cutoff_preserves_hold_only_hit_and_rejects_unconfirmed_release(self):
+        for mode, expected_hit in [("simple", 1), ("bonus", 0)]:
+            with self.subTest(mode=mode):
+                app = LeverHarness(mode)
+                app.active_lever_cutoff_s = 1.2
+                app.check_lever_trigger_sample(1.0, 2, 1)
+                app.check_lever_trigger_sample(1.19, 0, 1)
+                app.check_lever_trigger_sample(1.21, 2, 1)
+                self.assertEqual(app.row["HIT"], expected_hit)
+                self.assertEqual(app.rewards, [1] if expected_hit else [])
+                self.assertIsNone(app.active_trial_index)
+
+    def test_no_release_noise_plays_only_for_enabled_cutoff_miss(self):
+        for enabled, mode, release, should_play in [
+            (True, "bonus", None, True),
+            (False, "bonus", None, False),
+            (True, "bonus", 1.49, False),
+            (True, "simple", None, False),
+        ]:
+            with self.subTest(enabled=enabled, mode=mode, release=release):
+                app = LeverHarness(mode)
+                app.dmts_nonmatch_fa_noise.set(enabled)
+                app.active_lever_cutoff_s = 1.5
+                app.play_fa_noise = Mock(return_value=0.6)
+                app._last_fa_noise_playback = {"path": "noise.wav", "gain": 1.25, "repeats": 3}
+                app.check_lever_trigger_sample(1.0, 2, 1)
+                if release is None:
+                    app.check_lever_trigger_sample(1.5, 2, 1)
+                    app.check_lever_trigger_sample(1.6, 2, 1)
+                else:
+                    app.release(release)
+                if should_play:
+                    app.play_fa_noise.assert_called_once_with(from_worker=True, start_s=1.5)
+                    self.assertEqual(app.row["punishment_sound_repeats"], 3)
+                else:
+                    app.play_fa_noise.assert_not_called()
 
     def test_legacy_import_clears_test_settings(self):
         app = LeverHarness("bonus")
@@ -223,20 +267,24 @@ class LeverModeTests(unittest.TestCase):
         self.assertEqual(app.lever_go_weight.get(), "1")
         self.assertEqual(app.lever_test_sound_id.get(), "10")
         self.assertEqual(app.lever_go_sound_id.get(), "3")
+        self.assertEqual(app.lever_end_sound_id.get(), "6")
         app.apply_imported_parameters({"TaskType": "Lever", "GoSoundId": "2",
+                                       "StartSeq": "4", "EndSeq": "8",
                                        "LeverTestSoundId": "12", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2", "LeverRewardTestTrials": "1"})
+        self.assertEqual(app.lever_go_sound_id.get(), "4")
+        self.assertEqual(app.lever_end_sound_id.get(), "8")
         self.assertEqual(app.lever_reward_test_trials.get(), "1")
         self.assertEqual(app.lever_test_weight.get(), "0.2")
         self.assertEqual(app.lever_test_sound_id.get(), "12")
 
     def test_generator_exports_lever_selection(self):
         methods = load_methods("protocol_generator.py", {"write_dat"})
-        values = {"LeverGoSoundId": "1", "LeverTestSoundId": "10", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2", "LeverRewardTestTrials": "1"}
+        values = {"LeverGoSoundId": "1", "EndSeq": "6", "LeverTestSoundId": "10", "LeverGoWeight": "0.8", "LeverTestWeight": "0.2", "LeverRewardTestTrials": "1"}
         parameters = [SimpleNamespace(key=k, default=v) for k, v in values.items()]
         with patch("builtins.open", mock_open()) as output, patch("os.makedirs"):
             methods["write_dat"]("check.dat", values, parameters)
             written = "".join(c.args[0] for c in output().write.call_args_list)
-        self.assertEqual(written, "GoSoundId=1\nLeverTestSoundId=10\nLeverGoWeight=0.8\nLeverTestWeight=0.2\nLeverRewardTestTrials=1\n")
+        self.assertEqual(written, "StartSeq=1\nEndSeq=6\nLeverTestSoundId=10\nLeverGoWeight=0.8\nLeverTestWeight=0.2\nLeverRewardTestTrials=1\n")
 
     def test_bonus_probability_and_other_modes(self):
         methods = load_methods("pyBEHAVIOR_v8.py", {
